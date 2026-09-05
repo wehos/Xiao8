@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import tomllib
+
 import pytest
 from pydantic import ValidationError
 
@@ -272,3 +274,121 @@ def test_plugin_install_rejects_unknown_fields(install: dict[str, object]) -> No
 
     with pytest.raises(ConfigValidationError):
         validate_plugin_config(config)
+
+
+def test_model_requirements_are_optional_for_existing_plugins() -> None:
+    validated = validate_plugin_config(_base_config())
+
+    assert validated.plugin.models == {}
+
+
+def _config_with_models(models: object) -> dict[str, object]:
+    config = _base_config()
+    plugin = config["plugin"]
+    assert isinstance(plugin, dict)
+    plugin["models"] = models
+    return config
+
+
+def test_model_requirements_parse_toml_and_preserve_usage_ids() -> None:
+    config = tomllib.loads('''
+[plugin]
+id = "model_demo"
+name = "Model Demo"
+entry = "plugins.model_demo:ModelDemoPlugin"
+
+[plugin.models.analysis]
+label = "Content analysis"
+
+[plugin.models.image_review]
+label = "Image review"
+description = "Optional image understanding"
+required = false
+capabilities = ["text", "image_input", "tool_calling", "streaming"]
+''')
+
+    validated = validate_plugin_config(config)
+
+    assert set(validated.plugin.models) == {"analysis", "image_review"}
+    analysis = validated.plugin.models["analysis"]
+    assert analysis.label == "Content analysis"
+    assert analysis.required is True
+    assert analysis.capabilities == ["text"]
+    review = validated.plugin.models["image_review"]
+    assert review.required is False
+    assert review.description == "Optional image understanding"
+    assert review.capabilities == ["text", "image_input", "tool_calling", "streaming"]
+    assert validated.model_dump()["plugin"]["models"]["image_review"] == {
+        "label": "Image review",
+        "description": "Optional image understanding",
+        "required": False,
+        "capabilities": ["text", "image_input", "tool_calling", "streaming"],
+    }
+
+
+@pytest.mark.parametrize("usage_id", ["", "Analysis", " image", "image ", "image-review", "../image", "1image", "a" * 65])
+def test_model_requirements_reject_noncanonical_usage_ids(usage_id: str) -> None:
+    config = _config_with_models({usage_id: {"label": "Analysis"}})
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        validate_plugin_config(config)
+
+    assert (exc_info.value.field or "").startswith("plugin.models.")
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    [
+        {},
+        {"label": ""},
+        {"label": " padded "},
+        {"label": 123},
+        {"label": "Analysis", "required": "true"},
+        {"label": "Analysis", "required": 1},
+        {"label": "Analysis", "capabilities": ["audio_input"]},
+        {"label": "Analysis", "capabilities": ["text", "text"]},
+        {"label": "Analysis", "capabilities": "text"},
+        {"label": "Analysis", "capabilites": ["text"]},
+        {"label": "Analysis", "slot_id": "user_owned_slot"},
+    ],
+)
+def test_model_requirements_reject_invalid_contracts(requirement: dict[str, object]) -> None:
+    config = _config_with_models({"analysis": requirement})
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        validate_plugin_config(config)
+
+    assert (exc_info.value.field or "").startswith("plugin.models.analysis.")
+
+
+@pytest.mark.parametrize("models", [None, [], "analysis"])
+def test_model_requirements_must_be_a_table(models: object) -> None:
+    config = _config_with_models(models)
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        validate_plugin_config(config)
+
+    assert exc_info.value.field == "plugin.models"
+
+
+def test_partial_plugin_config_preserves_valid_model_declarations() -> None:
+    config = {"plugin": {"models": {"analysis": {"label": "Analysis"}}}}
+
+    assert validate_plugin_config_partial(config) is config
+    assert config["plugin"]["models"]["analysis"] == {"label": "Analysis"}
+
+
+@pytest.mark.parametrize(
+    ("models", "field"),
+    [
+        (None, "plugin.models"),
+        ({"Bad-ID": {"label": "Analysis"}}, "plugin.models.Bad-ID.[key]"),
+        ({"analysis": {"label": "Analysis", "required": "false"}}, "plugin.models.analysis.required"),
+        ({"analysis": {"label": "Analysis", "capabilities": ["unknown"]}}, "plugin.models.analysis.capabilities.0"),
+    ],
+)
+def test_partial_plugin_config_checks_model_declarations(models: object, field: str) -> None:
+    with pytest.raises(ConfigValidationError) as exc_info:
+        validate_plugin_config_partial({"plugin": {"models": models}})
+
+    assert exc_info.value.field == field

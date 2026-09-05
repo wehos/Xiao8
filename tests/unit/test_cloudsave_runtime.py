@@ -482,6 +482,69 @@ def test_bootstrap_repairs_existing_seeded_install_with_backup_and_merged_prefer
 
 
 @pytest.mark.unit
+def test_legacy_repair_imports_plugin_models_into_seeded_target(tmp_path):
+    from utils.cloudsave_runtime import import_legacy_runtime_root_if_needed
+
+    cm = _make_config_manager(tmp_path / "current")
+    cm.project_config_dir = tmp_path / "empty_project_config"
+    cm.ensure_config_directory()
+    atomic_write_json(cm.config_dir / "characters.json", cm.get_default_characters())
+    legacy_root = tmp_path / "legacy" / "N.E.K.O"
+    shutil.copytree(cm.config_dir, legacy_root / "config")
+    # The target already scores higher under the old rules: only the new
+    # plugin-model marker should make importing the legacy file worthwhile.
+    atomic_write_json(cm.config_dir / "core_config.json", {"custom": "current"})
+    plugin_models = {
+        "schema_version": 1,
+        "slots": {"slot_a": {"model": "example", "api_key": "test-only"}},
+        "bindings": {"example_plugin": {"analysis": "slot_a"}},
+    }
+    atomic_write_json(legacy_root / "config" / "plugin_models.json", plugin_models)
+    cm.get_legacy_app_root_candidates = lambda: [legacy_root]
+
+    result = import_legacy_runtime_root_if_needed(cm)
+
+    assert result["migrated"] is True
+    assert result["repair_reason"] == "missing_plugin_models"
+    assert json.loads((cm.config_dir / "plugin_models.json").read_text(encoding="utf-8")) == plugin_models
+
+
+@pytest.mark.unit
+def test_legacy_repair_preserves_current_plugin_models_as_one_unit_with_backup(tmp_path):
+    from utils.cloudsave_runtime import import_legacy_runtime_root_if_needed
+
+    cm = _make_config_manager(tmp_path / "current")
+    cm.project_config_dir = tmp_path / "empty_project_config"
+    cm.ensure_config_directory()
+    atomic_write_json(cm.config_dir / "characters.json", cm.get_default_characters())
+    legacy_root = tmp_path / "legacy" / "N.E.K.O"
+    shutil.copytree(cm.config_dir, legacy_root / "config")
+    legacy_models = {
+        "schema_version": 1,
+        "slots": {"slot_a": {"model": "old", "api_key": "old-test-key"}},
+        "bindings": {"old_plugin": {"analysis": "slot_a"}},
+    }
+    current_models = {
+        "schema_version": 1,
+        "slots": {"slot_a": {"model": "current", "api_key": ""}},
+        "bindings": {},
+    }
+    atomic_write_json(legacy_root / "config" / "plugin_models.json", legacy_models)
+    atomic_write_json(cm.config_dir / "plugin_models.json", current_models)
+    # An unrelated missing config triggers repair of an otherwise seeded root.
+    atomic_write_json(legacy_root / "config" / "workshop_config.json", {})
+    cm.get_legacy_app_root_candidates = lambda: [legacy_root]
+
+    result = import_legacy_runtime_root_if_needed(cm)
+
+    assert result["migrated"] is True
+    assert json.loads((cm.config_dir / "plugin_models.json").read_text(encoding="utf-8")) == current_models
+    backup_path = Path(result["backup_path"]) / "config" / "plugin_models.json"
+    assert json.loads(backup_path.read_text(encoding="utf-8")) == current_models
+    assert json.loads((legacy_root / "config" / "plugin_models.json").read_text(encoding="utf-8")) == legacy_models
+
+
+@pytest.mark.unit
 def test_bootstrap_repairs_legacy_root_while_launcher_fence_is_active(tmp_path):
     new_root_base = tmp_path / "new_root_base"
     legacy_root = tmp_path / "legacy_docs" / "N.E.K.O"

@@ -374,6 +374,7 @@ def _runtime_root_summary(config_manager, root: Path) -> dict[str, Any]:
     voice_storage_path = config_root / "voice_storage.json"
     workshop_config_path = config_root / "workshop_config.json"
     core_config_path = config_root / "core_config.json"
+    plugin_models_path = config_root / "plugin_models.json"
 
     characters_payload = _load_json_if_exists(characters_path)
     user_preferences_payload = _load_json_if_exists(user_preferences_path)
@@ -401,6 +402,7 @@ def _runtime_root_summary(config_manager, root: Path) -> dict[str, Any]:
         + (2 if voice_storage_path.is_file() else 0)
         + (1 if workshop_config_path.is_file() else 0)
         + (1 if core_config_path.is_file() else 0)
+        + (1 if plugin_models_path.is_file() else 0)
         + sum(2 for has_content in asset_dirs_with_content.values() if has_content)
     )
 
@@ -413,6 +415,7 @@ def _runtime_root_summary(config_manager, root: Path) -> dict[str, Any]:
         "has_voice_storage": voice_storage_path.is_file(),
         "has_workshop_config": workshop_config_path.is_file(),
         "has_core_config": core_config_path.is_file(),
+        "has_plugin_models": plugin_models_path.is_file(),
         "asset_dirs_with_content": asset_dirs_with_content,
         "seeded_character_shell": seeded_character_shell,
         "looks_like_seeded": (
@@ -428,6 +431,7 @@ def _runtime_root_summary(config_manager, root: Path) -> dict[str, Any]:
                 or _config_payload_looks_seeded(config_manager, "voice_storage.json", voice_storage_payload)
             )
             and not workshop_config_path.is_file()
+            and not plugin_models_path.is_file()
             and (
                 not core_config_path.is_file()
                 or _config_payload_looks_seeded(config_manager, "core_config.json", core_config_payload)
@@ -457,6 +461,7 @@ def _legacy_root_provides_repair_benefit(config_manager, source_summary: dict[st
             ("has_voice_storage", "missing_voice_storage"),
             ("has_workshop_config", "missing_workshop_config"),
             ("has_core_config", "missing_core_config"),
+            ("has_plugin_models", "missing_plugin_models"),
         ):
             if source_summary[flag_name] and not target_summary[flag_name]:
                 return True, reason
@@ -512,6 +517,9 @@ def _stage_merged_runtime_configs(config_manager, *, source_root: Path, target_r
         merged_preferences = _merge_preferences_payloads(source_preferences, target_preferences)
         atomic_write_json(config_dir / "user_preferences.json", merged_preferences, ensure_ascii=False, indent=2)
 
+    # plugin_models.json is copied as one configuration unit by
+    # _copy_runtime_root_entries (the current root wins). Deep-merging it could
+    # pair an old API key with a new endpoint or resurrect a deleted binding.
     for filename in ROOT_CONFIG_MERGE_FILES:
         source_payload = _load_json_if_exists(source_root / "config" / filename)
         target_payload = _load_json_if_exists(target_root / "config" / filename)

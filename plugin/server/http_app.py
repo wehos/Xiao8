@@ -33,6 +33,7 @@ from plugin.server.routes import (
     media_router,
     messages_router,
     metrics_router,
+    model_config_router,
     plugin_cli_router,
     plugin_ui_router,
     plugins_router,
@@ -315,6 +316,7 @@ def build_plugin_server_app(
     app.include_router(messages_router)
     app.include_router(metrics_router)
     app.include_router(config_router)
+    app.include_router(model_config_router)
     app.include_router(logs_router)
     app.include_router(media_router)
     app.include_router(frontend_router)

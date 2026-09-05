@@ -4,8 +4,10 @@ The host stores plugin-only model settings in the selected runtime root's
 `config/plugin_models.json`. This configuration is independent of Main/Agent
 model slots and does not trigger `/api/config/core_api` session reloads.
 
-This first increment provides configuration and binding management only.
-Model execution, the plugin SDK client and configuration UI follow separately.
+Configuration, binding management and internal model adapters are implemented.
+The authenticated HTTP gateway, plugin SDK client, execution policies and
+configuration UI follow separately. No public model-execution route is exposed
+by the internal adapters.
 
 ## Manifest declarations
 
@@ -62,3 +64,52 @@ Malformed or unsupported stored documents are reported without overwriting
 them. Whole-root migrations carry the file; legacy imports keep an existing
 target file intact instead of merging credentials and endpoints. These local
 credentials are not added to character cloud-save exports.
+
+## Internal Chat Completions execution
+
+`ModelGatewayService` accepts an already-resolved `ModelSlot` and an OpenAI-shaped
+request. The future authenticated route must resolve the plugin's declared usage
+and binding before calling it; supplying an arbitrary slot is not a plugin API.
+
+- `await service.complete(slot, request)` returns a Chat Completion dictionary.
+- `service.stream(slot, request)` yields SSE bytes for `stream=true`, ending with
+  one `[DONE]` only when the upstream protocol finishes successfully. A consumer
+  that stops early must close the iterator. Cancellation releases HTTP resources.
+- Request `model` is the usage alias; only the outgoing request contains the
+  configured real model. Responses and chunks use the requested alias.
+
+Both backends support text, ordered user image parts (HTTP(S) or base64 data
+URLs), ordinary function tools, complete tool-result histories, and streaming.
+The service does not execute tools or add Main's role prompts, history or tools.
+Standard empty fields from OpenAI SDK assistant messages can be replayed in a
+subsequent tool round. Images are not downloaded, resized or converted to text.
+
+The accepted request fields are `model`, `messages`, `stream`, `stream_options`
+(`include_usage`), `tools`, `tool_choice`, `parallel_tool_calls`, `max_tokens`,
+`max_completion_tokens`, `temperature`, `top_p`, `stop`, `n` (only 1), and
+`response_format`. Explicit request values override slot defaults. An omitted
+output budget defaults to 1024 tokens. Unknown fields, unsupported modalities,
+unmatched tool results and missing declared slot capabilities are rejected.
+
+The OpenAI adapter forwards the supported Chat Completions request and preserves
+response/chunk extensions without claiming that they work across providers.
+The Anthropic adapter converts to native Messages and maps text, tool calls,
+finish reasons and usage back. Anthropic-specific reasoning and citations are
+not exposed. Message names, non-auto image detail, strict function schemas,
+non-text `response_format` and temperature above 1 have no supported mapping and
+are explicitly rejected for that backend. OpenAI JSON output is passed through
+only when the selected upstream model supports it.
+
+OpenAI `base_url` is the API prefix (typically ending in `/v1`). Anthropic bases
+may include or omit the final `/v1`. Credentials are placed only in the relevant
+upstream authentication header; redirects are never followed. Vendor error
+bodies are replaced with safe OpenAI-shaped errors.
+
+Each attempt owns and closes its HTTP client. There are no automatic retries,
+fallback, usage persistence or accounting hooks yet. The HTTP inactivity timeout
+uses the slot setting; the overall deadline, bounded scheduling and accounting
+are a separate planned increment. Upstream streaming usage is requested for
+OpenAI, but forwarded to the caller only when `include_usage=true`. Missing usage
+remains unknown. Requests and responses are bounded to 16 MiB and SSE events to
+1 MiB, including unterminated lines. These are transport limits, not token-budget
+estimates.

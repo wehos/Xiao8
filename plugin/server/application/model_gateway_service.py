@@ -9,7 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 
+import anyio
 import httpx
 
 from plugin.server.domain.model_config import ModelSlot
@@ -85,16 +87,31 @@ class ModelGatewayService:
         # execution policy, not by httpx's connect/read/write/pool timeouts.
         return httpx.AsyncClient(timeout=slot.timeout_seconds, follow_redirects=False)
 
+    @asynccontextmanager
+    async def _request(self, slot: ModelSlot, payload: bytes, headers: dict):
+        client = self._client_factory(slot)
+        response = None
+        try:
+            request = client.build_request("POST", _endpoint(slot), content=payload, headers=headers)
+            response = await client.send(request, stream=True, follow_redirects=False)
+            _check_status(response)
+            yield response
+        finally:
+            # StreamingResponse uses an AnyIO cancel scope. Without shielding,
+            # repeated cancellation can interrupt async HTTP close halfway.
+            with anyio.CancelScope(shield=True):
+                try:
+                    if response is not None:
+                        await response.aclose()
+                finally:
+                    await client.aclose()
+
     async def complete(self, slot: ModelSlot, body: object) -> dict:
         slot = slot.model_copy(deep=True)
         model_alias, payload, headers, _ = await asyncio.to_thread(_prepare, slot, body, streaming=False)
         try:
-            async with self._client_factory(slot) as client:
-                async with client.stream(
-                    "POST", _endpoint(slot), content=payload, headers=headers, follow_redirects=False
-                ) as response:
-                    _check_status(response)
-                    result = await read_json_response(response)
+            async with self._request(slot, payload, headers) as response:
+                result = await read_json_response(response)
             adapter = anthropic if slot.protocol == "anthropic_messages" else openai
             return await asyncio.to_thread(adapter.convert_response, result, model_alias=model_alias)
         except httpx.TimeoutException as exc:
@@ -112,24 +129,20 @@ class ModelGatewayService:
             converter = openai.OpenAIStreamConverter(model_alias, include_usage=include_usage)
         saw_done = False
         try:
-            async with self._client_factory(slot) as client:
-                async with client.stream(
-                    "POST", _endpoint(slot), content=payload, headers=headers, follow_redirects=False
-                ) as response:
-                    _check_status(response)
-                    async for data in iter_sse_data(response):
-                        if data.strip() == "[DONE]":
-                            if is_anthropic:
-                                raise ModelGatewayError("invalid_upstream_response", "Unexpected stream terminator", 502)
-                            saw_done = True
-                            break
-                        for chunk in converter.feed(decode_object(data)):
-                            yield encode_sse(chunk)
-                        if is_anthropic and converter.done:
-                            break
-                    converter.finish()
-                    if not is_anthropic and not saw_done:
-                        raise ModelGatewayError("incomplete_upstream_stream", "Model stream ended without a terminator", 502)
+            async with self._request(slot, payload, headers) as response:
+                async for data in iter_sse_data(response):
+                    if data.strip() == "[DONE]":
+                        if is_anthropic:
+                            raise ModelGatewayError("invalid_upstream_response", "Unexpected stream terminator", 502)
+                        saw_done = True
+                        break
+                    for chunk in converter.feed(decode_object(data)):
+                        yield encode_sse(chunk)
+                    if is_anthropic and converter.done:
+                        break
+                converter.finish()
+                if not is_anthropic and not saw_done:
+                    raise ModelGatewayError("incomplete_upstream_stream", "Model stream ended without a terminator", 502)
             yield b"data: [DONE]\n\n"
         except httpx.TimeoutException as exc:
             raise ModelGatewayError("upstream_timeout", "Model provider stream timed out", 504) from exc

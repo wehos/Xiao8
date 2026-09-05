@@ -40,13 +40,15 @@ def test_the_scrub_blanks_tokens_and_empties_the_registry(
 ) -> None:
     """Mutation: drop the ``hosts.clear()`` or the token overwrite."""
     victim = _FakeTransport("victim-uplink-secret")
-    hosts = {"victim": SimpleNamespace(transport=victim)}
+    host = SimpleNamespace(transport=victim, _model_gateway_token="victim-model-secret")
+    hosts = {"victim": host}
     fake_state_mod = SimpleNamespace(state=SimpleNamespace(plugin_hosts=hosts))
     monkeypatch.setitem(sys.modules, "plugin.core.state", fake_state_mod)
 
     zmq_transport._scrub_inherited_host_credentials()
 
     assert hosts == {}, "继承来的 host 表还在，另一个插件的 transport 直接可读"
+    assert host._model_gateway_token == ""
     assert victim._uplink_token == "", (
         "只丢了引用没打掉值——子进程里别处还引着这个对象就白清了"
     )

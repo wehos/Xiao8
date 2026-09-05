@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Literal,
@@ -14,6 +15,9 @@ from typing import (
     TypeAlias,
     TypedDict,
 )
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 
 JsonScalar: TypeAlias = str | int | float | bool | None
@@ -141,9 +145,16 @@ class PluginImagesProtocol(Protocol):
     ) -> dict[str, object]: ...
 
 
+class PluginModelsProtocol(Protocol):
+    async def get_client(self) -> AsyncOpenAI: ...
+
+
 class PluginContextProtocol(Protocol):
     @property
     def images(self) -> PluginImagesProtocol: ...
+
+    @property
+    def models(self) -> PluginModelsProtocol: ...
 
     plugin_id: str
     metadata: Metadata
@@ -295,6 +306,7 @@ __all__ = [
     "PushMessageRejected",
     "PushMessageResult",
     "PluginImagesProtocol",
+    "PluginModelsProtocol",
     "PushMessageSubmitted",
     "RouterProtocol",
 ]

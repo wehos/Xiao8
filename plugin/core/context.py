@@ -267,6 +267,10 @@ class PluginContext:
     )
     _image_transport: Optional[Any] = None
     _images: Optional[Any] = None
+    _model_gateway_base_url: str = field(default="", repr=False)
+    _model_gateway_token: str = field(default="", repr=False)
+    _model_gateway_closed: bool = field(default=False, init=False, repr=False)
+    _models: Optional[Any] = field(default=None, init=False, repr=False)
     _image_uploads_blocked: bool = False
     _entry_map: Optional[Dict[str, Any]] = None  # 入口映射（用于处理命令）
     _entry_meta_map: Optional[Dict[str, Any]] = None  # entry_id -> EventMeta
@@ -294,6 +298,17 @@ class PluginContext:
             images = PluginImages(self)
             self._images = images
         return images
+
+    @property
+    def models(self) -> Any:
+        with self._direct_response_lock:
+            models = self._models
+            if models is None:
+                from plugin.sdk.shared.core.models import PluginModels
+
+                models = PluginModels(self)
+                self._models = models
+            return models
 
     async def _upload_image(
         self,
@@ -435,6 +450,10 @@ class PluginContext:
 
         This is safe to call multiple times.
         """
+        self._model_gateway_closed = True
+        models = getattr(self, "_models", None)
+        if models is not None:
+            models.close()
         with self._direct_response_lock:
             waiters = getattr(self, "_direct_response_waiters", None)
             pending = tuple(waiters.values()) if waiters else ()

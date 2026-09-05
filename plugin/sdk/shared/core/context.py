@@ -17,7 +17,13 @@ from .finish import (
     normalize_structured_data,
 )
 from .result_contract import contract_from_meta, validate_reply_payload
-from .types import LoggerLike, Metadata, PluginContextProtocol, PushMessageResult
+from .types import (
+    LoggerLike,
+    Metadata,
+    PluginContextProtocol,
+    PluginModelsProtocol,
+    PushMessageResult,
+)
 
 _UNSET = object()
 _SDK_CONTEXT_ATTR_NAMES = ("plugin_id", "metadata", "logger", "config_path", "bus", "images")
@@ -102,6 +108,7 @@ class SdkContext:
     def __init__(self, host_ctx: object):
         self._host_ctx = cast(_HostContextProtocol, host_ctx)
         self._bus_ctx: SdkBusContext | None | object = _UNSET
+        self._models_ctx: PluginModelsProtocol | None = None
 
     @staticmethod
     def _normalize_export_metadata(
@@ -220,6 +227,19 @@ class SdkContext:
     @property
     def images(self) -> object:
         return getattr(self._host_ctx, "images")
+
+    @property
+    def models(self) -> PluginModelsProtocol:
+        models = getattr(self._host_ctx, "models", None)
+        if models is not None:
+            return cast(PluginModelsProtocol, models)
+        # Older hosts and test contexts have no gateway credentials. Keep
+        # their existing facade compatible and report unavailable on use.
+        if self._models_ctx is None:
+            from .models import PluginModels
+
+            self._models_ctx = PluginModels(self._host_ctx)
+        return self._models_ctx
 
     async def get_own_config(self, timeout: float = 5.0) -> object:
         return await self._host_ctx.get_own_config(timeout=timeout)

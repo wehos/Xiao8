@@ -23,6 +23,7 @@ from plugin.logging_config import logger
 
 from plugin._types.events import EVENT_META_ATTR
 from plugin.core.entry_points import normalize_plugin_entry_point
+from plugin.core.model_gateway_access import model_gateway_access
 from plugin.sdk import PERSIST_ATTR
 from plugin.core.state import state
 from plugin.core.context import PluginContext
@@ -702,6 +703,20 @@ def _deep_merge(base: dict, updates: dict) -> None:
             base[key] = value
 
 
+async def _run_with_model_client_cleanup(ctx: PluginContext, awaitable: Any) -> Any:
+    """Release this loop's HTTP client before an asyncio.run loop closes."""
+    try:
+        return await awaitable
+    finally:
+        models = getattr(ctx, "_models", None)
+        if models is not None:
+            try:
+                await models.aclose()
+            except Exception as exc:
+                # Cleanup must not replace a plugin result or hide its error.
+                logger.warning("[Plugin Process] Model client cleanup failed: {}", type(exc).__name__)
+
+
 def _plugin_process_runner(
     plugin_id: str,
     entry_point: str,
@@ -713,6 +728,8 @@ def _plugin_process_runner(
     startup_options: dict[str, object] | None = None,
     message_uplink_endpoint: str = "",
     image_uplink_endpoint: str | None = None,
+    *,
+    model_gateway_options: dict[str, str] | None = None,
 ) -> None:
     """独立进程中的运行函数。通过 ZMQ 与宿主进程通信。"""
     uplink_token = str(uplink_token or "").strip()
@@ -793,7 +810,12 @@ def _plugin_process_runner(
             _image_transport=child_transport,
             _entry_map=None,
             _instance=None,
+            _model_gateway_base_url=(model_gateway_options or {}).get("base_url", ""),
+            _model_gateway_token=(model_gateway_options or {}).get("token", ""),
         )
+        # The context owns this instance's credential from now on.
+        if model_gateway_options is not None:
+            model_gateway_options.clear()
         # Cleared until the downlink loop starts reading. Uploads launched by
         # timer / custom-event handlers before that point would have no reader
         # for their reply, so they wait here instead of timing out (Codex).
@@ -1170,7 +1192,7 @@ def _plugin_process_runner(
         if startup_fn:
             try:
                 with ctx._handler_scope("lifecycle.startup"):
-                    asyncio.run(_run_startup_with_downlink(startup_fn))
+                    asyncio.run(_run_with_model_client_cleanup(ctx, _run_startup_with_downlink(startup_fn)))
             except (KeyboardInterrupt, SystemExit):
                 # 系统级中断，直接抛出
                 raise
@@ -1194,7 +1216,7 @@ def _plugin_process_runner(
             try:
                 logger.info("[Plugin Process] Executing unfreeze lifecycle (restored from frozen state)...")
                 with ctx._handler_scope("lifecycle.unfreeze"):
-                    asyncio.run(unfreeze_fn())
+                    asyncio.run(_run_with_model_client_cleanup(ctx, unfreeze_fn()))
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as e:
@@ -1219,7 +1241,7 @@ def _plugin_process_runner(
             while not stop_event.is_set():
                 try:
                     with ctx._handler_scope(f"timer.{fn_name}"):
-                        asyncio.run(fn())
+                        asyncio.run(_run_with_model_client_cleanup(ctx, fn()))
                 except (KeyboardInterrupt, SystemExit):
                     # 系统级中断，停止定时任务
                     logger.info("Timer '{}' interrupted, stopping", fn_name)
@@ -1254,7 +1276,7 @@ def _plugin_process_runner(
             """执行自动启动的自定义事件"""
             try:
                 with ctx._handler_scope(f"{event_type}.{fn_name}"):
-                    asyncio.run(fn())
+                    asyncio.run(_run_with_model_client_cleanup(ctx, fn()))
             except (KeyboardInterrupt, SystemExit):
                 logger.info("Custom event '{}' (type: {}) interrupted", fn_name, event_type)
             except Exception:
@@ -1777,15 +1799,21 @@ def _plugin_process_runner(
                         _run_tasks[run_id] = task
                     continue
 
-            # Loop exited — cancel any in-flight tasks
-            for t in _run_tasks.values():
-                if not t.done():
-                    t.cancel()
-            if _run_tasks:
-                await asyncio.gather(*_run_tasks.values(), return_exceptions=True)
-                _run_tasks.clear()
+        async def _command_loop_with_cleanup():
+            try:
+                await _async_command_loop()
+            finally:
+                # Also clean up when transport/handler dispatch raises. Close
+                # model clients only after their request tasks have unwound.
+                tasks = list(_run_tasks.values())
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    _run_tasks.clear()
 
-        asyncio.run(_async_command_loop())
+        asyncio.run(_run_with_model_client_cleanup(ctx, _command_loop_with_cleanup()))
 
         # 触发生命周期：shutdown（尽力而为），并停止所有定时任务
         try:
@@ -1803,7 +1831,7 @@ def _plugin_process_runner(
                 with ctx._handler_scope("lifecycle.shutdown"):
                     result = shutdown_fn()
                     if asyncio.iscoroutine(result):
-                        asyncio.run(result)
+                        asyncio.run(_run_with_model_client_cleanup(ctx, result))
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as e:
@@ -1832,7 +1860,7 @@ def _plugin_process_runner(
                 with ctx._handler_scope("lifecycle.shutdown"):
                     result = shutdown_fn()
                     if asyncio.iscoroutine(result):
-                        asyncio.run(result)
+                        asyncio.run(_run_with_model_client_cleanup(ctx, result))
         except BaseException:
             pass
         try:
@@ -1886,6 +1914,10 @@ class PluginHost:
 
         self._process_stop_event: Any = multiprocessing.Event()
         self._startup_options: dict[str, object] = {"startup_failure": "warn"}
+        self._model_gateway_token = ""
+        self._model_gateway_starting = False
+        # Mutated only for launch; no credentials enter environment/config/logs.
+        self._model_gateway_options: dict[str, str] = {}
 
         # Shared response notification primitives must be initialized before
         # forking, otherwise each child creates its own Manager proxies.
@@ -1922,7 +1954,8 @@ class PluginHost:
                     self.transport,
                     "image_uplink_endpoint",
                     None,
-                )
+                ),
+                "model_gateway_options": self._model_gateway_options,
             },
             # Plugin code may spawn subprocesses/Managers; daemon process would forbid that.
             daemon=False,
@@ -1965,10 +1998,37 @@ class PluginHost:
         if should_wait_for_startup:
             await self.comm_manager.prepare_startup_wait()
 
+        start_task: asyncio.Task | None = None
         try:
+            from config.network import resolve_user_plugin_base
+
+            self._model_gateway_starting = True
+            self._model_gateway_token = model_gateway_access.issue(
+                self.plugin_id, self._model_gateway_is_alive,
+            )
+            self._model_gateway_options.update({
+                "base_url": f"{resolve_user_plugin_base()}/api/models/v1",
+                "token": self._model_gateway_token,
+            })
             _refresh_child_storage_layout_env(self.logger)
-            await asyncio.to_thread(self.process.start)
-        except Exception:
+            start_task = asyncio.create_task(asyncio.to_thread(self.process.start))
+            await asyncio.shield(start_task)
+        except asyncio.CancelledError:
+            self._revoke_model_gateway_access()
+            # Canceling to_thread does not stop spawn or its argument pickling.
+            # Keep launch options and transport intact until the worker exits,
+            # then stop any child it created. Repeated caller cancellation must
+            # not cancel this cleanup or clear arguments underneath the worker.
+            cleanup_task = asyncio.create_task(self._finish_cancelled_start(start_task))
+            while not cleanup_task.done():
+                try:
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError:
+                    continue
+            cleanup_task.result()
+            raise
+        except BaseException:
+            self._revoke_model_gateway_access()
             self.logger.error(
                 "Plugin {} process failed to start, shutting down comm_manager",
                 self.plugin_id,
@@ -1980,10 +2040,16 @@ class PluginHost:
                 pass
             await self.comm_manager.shutdown(timeout=PLUGIN_SHUTDOWN_TIMEOUT)
             raise
+        finally:
+            self._model_gateway_starting = False
+            # multiprocessing has copied these arguments into the child. Do not
+            # leave launch credentials for future forked sibling plugins.
+            self._model_gateway_options.clear()
         self.logger.info("Plugin {} process started (pid: {})", self.plugin_id, self.process.pid)
 
         # 验证进程状态
         if not self.process.is_alive():
+            self._revoke_model_gateway_access()
             exitcode = self.process.exitcode
             self.logger.error(
                 "Plugin {} process is not alive after startup (exitcode: {})",
@@ -2021,6 +2087,9 @@ class PluginHost:
                         startup_result["startup_error"],
                     )
                 return startup_result
+            except asyncio.CancelledError:
+                await self._abort_startup_after_failure(timeout=PLUGIN_SHUTDOWN_TIMEOUT)
+                raise
             except TimeoutError as exc:
                 self.logger.error(
                     "Plugin {} startup timed out after {}s",
@@ -2046,7 +2115,18 @@ class PluginHost:
                     str(exc),
                 ) from exc
 
+    async def _finish_cancelled_start(self, start_task: asyncio.Task | None) -> None:
+        if start_task is not None:
+            try:
+                await start_task
+            except Exception:
+                # The original caller remains cancelled whether spawn finishes
+                # successfully or fails. Both paths still require teardown.
+                pass
+        await self._abort_startup_after_failure(timeout=PLUGIN_SHUTDOWN_TIMEOUT)
+
     async def _abort_startup_after_failure(self, timeout: float) -> None:
+        self._revoke_model_gateway_access()
         try:
             if getattr(self, "_process_stop_event", None) is not None:
                 self._process_stop_event.set()
@@ -2061,11 +2141,11 @@ class PluginHost:
             await self.comm_manager.shutdown(timeout=timeout)
         except Exception:
             pass
+        await asyncio.to_thread(self._shutdown_process, timeout)
         try:
             self.transport.close()
         except Exception:
             pass
-        await asyncio.to_thread(self._shutdown_process, timeout)
     
     async def shutdown(self, timeout: float = PLUGIN_SHUTDOWN_TIMEOUT) -> None:
         """
@@ -2077,6 +2157,7 @@ class PluginHost:
         3. 关闭进程
         """
         self.logger.info(f"Shutting down plugin {self.plugin_id}")
+        self._revoke_model_gateway_access()
 
         # Set out-of-band stop event first so the child can exit promptly.
         try:
@@ -2109,6 +2190,7 @@ class PluginHost:
         
         注意：这个方法不会等待异步任务完成，建议使用 shutdown()
         """
+        self._revoke_model_gateway_access()
         try:
             if getattr(self, "_process_stop_event", None) is not None:
                 self._process_stop_event.set()
@@ -2237,7 +2319,23 @@ class PluginHost:
 
     def is_alive(self) -> bool:
         """检查进程是否存活"""
-        return self.process.is_alive() and self.process.exitcode is None
+        alive = self.process.is_alive() and self.process.exitcode is None
+        if not alive and not getattr(self, "_model_gateway_starting", False):
+            self._revoke_model_gateway_access()
+        return alive
+
+    def _model_gateway_is_alive(self) -> bool:
+        # A spawned child can make its startup request just before start()
+        # returns and multiprocessing publishes the parent-side process handle.
+        return self._model_gateway_starting or (
+            self.process.is_alive() and self.process.exitcode is None
+        )
+
+    def _revoke_model_gateway_access(self) -> None:
+        token = getattr(self, "_model_gateway_token", "")
+        self._model_gateway_token = ""
+        if token:
+            model_gateway_access.revoke(token)
     
     def health_check(self) -> HealthCheckResponse:
         """执行健康检查，返回详细状态"""
@@ -2284,6 +2382,7 @@ class PluginHost:
         result = await self.comm_manager.send_freeze_command(timeout=timeout)
         
         if result.get("success"):
+            self._revoke_model_gateway_access()
             await asyncio.to_thread(self._shutdown_process, timeout)
             await self.comm_manager.shutdown(timeout=timeout)
             state.remove_downlink_sender(self.plugin_id)
@@ -2304,6 +2403,7 @@ class PluginHost:
         Returns:
             True 如果成功关闭，False 如果超时或出错
         """
+        self._revoke_model_gateway_access()
         if not self.process.is_alive():
             self.logger.info(f"Plugin {self.plugin_id} process already stopped")
             return True

@@ -201,6 +201,10 @@ def test_plugin_router_entry_closes_context_and_transport_before_returning(
     monkeypatch.setattr(host_module, "ChildTransport", _ChildTransport)
     monkeypatch.setattr(host_module, "PluginContext", _Context)
 
+    model_gateway_options = {
+        "base_url": "http://127.0.0.1:49001/api/models/v1",
+        "token": "this-instance-token",
+    }
     host_module._plugin_process_runner(
         plugin_id="demo",
         entry_point="tests.fake:DemoRouter",
@@ -208,10 +212,14 @@ def test_plugin_router_entry_closes_context_and_transport_before_returning(
         downlink_endpoint="ipc://down",
         uplink_endpoint="ipc://up",
         uplink_token="test-uplink-token",
+        model_gateway_options=model_gateway_options,
     )
 
     assert closed == ["context", "transport"]
     assert payloads[-1]["status"] == "error"
+    assert contexts[0]["_model_gateway_base_url"] == "http://127.0.0.1:49001/api/models/v1"
+    assert contexts[0]["_model_gateway_token"] == "this-instance-token"
+    assert model_gateway_options == {}
 
 
 @pytest.mark.plugin_unit

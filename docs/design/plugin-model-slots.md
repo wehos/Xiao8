@@ -4,10 +4,9 @@ The host stores plugin-only model settings in the selected runtime root's
 `config/plugin_models.json`. This configuration is independent of Main/Agent
 model slots and does not trigger `/api/config/core_api` session reloads.
 
-Configuration, binding management and internal model adapters are implemented.
-The authenticated HTTP gateway, plugin SDK client, execution policies and
-configuration UI follow separately. No public model-execution route is exposed
-by the internal adapters.
+Configuration, binding management, model adapters and authenticated plugin SDK
+access are implemented. The overall deadline, fallback/accounting policies and
+configuration UI follow separately.
 
 ## Manifest declarations
 
@@ -68,8 +67,8 @@ credentials are not added to character cloud-save exports.
 ## Internal Chat Completions execution
 
 `ModelGatewayService` accepts an already-resolved `ModelSlot` and an OpenAI-shaped
-request. The future authenticated route must resolve the plugin's declared usage
-and binding before calling it; supplying an arbitrary slot is not a plugin API.
+request. The authenticated route resolves the plugin's declared usage and
+binding before calling it; supplying an arbitrary slot is not a plugin API.
 
 - `await service.complete(slot, request)` returns a Chat Completion dictionary.
 - `service.stream(slot, request)` yields SSE bytes for `stream=true`, ending with
@@ -113,3 +112,56 @@ OpenAI, but forwarded to the caller only when `include_usage=true`. Missing usag
 remains unknown. Requests and responses are bounded to 16 MiB and SSE events to
 1 MiB, including unterminated lines. These are transport limits, not token-budget
 estimates.
+
+## Plugin SDK and instance access
+
+Inside an async plugin handler, use the public context without importing host
+configuration or `utils`:
+
+```python
+client = await self.ctx.models.get_client()
+response = await client.chat.completions.create(
+    model="analysis",  # manifest usage ID, not a slot ID or provider model name
+    messages=[{"role": "user", "content": "Analyze this text"}],
+)
+text = response.choices[0].message.content
+```
+
+This is an official `AsyncOpenAI` client pointing to the plugin HTTP service's
+`/api/models/v1` base. The sole execution route is `POST /chat/completions`.
+Other OpenAI SDK endpoints are not implemented. Streaming uses the same method
+with `stream=True`; close its stream context if stopping consumption early:
+
+```python
+stream = await client.chat.completions.create(
+    model="analysis",
+    messages=[{"role": "user", "content": "Analyze this text"}],
+    stream=True,
+)
+async with stream:
+    async for chunk in stream:
+        # Consume content/tool-call deltas in the plugin's own business logic.
+        pass
+```
+
+The host passes a fresh instance token through process startup arguments. It is
+not a supplier key and is never stored in plugin config or environment variables.
+The gateway uses it to identify the plugin, then checks its current manifest,
+binding and slot capabilities. A restart replaces the prior token. Failed
+startup, stop, freeze and process death invalidate access and cancel associated
+requests without touching a newer instance's token. This follows the existing
+local plugin trust model; it is not a filesystem sandbox for Python plugins.
+
+Get the client inside the current handler's event loop. The SDK reuses it only
+within that loop, disables automatic retries and environment HTTP proxies, and
+uses a 360-second transport timeout. Host lifecycle wrappers close clients before
+temporary or command loops exit. Final context closure prevents new clients.
+The plugin HTTP service owns supplier requests; its existing separate event loop
+is used in embedded mode. Main sessions and Agent inference loops are not used.
+
+Authentication failures return OpenAI-shaped 401 errors. Undeclared/unbound
+usages return 403, and incompatible bindings return 409. Supplier/validation
+failures before the first stream event retain their HTTP error status; failures
+after headers produce an SDK-readable SSE error without a success terminator.
+Disconnect and revocation release upstream resources, including during stream
+prefetch and response handoff. Supplier errors never echo raw error bodies.

@@ -336,6 +336,11 @@ def _scrub_inherited_host_credentials() -> None:
     if not isinstance(hosts, dict):
         return
     for host in list(hosts.values()):
+        if hasattr(host, "_model_gateway_token"):
+            try:
+                host._model_gateway_token = ""
+            except Exception:
+                pass
         transport = getattr(host, "transport", None)
         if transport is None:
             continue

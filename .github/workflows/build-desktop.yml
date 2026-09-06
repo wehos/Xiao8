@@ -126,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.windows_only && '[{"os":"windows-latest","platform":"win","artifact_name":"python-backend-win","output_binary":"projectneko_server.exe","expect_arch":"x64","expect_platform":"win"}]' || '[{"os":"windows-latest","platform":"win","artifact_name":"python-backend-win","output_binary":"projectneko_server.exe","expect_arch":"x64","expect_platform":"win"},{"os":"macos-15-intel","platform":"mac-x64","python_arch":"x64","artifact_name":"python-backend-mac-x64","output_binary":"projectneko_server","expect_arch":"x64","expect_platform":"mac"},{"os":"macos-latest","platform":"mac-arm64","artifact_name":"python-backend-mac-arm64","output_binary":"projectneko_server","expect_arch":"arm64","expect_platform":"mac"},{"os":"ubuntu-latest","platform":"linux","artifact_name":"python-backend-linux","output_binary":"projectneko_server","expect_arch":"x64","expect_platform":"linux"},{"os":"ubuntu-24.04-arm","platform":"linux-arm64","artifact_name":"python-backend-linux-arm64","output_binary":"projectneko_server","experimental":true,"expect_arch":"arm64","expect_platform":"linux"}]') }}
+        include: ${{ fromJSON(inputs.windows_only && '[{"os":"windows-latest","platform":"win","artifact_name":"python-backend-win","output_binary":"projectneko_server.exe","expect_arch":"x64","expect_platform":"win"}]' || '[{"os":"windows-latest","platform":"win","artifact_name":"python-backend-win","output_binary":"projectneko_server.exe","expect_arch":"x64","expect_platform":"win"},{"os":"macos-15-intel","platform":"mac-x64","python_arch":"x64","artifact_name":"python-backend-mac-x64","output_binary":"projectneko_server","expect_arch":"x64","expect_platform":"mac"},{"os":"macos-latest","platform":"mac-arm64","artifact_name":"python-backend-mac-arm64","output_binary":"projectneko_server","expect_arch":"arm64","expect_platform":"mac"},{"os":"ubuntu-latest","platform":"linux","artifact_name":"python-backend-linux","output_binary":"projectneko_server","expect_arch":"x64","expect_platform":"linux"},{"os":"ubuntu-24.04-arm","platform":"linux-arm64","artifact_name":"python-backend-linux-arm64","output_binary":"projectneko_server","experimental":true,"expect_arch":"arm64","expect_platform":"linux","nuitka_ldflags":"-fuse-ld=lld"}]') }}
 
     runs-on: ${{ matrix.os }}
     # 试验性矩阵项（linux-arm64）单独失败时不把整个 job 判红：nightly 发布的门是
@@ -269,6 +269,15 @@ jobs:
             portaudio19-dev \
             patchelf \
             ccache
+          # AArch64 的 BL/B 指令跳转半径只有 ±128MB。Nuitka 把 7859 个目标文件链成
+          # 一个可执行文件时 .text 已经超过这个半径，而 GNU ld 不会自动补
+          # range-extension thunk，于是链接期报 R_AARCH64_CALL26 relocation
+          # truncated（linux-arm64 这条腿自 #3040 加进来起就一直卡在这里）。lld 的
+          # AArch64 后端会自动插 thunk，所以 arm64 改用 lld 链接；注入点是下面
+          # Nuitka 步骤的 LDFLAGS（矩阵字段 nuitka_ldflags）。
+          if [ "$(uname -m)" = "aarch64" ]; then
+            sudo apt-get install -y --no-install-recommends lld
+          fi
 
       - name: Install macOS build tools
         if: runner.os == 'macOS'
@@ -397,6 +406,15 @@ jobs:
       - name: Build with Nuitka (Unix)
         if: runner.os != 'Windows'
         shell: bash
+        # Nuitka 的 scons 后端原生继承 LDFLAGS/CCFLAGS（生效时日志里会打印
+        # `Scons: Inherited LDFLAGS=...`），所以不用改 nuitka 命令行就能只给某一条腿
+        # 注入链接器/优化级别。目前只有 linux-arm64 带 nuitka_ldflags；其余四条腿两个
+        # 字段都不存在，展开成空串，行为不变。若 lld 仍压不住 CALL26 溢出，下一级杠杆
+        # 是给该腿补 "nuitka_ccflags":"-Os"（gcc 取最后一个 -O，能盖过 Nuitka 自己加的
+        # -O3），矩阵里加一个字段即可，不用再动这里。
+        env:
+          LDFLAGS: ${{ matrix.nuitka_ldflags || '' }}
+          CCFLAGS: ${{ matrix.nuitka_ccflags || '' }}
         run: |
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             # PyObjC Foundation/AppKit refuse Nuitka's plain standalone mode.

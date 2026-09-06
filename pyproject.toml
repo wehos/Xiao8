@@ -31,7 +31,12 @@ dependencies = [
   "pywin32; sys_platform == 'win32'",
   "pywinauto; sys_platform == 'win32'",
   "pygetwindow; sys_platform == 'win32'",
-  "pyrnnoise>=0.4.3",
+  # pyrnnoise 的 macOS wheel 标 macosx_15_0_universal2，在 Intel Mac 上装得上，但
+  # 包里的 librnnoise.dylib 只有 arm64 一个 slice，也没有 sdist 可回退编译。装上只
+  # 会让 --include-package-data=pyrnnoise 把一个 arm64 dylib 打进 mac-x64 产物，
+  # 被 scripts/check_dist_arch.py 判红。utils/audio_processor.py 是唯一消费方，走
+  # ctypes 加载、find_spec 落空时降级为不降噪，所以 Intel Mac 上直接不装。
+  "pyrnnoise>=0.4.3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
   "aiotieba>=4.7.1",
   "beautifulsoup4>=4.12.0",
   "bilibili-api-dev==18.0.0a1",
@@ -168,6 +173,16 @@ rapidocr-pillow = { path = "./deps/rapidocr_pillow" }
 [tool.uv]
 override-dependencies = [
     "python3-xlib ; sys_platform == 'never'",
+]
+# uv 的 universal 解析默认不检查各平台是否真有可安装的 wheel。onnxruntime 就因此被
+# 锁成 1.25.0 —— 那一版在 PyPI 上没有 macOS x86_64 wheel（1.23.2 是该平台最后一版），
+# 于是 nightly 的 mac-x64 腿自 2026-09-04 换上 macos-15-intel runner 后，每晚都挂在
+# uv sync。把 darwin+x86_64 列进 required-environments，uv 会为它单独分叉解析（锁里
+# 同时存在 onnxruntime 1.23.2 与 1.25.0），Intel Mac 因此保住本地向量记忆、端点检测、
+# 声纹与 OCR，而不是用环境标记把 onnxruntime 整块砍掉。副作用是这行同时变成一道门：
+# 日后哪个依赖在 Intel Mac 上无解，`uv lock` 当场失败，而不是等到 nightly 才炸。
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [dependency-groups]

@@ -385,8 +385,21 @@ class Live2DManager {
                     this._tickerOrigStart = origStart;
                     // stop：退出定时器模式但不拉起全局 ticker（Live2D 停了就不该让 PIXI 的
                     // rAF 链继续跑）；start：退出定时器模式并把全局 ticker 一并拉回来。
-                    ticker.stop = function () { mgr._exitIdleTickMode({ restartGlobals: false }); return origStop(); };
-                    ticker.start = function () { mgr._exitIdleTickMode(); mgr._releaseGlobalTickers(); return origStart(); };
+                    // 身份检查：PIXI 重建后外部残留的旧 ticker 再调包装，不能去动当前实例
+                    // 与全局 ticker 的调度状态，只操作旧 ticker 自己。
+                    ticker.stop = function () {
+                        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) {
+                            mgr._exitIdleTickMode({ restartGlobals: false });
+                        }
+                        return origStop();
+                    };
+                    ticker.start = function () {
+                        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) {
+                            mgr._exitIdleTickMode();
+                            mgr._releaseGlobalTickers();
+                        }
+                        return origStart();
+                    };
                 }
                 // 启动自适应帧率守护：静止时降到地板（LIVE2D_IDLE_FPS），活动时升回配置帧率。
                 this._startIdleFpsGovernor();
@@ -994,7 +1007,7 @@ class Live2DManager {
         if (this._isDraggingModel) return true;
         // 光标停在模型悬停范围内时 isFocusing 会一直为 true；只有光标最近真的动过才算活动，
         // 否则视线目标已收敛、却永远进不了空闲低频 tick。
-        if (this.isFocusing && this._lastPointerMoveAt &&
+        if (this.isFocusing && Number.isFinite(this._lastPointerMoveAt) &&
             (performance.now() - this._lastPointerMoveAt) < LIVE2D_INTERACTIVE_FPS_HOLD_MS) return true;
         const appState = window.appState;
         if (appState && appState.lipSyncActive) return true;

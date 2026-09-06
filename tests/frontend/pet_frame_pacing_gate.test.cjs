@@ -139,15 +139,41 @@ function setupLive2D(sb) {
     mgr._tickerOrigStop = origStop;
     mgr._tickerOrigStart = origStart;
     // 与 live2d-core.js initPIXI 里的包装保持一致（下面有契约断言防漂移）
-    app.ticker.stop = function () { mgr._exitIdleTickMode({ restartGlobals: false }); return origStop(); };
-    app.ticker.start = function () { mgr._exitIdleTickMode(); mgr._releaseGlobalTickers(); return origStart(); };
+    const ticker = app.ticker;
+    ticker.stop = function () {
+        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) mgr._exitIdleTickMode({ restartGlobals: false });
+        return origStop();
+    };
+    ticker.start = function () {
+        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) { mgr._exitIdleTickMode(); mgr._releaseGlobalTickers(); }
+        return origStart();
+    };
     return { mgr, app, shared: sb.PIXI.Ticker.shared, system: sb.PIXI.Ticker.system };
 }
 
-test('契约：initPIXI 的 ticker.stop/start 包装语义与测试复刻一致', () => {
-    assert.match(LIVE2D_CORE_SRC, /ticker\.stop = function \(\) \{ mgr\._exitIdleTickMode\(\{ restartGlobals: false \}\); return origStop\(\); \};/);
-    assert.match(LIVE2D_CORE_SRC, /ticker\.start = function \(\) \{ mgr\._exitIdleTickMode\(\); mgr\._releaseGlobalTickers\(\); return origStart\(\); \};/);
+test('契约：initPIXI 的 ticker.stop/start 包装语义与测试复刻一致（含旧 ticker 身份检查）', () => {
+    assert.match(LIVE2D_CORE_SRC, /ticker\.stop = function \(\) \{\s*if \(mgr\.pixi_app && mgr\.pixi_app\.ticker === ticker\) \{\s*mgr\._exitIdleTickMode\(\{ restartGlobals: false \}\);\s*\}\s*return origStop\(\);\s*\};/);
+    assert.match(LIVE2D_CORE_SRC, /ticker\.start = function \(\) \{\s*if \(mgr\.pixi_app && mgr\.pixi_app\.ticker === ticker\) \{\s*mgr\._exitIdleTickMode\(\);\s*mgr\._releaseGlobalTickers\(\);\s*\}\s*return origStart\(\);\s*\};/);
 });
+
+test('Live2D：PIXI 重建后旧 ticker 的包装不再动当前实例的调度状态', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 30 });
+    sb.measureRefresh(60);
+    const { mgr, app: oldApp } = setupLive2D(sb);
+    const oldTicker = oldApp.ticker;
+    // 模拟 rebuildPIXI：换成新实例并进入定时器模式
+    const newApp = new sb.PIXI.Application();
+    mgr.pixi_app = newApp;
+    mgr._tickerOrigStop = newApp.ticker.stop.bind(newApp.ticker);
+    mgr._tickerOrigStart = newApp.ticker.start.bind(newApp.ticker);
+    mgr.boostInteractiveFPS();
+    assert.equal(mgr._idleTickMode, true);
+    oldTicker.stop(); // 外部残留引用
+    assert.equal(mgr._idleTickMode, true, '旧 ticker 的 stop 不能把当前实例踢出定时器模式');
+    oldTicker.start();
+    assert.equal(mgr._idleTickMode, true, '旧 ticker 的 start 同理');
+    assert.equal(oldTicker.started, true, '旧 ticker 自己的 start/stop 照常生效');
+}));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // frame-pacing.js
@@ -385,9 +411,13 @@ test('Live2D：stop() 后直接销毁（不经 start）也必须释放全局 tic
 test('Live2D：光标停在悬停范围内（isFocusing 常驻）不算持续活动，保持期过后可进空闲', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: 60 });
     const { mgr } = setupLive2D(sb);
-    sb.tick(1000);
     mgr.isFocusing = true;
     assert.equal(mgr._hasRenderActivity(), false, '没有任何指针位移记录时 isFocusing 不算活动');
+    // 时间戳 0 是合法值（页面刚加载时 performance.now() 可以是 0），不能被当成"未设置"
+    mgr._lastPointerMoveAt = 0;
+    assert.equal(mgr._hasRenderActivity(), true, '时间戳为 0 时保持期内仍算活动');
+    sb.tick(1000);
+    assert.equal(mgr._hasRenderActivity(), false);
     mgr._lastPointerMoveAt = sb.sandbox.performance.now();
     assert.equal(mgr._hasRenderActivity(), true, '刚动过算活动');
     sb.tick(899);

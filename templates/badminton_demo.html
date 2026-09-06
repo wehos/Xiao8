@@ -1085,10 +1085,10 @@
   var YUI_RACKET_HIT_REACH_Y = 62;
   var YUI_RACKET_RESCUE_GATE_REACH_X = 38;
   var YUI_RACKET_RESCUE_GATE_REACH_Y = 54;
-  var YUI_RACKET_SAVE_REACH_X = 84;
-  var YUI_RACKET_SAVE_REACH_Y = 86;
-  var YUI_SHORT_DROP_SAVE_REACH_X = 96;
-  var YUI_SHORT_DROP_SAVE_REACH_Y = 118;
+  var YUI_RACKET_SAVE_REACH_X = 66;
+  var YUI_RACKET_SAVE_REACH_Y = 72;
+  var YUI_SHORT_DROP_SAVE_REACH_X = 72;
+  var YUI_SHORT_DROP_SAVE_REACH_Y = 92;
   var YUI_SHORT_DROP_SAVE_NET_WINDOW_PX = 112;
   var YUI_SHORT_DROP_SAVE_MAX_Z = 96;
   var YUI_SHORT_DROP_SAVE_MIN_Z = 4;
@@ -6000,14 +6000,15 @@
     var contact = incomingBall ? { x: incomingBall.x, y: incomingBall.y } : getRacketContactPoint(shooter);
     var racket = getRacketContactPoint(shooter);
     var contactError = incomingBall ? Math.sqrt(Math.pow(incomingBall.x - racket.x, 2) + Math.pow(incomingBall.y - racket.y, 2)) : 0;
-    var minTimingQuality = shooter === 'neko' ? 0.62 : 0.34;
+    var isSmash = !!swingOptions.smash;
+    var isSave = !!swingOptions.save && shooter === 'neko' && !isSmash;
+    var minTimingQuality = shooter === 'neko' ? (isSave ? 0.46 : 0.62) : 0.34;
     var timingQuality = incomingBall ? clamp(1 - contactError / 118, minTimingQuality, 1) : 1;
     var quality = clamp((powerQuality * 0.55 + angleQuality * 0.45) * timingQuality, 0, 1);
     var force = clamp(power, 0, 100) / 100;
     var incomingVx = incomingBall ? incomingBall.vx || 0 : 0;
     var incomingVy = incomingBall ? incomingBall.vy || 0 : 0;
     var incomingSpeed = Math.sqrt(incomingVx * incomingVx + incomingVy * incomingVy);
-    var isSmash = !!swingOptions.smash;
     var smashQuality = isSmash ? (shooter === 'neko' ? clamp(Number(swingOptions.smashQuality) || 0.72, 0, 1) : getPlayerSmashQuality(incomingBall)) : 0;
     if (isSmash && smashQuality <= 0) isSmash = false;
     var smashSpeedBonus = isSmash ? 130 + smashQuality * 150 : 0;
@@ -6161,7 +6162,7 @@
       shooter: shotShooter,
       angle: angle,
       power: power,
-      impulse: buildSwingImpulse(angle, power, shotShooter, incomingBall, { smash: smash, smashQuality: smashQuality }),
+      impulse: buildSwingImpulse(angle, power, shotShooter, incomingBall, { smash: smash, smashQuality: smashQuality, save: save }),
       save: save,
       forceScore: !!(options && options.forceScore)
     };

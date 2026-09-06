@@ -3058,7 +3058,8 @@ def test_badminton_racket_swing_applies_physics_to_shuttle():
 
     assert "function buildSwingImpulse(angle, power, shooter, incomingBall) {" in html
     assert "var contact = incomingBall ? { x: incomingBall.x, y: incomingBall.y } : getRacketContactPoint(shooter);" in html
-    assert "var minTimingQuality = shooter === 'neko' ? 0.62 : 0.34;" in html
+    assert "var isSave = !!swingOptions.save && shooter === 'neko' && !isSmash;" in html
+    assert "var minTimingQuality = shooter === 'neko' ? (isSave ? 0.46 : 0.62) : 0.34;" in html
     assert "var timingQuality = incomingBall ? clamp(1 - contactError / 118, minTimingQuality, 1) : 1;" in html
     assert "incomingSpeed: incomingSpeed," in html
     assert "incomingVx: incomingVx," in html
@@ -3566,10 +3567,10 @@ def test_badminton_yui_returns_incoming_shuttle_before_landing():
     assert "return getYuiRacketHitRangeState(incomingBall).normalized <= 1;" in html
     assert "function getYuiRacketRescueGateState(incomingBall) {" in html
     assert "return getYuiVisibleOrNeutralRacketRangeState(incomingBall, YUI_RACKET_RESCUE_GATE_REACH_X, YUI_RACKET_RESCUE_GATE_REACH_Y);" in html
-    assert "var YUI_RACKET_SAVE_REACH_X = 84;" in html
-    assert "var YUI_RACKET_SAVE_REACH_Y = 86;" in html
-    assert "var YUI_SHORT_DROP_SAVE_REACH_X = 96;" in html
-    assert "var YUI_SHORT_DROP_SAVE_REACH_Y = 118;" in html
+    assert "var YUI_RACKET_SAVE_REACH_X = 66;" in html
+    assert "var YUI_RACKET_SAVE_REACH_Y = 72;" in html
+    assert "var YUI_SHORT_DROP_SAVE_REACH_X = 72;" in html
+    assert "var YUI_SHORT_DROP_SAVE_REACH_Y = 92;" in html
     assert "var YUI_SHORT_DROP_SAVE_NET_WINDOW_PX = 112;" in html
     assert "var YUI_SHORT_DROP_SAVE_MAX_Z = 96;" in html
     assert "var YUI_SHORT_DROP_SAVE_MIN_Z = 4;" in html
@@ -3914,6 +3915,7 @@ def test_badminton_space_jump_enables_air_smash():
     ]
     assert "var swingOptions = arguments.length > 4 && arguments[4] ? arguments[4] : {};" in swing_section
     assert "var isSmash = !!swingOptions.smash;" in swing_section
+    assert "var isSave = !!swingOptions.save && shooter === 'neko' && !isSmash;" in swing_section
     assert "var smashQuality = isSmash ? (shooter === 'neko' ? clamp(Number(swingOptions.smashQuality) || 0.72, 0, 1) : getPlayerSmashQuality(incomingBall)) : 0;" in swing_section
     assert "if (isSmash && smashQuality <= 0) isSmash = false;" in swing_section
     assert "var smashSpeedBonus = isSmash ? 130 + smashQuality * 150 : 0;" in swing_section
@@ -3928,7 +3930,7 @@ def test_badminton_space_jump_enables_air_smash():
     assert "if (shotShooter === 'player') smash = smash || isPlayerSmashReady(incomingBall);" in queue_section
     assert "var save = !!(options && options.save) && shotShooter === 'neko' && !smash;" in queue_section
     assert "var smashQuality = options && typeof options.smashQuality === 'number' ? options.smashQuality : 0;" in queue_section
-    assert "impulse: buildSwingImpulse(angle, power, shotShooter, incomingBall, { smash: smash, smashQuality: smashQuality })," in queue_section
+    assert "impulse: buildSwingImpulse(angle, power, shotShooter, incomingBall, { smash: smash, smashQuality: smashQuality, save: save })," in queue_section
     assert "save: save," in queue_section
     assert "if (shotShooter === 'player') setPlayerAction('shooting', 460);" in queue_section
     assert "else setYuiAction(save ? 'saving' : (smash ? 'smashing' : 'shooting'), save ? 560 : (smash ? 520 : 420));" in queue_section

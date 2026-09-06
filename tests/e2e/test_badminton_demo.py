@@ -745,19 +745,19 @@ def test_badminton_yui_saves_player_smash_just_outside_racket_hit_range(mock_pag
     setup = page.evaluate(
         """() => {
           const contact = window.BadmintonDemo._debugGetYuiRacketContactPoint();
-          const dx = contact.reachX + 32;
-          const dy = 10;
+          const dx = contact.reachX + 12;
+          const dy = 0;
           const courtY = contact.x + dx;
           const screenY = contact.y + dy;
           const id = window.BadmintonDemo._debugSetPlayerShuttleForYuiReturnBall({
             x: courtY,
-            prevX: courtY - 24,
+            prevX: courtY - 8,
             courtY,
-            prevCourtY: courtY - 24,
+            prevCourtY: courtY - 8,
             y: screenY,
             prevY: screenY,
-            vx: 78,
-            vCourtY: 78,
+            vx: 24,
+            vCourtY: 24,
             vy: 0,
             vz: 0,
             isSmash: true,
@@ -772,6 +772,8 @@ def test_badminton_yui_saves_player_smash_just_outside_racket_hit_range(mock_pag
           };
         }"""
     )
+    assert setup["contact"]["saveReachX"] == 66
+    assert setup["contact"]["saveReachY"] == 72
     assert setup["normalNormalized"] > 1
     assert setup["saveNormalized"] <= 1
 

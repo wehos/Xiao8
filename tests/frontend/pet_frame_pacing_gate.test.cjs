@@ -542,29 +542,73 @@ test('契约：VRM medium 隔帧物理按实际 delta 兜底，且模式切换�
     const src = read('static/vrm/vrm-manager.js');
     assert.match(src, /const VRM_PHYSICS_MAX_STEP_S = 0\.05;/);
     assert.match(src, /if \(quality === 'medium' && !this\._isLowTickRate\(\) && delta \* 2 <= VRM_PHYSICS_MAX_STEP_S\) \{/);
-    // 跳过帧累计时间，物理更新时补上；全量分支冲掉累计并重置奇偶计数
+    // 跳过帧累计时间，物理更新时补上（受 clamp）；全量分支冲掉累计并重置奇偶计数
     assert.match(src, /this\._physicsPendingDelta = pendingDelta \+ delta;/);
-    assert.match(src, /this\._physicsPendingDelta = 0;\s*this\.currentModel\.vrm\.update\(delta \+ pendingDelta\);/);
-    assert.match(src, /\} else \{\s*this\._physicsFrameSkip = 0;\s*this\._physicsPendingDelta = 0;\s*this\.currentModel\.vrm\.update\(delta \+ pendingDelta\);/);
+    assert.match(src, /const physicsStep = Math\.min\(delta \+ pendingDelta, VRM_PHYSICS_MAX_STEP_S\);/);
+    assert.match(src, /\} else \{\s*this\._physicsFrameSkip = 0;\s*this\._physicsPendingDelta = 0;\s*this\.currentModel\.vrm\.update\(physicsStep\);/);
     assert.doesNotMatch(src, /vrm\.update\(delta \* 2\)/, '不再盲目用 delta*2，改用实际累计时间');
 });
 
-test('VRM 物理隔帧：隔帧↔全量切换时物理时间总和 = 实际经过时间', () => {
-    // 把源码里的物理分支抠出来单独执行，验证时间守恒
+// 把源码里「5. VRM 核心更新」整段抠出来单独执行（含 enablePhysics / 画质 / 换模型 / 隔帧分支）
+function loadVrmPhysicsStep() {
     const src = read('static/vrm/vrm-manager.js');
-    const start = src.indexOf('const pendingDelta = this._physicsPendingDelta || 0;');
-    const end = src.indexOf('} else {', src.indexOf('this.currentModel.vrm.update(delta + pendingDelta);', src.indexOf('this._physicsFrameSkip = 0;', start)));
-    assert.ok(start > 0 && end > start, '物理分支定位失败');
-    const branch = src.slice(start, end);
-    const VRM_PHYSICS_MAX_STEP_S = 0.05;
-    let simulated = 0;
-    const ctx = { _isLowTickRate: () => false, currentModel: { vrm: { update: (d) => { simulated += d; }, lookAt: { update() {} }, expressionManager: { update() {} } } } };
-    const run = new Function('delta', 'quality', 'VRM_PHYSICS_MAX_STEP_S', branch);
+    const start = src.indexOf("const quality = window.renderQuality || 'medium';");
+    const end = src.indexOf('// 6. CursorFollow', start);
+    assert.ok(start > 0 && end > start, 'VRM 物理段定位失败');
+    return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', src.slice(start, end));
+}
+function makeVrmPhysicsCtx() {
+    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, currentModel: null };
+    ctx.newModel = () => { ctx.currentModel = { vrm: { update: (d) => { ctx.simulated += d; }, lookAt: { update() {} }, expressionManager: { update() {} } } }; };
+    ctx.newModel();
+    return ctx;
+}
+
+test('VRM 物理隔帧：隔帧↔全量切换时物理时间总和 = 实际经过时间', () => {
+    const run = loadVrmPhysicsStep();
+    const ctx = makeVrmPhysicsCtx();
     // 60fps 隔帧 4 帧 → 切到 30fps 全量 3 帧 → 回 60fps 隔帧 4 帧
     const frames = [0.0167, 0.0167, 0.0167, 0.0167, 0.0333, 0.0333, 0.0333, 0.0167, 0.0167, 0.0167, 0.0167];
     let elapsed = 0;
-    for (const d of frames) { elapsed += d; run.call(ctx, d, 'medium', VRM_PHYSICS_MAX_STEP_S); }
-    assert.ok(Math.abs(simulated - elapsed) < 1e-9, `物理累计 ${simulated} 应等于实际 ${elapsed}`);
+    for (const d of frames) { elapsed += d; run.call(ctx, d, { renderQuality: 'medium' }, 0.05); }
+    assert.ok(Math.abs(ctx.simulated - elapsed) < 1e-9, `物理累计 ${ctx.simulated} 应等于实际 ${elapsed}`);
+});
+
+test('VRM 物理隔帧：关物理 / 切 low / 换模型都清掉累计时间，不把旧会话的 pending 套到新模型', () => {
+    const run = loadVrmPhysicsStep();
+    // 奇数帧后关闭物理 → pending 必须被清
+    let ctx = makeVrmPhysicsCtx();
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.equal(ctx._physicsPendingDelta, 0.0167, '奇数帧累计了一帧');
+    ctx.enablePhysics = false;
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.equal(ctx._physicsPendingDelta, 0, '关物理时清掉累计');
+    assert.equal(ctx._physicsFrameSkip, 0);
+    ctx.enablePhysics = true;
+    ctx.simulated = 0;
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.equal(ctx.simulated, 0, '重新开启后首帧是干净的「跳过」帧，不会套旧 pending');
+    // 奇数帧后切 low 画质 → 同样清
+    ctx = makeVrmPhysicsCtx();
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    run.call(ctx, 0.0167, { renderQuality: 'low' }, 0.05);
+    assert.equal(ctx._physicsPendingDelta, 0, 'low 画质清掉累计');
+    // 奇数帧后换模型 → 新模型不吃旧 pending
+    ctx = makeVrmPhysicsCtx();
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    ctx.newModel();
+    ctx.simulated = 0;
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.equal(ctx.simulated, 0, '换模型后首帧不套旧 pending');
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.ok(Math.abs(ctx.simulated - 0.0334) < 1e-9, '新模型自己的两帧才合并更新');
+    // 累计后的步长仍受 50ms clamp
+    ctx = makeVrmPhysicsCtx();
+    run.call(ctx, 0.0167, { renderQuality: 'medium' }, 0.05); // 绑定模型 + 奇数帧
+    ctx._physicsPendingDelta = 0.05; // 模拟极端累计
+    ctx.simulated = 0;
+    run.call(ctx, 0.02, { renderQuality: 'medium' }, 0.05);
+    assert.equal(ctx.simulated, 0.05, '步长不超过防爆上限');
 });
 
 test('MMD：目标帧率接到设置里的帧率滑块，0 = 不限帧', withMockTimers(() => {

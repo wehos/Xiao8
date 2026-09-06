@@ -792,12 +792,20 @@ class VRMManager {
                     // 被跳过那一帧的时间累计在 _physicsPendingDelta 里，下一次物理更新把它一起
                     // 补上；隔帧/全量两种模式之间切换时不丢时间也不重复计时（全量分支同样
                     // 冲掉累计值并重置奇偶计数，重新进入隔帧模式从"跳过"一帧开始）。
+                    // 换了模型：上一模型残留的累计时间/奇偶计数不能带到新模型
+                    if (this._physicsStateModel !== this.currentModel.vrm) {
+                        this._physicsStateModel = this.currentModel.vrm;
+                        this._physicsFrameSkip = 0;
+                        this._physicsPendingDelta = 0;
+                    }
                     const pendingDelta = this._physicsPendingDelta || 0;
+                    // 补上累计时间后的步长仍受 50ms 防爆 clamp
+                    const physicsStep = Math.min(delta + pendingDelta, VRM_PHYSICS_MAX_STEP_S);
                     if (quality === 'medium' && !this._isLowTickRate() && delta * 2 <= VRM_PHYSICS_MAX_STEP_S) {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
                             this._physicsPendingDelta = 0;
-                            this.currentModel.vrm.update(delta + pendingDelta);
+                            this.currentModel.vrm.update(physicsStep);
                         } else {
                             this._physicsPendingDelta = pendingDelta + delta;
                             if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
@@ -806,9 +814,13 @@ class VRMManager {
                     } else {
                         this._physicsFrameSkip = 0;
                         this._physicsPendingDelta = 0;
-                        this.currentModel.vrm.update(delta + pendingDelta);
+                        this.currentModel.vrm.update(physicsStep);
                     }
                 } else {
+                    // 物理关闭 / low 画质：清掉隔帧状态，重新开启时从干净状态起步，
+                    // 不把旧会话的累计时间套到当前（甚至新）模型上
+                    this._physicsFrameSkip = 0;
+                    this._physicsPendingDelta = 0;
                     if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
                     if (this.currentModel.vrm.expressionManager) this.currentModel.vrm.expressionManager.update(delta);
                 }

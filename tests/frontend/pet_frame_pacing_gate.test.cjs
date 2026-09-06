@@ -141,7 +141,10 @@ function setupLive2D(sb) {
     // 与 live2d-core.js initPIXI 里的包装保持一致（下面有契约断言防漂移）
     const ticker = app.ticker;
     ticker.stop = function () {
-        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) mgr._exitIdleTickMode({ restartGlobals: false });
+        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) {
+            mgr._exitIdleTickMode({ restartGlobals: false });
+            if (mgr._resolveGlobalTickers()) mgr._holdGlobalTickers();
+        }
         return origStop();
     };
     ticker.start = function () {
@@ -152,7 +155,7 @@ function setupLive2D(sb) {
 }
 
 test('契约：initPIXI 的 ticker.stop/start 包装语义与测试复刻一致（含旧 ticker 身份检查）', () => {
-    assert.match(LIVE2D_CORE_SRC, /ticker\.stop = function \(\) \{\s*if \(mgr\.pixi_app && mgr\.pixi_app\.ticker === ticker\) \{\s*mgr\._exitIdleTickMode\(\{ restartGlobals: false \}\);\s*\}\s*return origStop\(\);\s*\};/);
+    assert.match(LIVE2D_CORE_SRC, /ticker\.stop = function \(\) \{\s*if \(mgr\.pixi_app && mgr\.pixi_app\.ticker === ticker\) \{\s*mgr\._exitIdleTickMode\(\{ restartGlobals: false \}\);\s*if \(mgr\._resolveGlobalTickers\(\)\) mgr\._holdGlobalTickers\(\);\s*\}\s*return origStop\(\);\s*\};/);
     assert.match(LIVE2D_CORE_SRC, /ticker\.start = function \(\) \{\s*if \(mgr\.pixi_app && mgr\.pixi_app\.ticker === ticker\) \{\s*mgr\._exitIdleTickMode\(\);\s*mgr\._releaseGlobalTickers\(\);\s*\}\s*return origStart\(\);\s*\};/);
 });
 
@@ -460,6 +463,29 @@ test('Live2D：外部 ticker.stop()（切 VRM/MMD、pauseRendering）退出定�
     assert.equal(shared.started, true, '回到 Live2D 时全局 ticker 一并恢复');
     assert.equal(system.started, true);
     assert.equal(shared.maxFPS, 30, '恢复时帧率上限也恢复到配置值');
+}));
+
+test('Live2D：真实切角色序列 stop → removeModel 的 start → 最终 stop，最后全局 ticker 仍是停的', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 30 });
+    sb.measureRefresh(60);
+    const { mgr, app, shared, system } = setupLive2D(sb);
+    mgr.boostInteractiveFPS();
+    assert.equal(mgr._idleTickMode, true);
+    app.ticker.stop();          // app-character：切走前先停
+    assert.equal(shared.started, false);
+    app.ticker.start();         // removeModel()：拉起来做清理渲染 → 放开全局 ticker
+    assert.equal(shared.started, true);
+    assert.ok(!mgr._idleTickMode, '此时不在定时器模式');
+    app.ticker.stop();          // app-character：最终停掉 Live2D 给 VRM/MMD 让路
+    assert.equal(shared.started, false, '不在定时器模式的 stop 也必须把 Pet 全局 ticker 扣住');
+    assert.equal(system.started, false);
+    app.ticker.start();         // 切回 Live2D
+    assert.equal(shared.started, true, 'start 再放开');
+    // 非 Pet：stop 不扣全局 ticker（保持既有行为）
+    const sb2 = createSandbox({ pet: false, targetFrameRate: 30 });
+    const l2 = setupLive2D(sb2);
+    l2.app.ticker.stop();
+    assert.equal(l2.shared.started, true, '非 Pet 页面 stop 不动全局 ticker');
 }));
 
 test('Live2D：stop() 后直接销毁（不经 start）也必须释放全局 ticker，否则重建后模型 autoUpdate 冻住', withMockTimers(() => {

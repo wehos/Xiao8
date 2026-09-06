@@ -387,9 +387,13 @@ class Live2DManager {
                     // rAF 链继续跑）；start：退出定时器模式并把全局 ticker 一并拉回来。
                     // 身份检查：PIXI 重建后外部残留的旧 ticker 再调包装，不能去动当前实例
                     // 与全局 ticker 的调度状态，只操作旧 ticker 自己。
+                    // stop 在 Pet 窗口下无论此前是否在定时器模式都扣住全局 ticker：切角色的真实
+                    // 序列是 stop → removeModel 里 start（放开）→ 最终 stop，最后这一下不在
+                    // 定时器模式，只靠 _exitIdleTickMode 不会再把全局 ticker 停回去。
                     ticker.stop = function () {
                         if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) {
                             mgr._exitIdleTickMode({ restartGlobals: false });
+                            if (mgr._resolveGlobalTickers()) mgr._holdGlobalTickers();
                         }
                         return origStop();
                     };
@@ -891,26 +895,40 @@ class Live2DManager {
         const ticker = this.pixi_app.ticker;
         // 外部已显式暂停（pauseRendering / 角色切换）：不接管
         if (ticker.started === false) return;
-        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
         this._idleTickMode = true;
-        this._idleTickSharedWasStarted = !!(PixiTicker && PixiTicker.shared.started);
-        this._idleTickSystemWasStarted = !!(PixiTicker && PixiTicker.system.started);
         // 定时器本身就是节流器：清掉 maxFPS 限制，避免 interval 抖动（33ms < minElapsed
         // 33.33ms）导致 update() 被 maxFPS 丢帧、实际帧率减半。
         this._idleTickSavedMaxFPS = ticker.maxFPS;
         ticker.maxFPS = 0;
-        // Pet 窗口下 shared/system 的 maxFPS 也由本 manager 接管（见 _applyRafMaxFps），
-        // 手动 update() 同样不能被它们的 maxFPS 丢帧：一并清零并记住恢复值。
+        this._tickerOrigStop();
+        this._holdGlobalTickers();
+        this._idleTickTimer = this._startTimerTick(tickFps);
+    }
+
+    /**
+     * 扣住全局 PIXI.Ticker.shared/system：记录它们原本是否在跑并停掉（幂等，已扣住则不动）。
+     * 定时器模式下由 _startTimerTick 手动 update 它们；Pet 窗口外部 ticker.stop()（切
+     * VRM/MMD、pauseRendering）也扣住——Live2D 不渲染时没人需要 PIXI 的 rAF 链继续跑。
+     * Pet 窗口下 shared/system 的 maxFPS 也由本 manager 接管（见 _applyRafMaxFps），
+     * 手动 update() 同样不能被它们的 maxFPS 丢帧：一并清零并记住恢复值。
+     */
+    _holdGlobalTickers() {
+        if (this._globalTickersHeld) return;
+        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
+        if (!PixiTicker || !PixiTicker.shared || !PixiTicker.system) return;
+        this._globalTickersHeld = true;
+        this._idleTickSharedWasStarted = !!PixiTicker.shared.started;
+        this._idleTickSystemWasStarted = !!PixiTicker.system.started;
         const globals = this._resolveGlobalTickers();
         if (globals) {
             this._idleTickSavedGlobalMaxFPS = globals.shared.maxFPS;
             globals.shared.maxFPS = 0;
             globals.system.maxFPS = 0;
         }
-        this._tickerOrigStop();
-        if (this._idleTickSharedWasStarted) PixiTicker.shared.stop();
-        if (this._idleTickSystemWasStarted) PixiTicker.system.stop();
-        this._idleTickTimer = this._startTimerTick(tickFps);
+        try {
+            if (this._idleTickSharedWasStarted) PixiTicker.shared.stop();
+            if (this._idleTickSystemWasStarted) PixiTicker.system.stop();
+        } catch (_) {}
     }
 
     // 定时器驱动的 tick 循环：按 fps 手动 update() app + shared/system 三个 ticker。
@@ -978,6 +996,8 @@ class Live2DManager {
     // 把定时器模式接管（停掉）的全局 shared/system ticker 拉回来并恢复它们的帧率上限。
     // 幂等：没接管过就什么都不做。
     _releaseGlobalTickers() {
+        if (!this._globalTickersHeld) return;
+        this._globalTickersHeld = false;
         const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
         if (!PixiTicker) return;
         try {

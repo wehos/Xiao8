@@ -58,7 +58,11 @@ function createElement(tagName = 'div') {
       const listener = listeners.get(type);
       if (listener) listener(event);
     },
-    matches() { return false; },
+    _pseudo: new Set(),
+    matches(selector) {
+      // 支持 ':hover, :focus-within' 这类逗号选择器：任一命中即为真。
+      return String(selector).split(',').some((part) => this._pseudo.has(part.trim()));
+    },
     focus() { document.activeElement = this; },
     blur() { if (document.activeElement === this) document.activeElement = null; },
     getBoundingClientRect() {
@@ -192,7 +196,14 @@ function createHarness(options = {}) {
     // 自动消失计时器是唯一延迟大于 1s 的：show=10ms、轮询=50ms、cleanup=400ms。
     // 按区间而不是精确值判定，因为暂停/恢复会把剩余时长按实际经过时间扣掉。
     hasAutoHideTimer() {
-      return Array.from(timers.values()).some((timer) => timer.delay > 1000);
+      return Array.from(timers.values()).some((timer) => timer.delay >= 2000);
+    },
+    hasWatchdogTimer() {
+      return Array.from(timers.values()).some((timer) => timer.delay === 1000);
+    },
+    setHover(on) {
+      if (on) statusToast._pseudo.add(':hover');
+      else statusToast._pseudo.delete(':hover');
     },
     getProminentButton() {
       const overlay = document.getElementById('prominent-notice-overlay');
@@ -418,4 +429,59 @@ test('a prominent notice interrupting a pinned toast still leaves auto-hide arme
     true,
     'prominent notice 打断追踪时同样要把 pin 解开',
   );
+});
+
+// 追踪停止后窗口回到穿透态，陈旧的 :hover 再也不会被 mouseleave 纠正。
+// 恢复自动消失时若还去问 DOM :hover，提示就会永久滞留。
+test('a stale DOM :hover does not block auto-hide resume when tracking stops', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false, '前置条件：轮询已 pin 住提示');
+
+  // 光标确实进来过，DOM :hover 已经置起。
+  harness.setHover(true);
+
+  harness.setCursorProvider(() => Promise.reject(new Error('ipc down')));
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    '停止追踪时必须无视陈旧 :hover 恢复自动消失，否则提示永久滞留',
+  );
+});
+
+// 光标 IPC 悬挂（既不 resolve 也不 reject）时，轮询两条分支都走不到。
+// 此时窗口可能已处可命中态，全屏透明层会一直吞掉桌面输入。
+test('a hung cursor IPC falls back to passthrough via the watchdog', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.deepEqual(harness.mouseThrough, [true, false], '前置条件：窗口已因命中变为可交互');
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  // 下一拍的 IPC 永不 settle。
+  harness.setCursorProvider(() => new Promise(() => {}));
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.equal(harness.hasWatchdogTimer(), true, '飞行中的光标 IPC 必须挂看门狗');
+
+  harness.runTimer(1000);
+  await flushPromises();
+
+  assert.deepEqual(
+    harness.mouseThrough,
+    [true, false, true],
+    '看门狗超时后必须强制回到穿透态，不能让全屏透明窗口继续拦截桌面输入',
+  );
+  assert.equal(harness.hasAutoHideTimer(), true, '同时要恢复自动消失');
 });

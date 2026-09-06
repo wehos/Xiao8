@@ -100,20 +100,49 @@
                 && point.y >= rect.top && point.y < rect.bottom;
         }
 
+        // 单次光标 IPC 的兜底期限。轮询周期 50ms，正常往返远小于此；超过即认为 IPC
+        // 悬挂，强制回到穿透态而不是把窗口无限期留在可命中态。
+        var STATUS_POINTER_IPC_TIMEOUT_MS = 1000;
+        var statusPointerWatchdogTimer = null;
+
+        function clearStatusPointerWatchdog() {
+            if (!statusPointerWatchdogTimer) return;
+            clearTimeout(statusPointerWatchdogTimer);
+            statusPointerWatchdogTimer = null;
+        }
+
+        function armStatusPointerWatchdog(generation) {
+            clearStatusPointerWatchdog();
+            statusPointerWatchdogTimer = setTimeout(function() {
+                statusPointerWatchdogTimer = null;
+                if (generation !== statusPointerPollGeneration) return;
+                stopStatusPointerTracking(false);
+            }, STATUS_POINTER_IPC_TIMEOUT_MS);
+        }
+
         function stopStatusPointerTracking(keepCurrentMouseState) {
             statusPointerPollGeneration += 1;
             if (statusPointerPollTimer) {
                 clearTimeout(statusPointerPollTimer);
                 statusPointerPollTimer = null;
             }
+            clearStatusPointerWatchdog();
             var wasPinnedByPointer = statusPointerInside;
             statusPointerTrackingActive = false;
             statusPointerInside = false;
             // 轮询驱动的 pin 只能由轮询自己解开：一旦停止追踪，窗口回到穿透态，
             // 再也不会有 mouseleave 到达。此处不恢复计时，被 pin 住的提示就会一直
-            // 挂在屏幕上（光标 IPC 失败、prominent notice 打断、页面转入后台都会走到
-            // 这里）。先清掉上面两个标志再调，_leave 才会按 DOM 语义重新判定。
-            if (wasPinnedByPointer && statusToast._leave) statusToast._leave();
+            // 挂在屏幕上（光标 IPC 失败/悬挂、prominent notice 打断、页面转入后台都会
+            // 走到这里）。
+            //
+            // 这里**不能**走 _leave：它会回落到 DOM :hover 判定，而如果之前真的来过
+            // 一次 mouseenter，:hover 此刻为真且再也不会被 mouseleave 纠正（窗口已穿透），
+            // 于是拒绝排程，提示照样滞留。只认键盘焦点。
+            if (wasPinnedByPointer
+                && statusToast._resumeAutoHide
+                && !statusToast.matches(':focus-within')) {
+                statusToast._resumeAutoHide();
+            }
             if (!keepCurrentMouseState && !prominentNoticeInteractive) {
                 setToastMouseThrough(true);
             }
@@ -160,7 +189,14 @@
                 return;
             }
 
+            // 光标 IPC 只要不 settle，下面两条分支一条都不会走：既不重排下一拍，也不
+            // 触发拒绝清理。而此时窗口可能已因上一拍的 inside 结果处于可命中态、自动
+            // 消失计时也已被清掉 —— 全屏透明窗口会一直吞掉整个桌面的输入。主进程侧的
+            // 空闲销毁救不了场：它在渲染端持有 ignore=false 时会主动推迟销毁。
+            armStatusPointerWatchdog(generation);
+
             Promise.resolve(cursorPointPromise).then(function(point) {
+                clearStatusPointerWatchdog();
                 if (generation !== statusPointerPollGeneration
                     || prominentNoticeInteractive
                     || !isStatusToastVisible()) return;
@@ -169,6 +205,7 @@
                 applyStatusPointerHover(inside);
             }).catch(function() {
                 // 光标 IPC 异常时立即回到穿透态，不能让透明全屏窗口留在桌面上拦截输入。
+                clearStatusPointerWatchdog();
                 if (generation === statusPointerPollGeneration) {
                     stopStatusPointerTracking(false);
                 }
@@ -288,6 +325,12 @@
             statusToast._leave = function() {
                 if (statusTimeout || statusToast.classList.contains('hide')) return;
                 if (!statusHoverHoldActive()) scheduleHide(toastRemaining!=null ? toastRemaining : duration);
+            };
+            // 追踪中断时的恢复入口：与 _leave 的区别是**不问 DOM :hover**。停止追踪后
+            // 窗口回到穿透态，陈旧的 :hover 再无 mouseleave 可纠正，问了就等于永不恢复。
+            statusToast._resumeAutoHide = function() {
+                if (statusTimeout || statusToast.classList.contains('hide')) return;
+                scheduleHide(toastRemaining!=null ? toastRemaining : duration);
             };
             statusToast._focusIn = function() {
                 if (!statusTimeout) return;

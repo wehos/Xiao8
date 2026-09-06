@@ -1,7 +1,12 @@
+import { modelApiMessages } from '../model-api'
+import { modelBindingsMessages } from '../model-bindings'
+
 /**
  * 日本語言語パック
  */
 export default {
+  modelApi: modelApiMessages['ja'],
+  modelBindings: modelBindingsMessages['ja'],
   common: {
     loading: '読み込み中...',
     refresh: '更新',

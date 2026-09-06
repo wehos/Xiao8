@@ -1,0 +1,17 @@
+[plugin]
+id = "model_api_example"
+name = "Plugin Model API Example"
+description = "Explicit text, image and streaming calls through host-managed model bindings."
+version = "0.1.0"
+type = "plugin"
+entry = "plugin.plugins.model_api_example:ModelApiExample"
+
+[plugin.models.analysis]
+label = "Text analysis and streaming"
+required = true
+capabilities = ["text", "streaming"]
+
+[plugin.models.vision]
+label = "Image analysis"
+required = false
+capabilities = ["text", "image_input"]

@@ -54,7 +54,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePluginStore } from '@/stores/plugin'
-import { Odometer, Box, VideoPlay, Monitor, Link } from '@element-plus/icons-vue'
+import { Odometer, Box, VideoPlay, Monitor, Link, Connection } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -65,6 +65,7 @@ const adapters = computed(() => pluginStore.pluginsWithStatus.filter((p) => p.ty
 const navItems = computed(() => [
   { path: '/', icon: Odometer, label: t('nav.dashboard'), guideId: 'sidebar-dashboard' },
   { path: '/plugins', icon: Box, label: t('nav.plugins'), guideId: 'sidebar-plugins' },
+  { path: '/model-api', icon: Connection, label: t('modelApi.title') },
   { path: '/runs', icon: VideoPlay, label: t('nav.runs'), guideId: 'sidebar-runs' },
   { path: '/logs/_server', icon: Monitor, label: t('nav.serverLogs'), guideId: 'sidebar-server-logs' },
 ])
@@ -194,5 +195,13 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+@media (max-width: 700px) {
+  .sidebar { padding: 6px; }
+  .sidebar-brand, .nav-divider, .nav-group-label { display: none; }
+  .sidebar-nav { flex-direction: row; overflow-x: auto; flex: none; }
+  .nav-item { width: auto; flex-shrink: 0; padding: 8px 10px; gap: 6px; }
+  .nav-item:hover { transform: none; }
 }
 </style>

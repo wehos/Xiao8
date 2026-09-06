@@ -492,6 +492,12 @@ onBeforeUnmount(() => {
   background: var(--el-bg-color-page);
 }
 
+@media (max-width: 700px) {
+  .app-shell { flex-direction: column; }
+  .app-sidebar { width: 100%; height: auto; }
+  .app-main { padding: 12px; }
+}
+
 /* 连接状态提示 */
 .connection-banner {
   padding: 8px 20px 0;

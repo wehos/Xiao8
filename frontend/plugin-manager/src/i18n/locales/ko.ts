@@ -1,7 +1,12 @@
+import { modelApiMessages } from '../model-api'
+import { modelBindingsMessages } from '../model-bindings'
+
 /**
  * 한국어 언어 팩
  */
 export default {
+  modelApi: modelApiMessages['ko'],
+  modelBindings: modelBindingsMessages['ko'],
   common: {
     loading: '로딩 중...',
     refresh: '새로고침',

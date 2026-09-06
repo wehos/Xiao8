@@ -468,6 +468,8 @@ async def redirect_plugin_dashboard(request: Request):
     else:
         user_plugin_base = await _resolve_user_plugin_base()
         target_url = f"{user_plugin_base}/ui"
+    if request.query_params.get("page") == "model-api":
+        target_url += "/model-api"
     query_params: dict[str, str] = {}
     if "v" in request.query_params:
         v = request.query_params["v"].strip()

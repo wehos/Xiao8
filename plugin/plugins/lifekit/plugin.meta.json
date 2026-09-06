@@ -19,7 +19,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -2852,17 +2851,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_config",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.getConfig.name",
         "default": "获取配置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "lifekit.update_config": {
       "auto_start": false,
@@ -2873,6 +2883,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "update_config",
       "input_schema": {
         "properties": {
@@ -2915,11 +2926,157 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "message",
+        "config",
+        "choices",
+        "confirmation_token"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "ClarificationResult": {
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Choices",
+                "type": "array"
+              },
+              "confirmation_token": {
+                "default": "",
+                "title": "Confirmation Token",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": true,
+                "title": "Context",
+                "type": "object"
+              },
+              "status": {
+                "const": "clarify",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary"
+            ],
+            "title": "ClarificationResult",
+            "type": "object"
+          },
+          "_UpdateConfigReadyResult": {
+            "properties": {
+              "config": {
+                "additionalProperties": true,
+                "title": "Config",
+                "type": "object"
+              },
+              "message": {
+                "title": "Message",
+                "type": "string"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "message",
+              "config"
+            ],
+            "title": "_UpdateConfigReadyResult",
+            "type": "object"
+          }
+        },
+        "discriminator": {
+          "mapping": {
+            "clarify": "#/$defs/ClarificationResult",
+            "ready": "#/$defs/_UpdateConfigReadyResult"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/_UpdateConfigReadyResult"
+          },
+          {
+            "$ref": "#/$defs/ClarificationResult"
+          }
+        ],
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "confirmation_token": {
+            "default": "",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "clarify"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "message",
+          "config",
+          "choices",
+          "confirmation_token"
+        ],
+        "title": "UpdateConfigResult"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.updateConfig.name",
         "default": "更新配置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "lifekit:lifecycle:config_change": {
       "auto_start": false,
@@ -2927,14 +3084,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "config_change",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "config_change"
+      "model_validate": true,
+      "name": "config_change",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "lifekit:lifecycle:shutdown": {
       "auto_start": false,
@@ -2942,14 +3110,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "lifekit:lifecycle:startup": {
       "auto_start": false,
@@ -2957,14 +3136,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "lifekit:plugin_entry:get_config": {
       "auto_start": false,
@@ -2975,17 +3165,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_config",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.getConfig.name",
         "default": "获取配置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "lifekit:plugin_entry:update_config": {
       "auto_start": false,
@@ -2996,6 +3197,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "update_config",
       "input_schema": {
         "properties": {
@@ -3038,14 +3240,160 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "message",
+        "config",
+        "choices",
+        "confirmation_token"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "ClarificationResult": {
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Choices",
+                "type": "array"
+              },
+              "confirmation_token": {
+                "default": "",
+                "title": "Confirmation Token",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": true,
+                "title": "Context",
+                "type": "object"
+              },
+              "status": {
+                "const": "clarify",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary"
+            ],
+            "title": "ClarificationResult",
+            "type": "object"
+          },
+          "_UpdateConfigReadyResult": {
+            "properties": {
+              "config": {
+                "additionalProperties": true,
+                "title": "Config",
+                "type": "object"
+              },
+              "message": {
+                "title": "Message",
+                "type": "string"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "message",
+              "config"
+            ],
+            "title": "_UpdateConfigReadyResult",
+            "type": "object"
+          }
+        },
+        "discriminator": {
+          "mapping": {
+            "clarify": "#/$defs/ClarificationResult",
+            "ready": "#/$defs/_UpdateConfigReadyResult"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/_UpdateConfigReadyResult"
+          },
+          {
+            "$ref": "#/$defs/ClarificationResult"
+          }
+        ],
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "confirmation_token": {
+            "default": "",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "clarify"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "message",
+          "config",
+          "choices",
+          "confirmation_token"
+        ],
+        "title": "UpdateConfigResult"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.updateConfig.name",
         "default": "更新配置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 681065,
   "source_files": [

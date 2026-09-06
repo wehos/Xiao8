@@ -93,6 +93,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "control_jukebox",
       "input_schema": {
         "properties": {
@@ -134,8 +135,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "action",
+        "query",
+        "value",
+        "mode",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "action": {},
+          "message": {},
+          "mode": {},
+          "query": {},
+          "value": {}
+        },
+        "required": [
+          "action",
+          "query",
+          "value",
+          "mode",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "控制点歌台"
+      "model_validate": true,
+      "name": "控制点歌台",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "jukebox_controller:plugin_entry:control_jukebox": {
       "auto_start": false,
@@ -143,6 +176,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "control_jukebox",
       "input_schema": {
         "properties": {
@@ -184,11 +218,43 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "action",
+        "query",
+        "value",
+        "mode",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "action": {},
+          "message": {},
+          "mode": {},
+          "query": {},
+          "value": {}
+        },
+        "required": [
+          "action",
+          "query",
+          "value",
+          "mode",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "控制点歌台"
+      "model_validate": true,
+      "name": "控制点歌台",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 10264,
   "source_files": [

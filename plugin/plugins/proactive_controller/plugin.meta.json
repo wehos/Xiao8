@@ -37,7 +37,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -136,7 +135,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -159,6 +157,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "command",
       "input_schema": {
         "properties": {
@@ -186,8 +185,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "主动搭话统一指令通道"
+      "model_validate": true,
+      "name": "主动搭话统一指令通道",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller.get_state": {
       "auto_start": false,
@@ -195,14 +204,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_state",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "mode"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "mode": {}
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "读取主动搭话状态"
+      "model_validate": true,
+      "name": "读取主动搭话状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller.set_mode": {
       "auto_start": false,
@@ -210,6 +240,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_mode",
       "input_schema": {
         "properties": {
@@ -230,8 +261,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "mode"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "mode": {}
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "切换主动搭话模式"
+      "model_validate": true,
+      "name": "切换主动搭话模式",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller.set_settings": {
       "auto_start": false,
@@ -239,6 +290,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_settings",
       "input_schema": {
         "properties": {
@@ -253,8 +305,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "细粒度调整主动搭话"
+      "model_validate": true,
+      "name": "细粒度调整主动搭话",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller:lifecycle:shutdown": {
       "auto_start": false,
@@ -262,14 +324,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller:lifecycle:startup": {
       "auto_start": false,
@@ -277,14 +350,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller:plugin_entry:command": {
       "auto_start": false,
@@ -292,6 +376,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "command",
       "input_schema": {
         "properties": {
@@ -319,8 +404,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "主动搭话统一指令通道"
+      "model_validate": true,
+      "name": "主动搭话统一指令通道",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller:plugin_entry:get_state": {
       "auto_start": false,
@@ -328,14 +423,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_state",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "mode"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "mode": {}
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "读取主动搭话状态"
+      "model_validate": true,
+      "name": "读取主动搭话状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller:plugin_entry:set_mode": {
       "auto_start": false,
@@ -343,6 +459,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_mode",
       "input_schema": {
         "properties": {
@@ -363,8 +480,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "mode"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "mode": {}
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "切换主动搭话模式"
+      "model_validate": true,
+      "name": "切换主动搭话模式",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "proactive_controller:plugin_entry:set_settings": {
       "auto_start": false,
@@ -372,6 +509,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_settings",
       "input_schema": {
         "properties": {
@@ -386,11 +524,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "细粒度调整主动搭话"
+      "model_validate": true,
+      "name": "细粒度调整主动搭话",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 15252,
   "source_files": [

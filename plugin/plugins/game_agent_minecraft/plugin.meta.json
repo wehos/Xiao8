@@ -106,14 +106,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "game_agent_reload_config",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "重载游戏插件配置"
+      "model_validate": true,
+      "name": "重载游戏插件配置",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft.game_agent_status": {
       "auto_start": false,
@@ -121,14 +142,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "game_agent_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "查询 mc-agent 连接状态"
+      "model_validate": true,
+      "name": "查询 mc-agent 连接状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft.query_inventory": {
       "auto_start": false,
@@ -136,14 +178,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "query_inventory",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "查询当前持有"
+      "model_validate": true,
+      "name": "查询当前持有",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft:lifecycle:shutdown": {
       "auto_start": false,
@@ -151,14 +214,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft:lifecycle:startup": {
       "auto_start": false,
@@ -166,14 +240,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft:plugin_entry:game_agent_reload_config": {
       "auto_start": false,
@@ -181,14 +266,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "game_agent_reload_config",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "重载游戏插件配置"
+      "model_validate": true,
+      "name": "重载游戏插件配置",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft:plugin_entry:game_agent_status": {
       "auto_start": false,
@@ -196,14 +302,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "game_agent_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "查询 mc-agent 连接状态"
+      "model_validate": true,
+      "name": "查询 mc-agent 连接状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "game_agent_minecraft:plugin_entry:query_inventory": {
       "auto_start": false,
@@ -211,17 +338,38 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "query_inventory",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "查询当前持有"
+      "model_validate": true,
+      "name": "查询当前持有",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 320132,
   "source_files": [

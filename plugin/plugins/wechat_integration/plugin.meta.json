@@ -19,7 +19,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -44,7 +43,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -69,7 +67,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -94,7 +91,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -130,7 +126,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -169,7 +164,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -194,7 +188,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -219,7 +212,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -244,7 +236,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -278,17 +269,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_dashboard_state",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.get_dashboard_state.name",
         "default": "获取控制面板状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.logout": {
       "auto_start": false,
@@ -299,17 +301,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "logout",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.logout.name",
         "default": "退出登录"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.poll_login_status": {
       "auto_start": false,
@@ -320,17 +333,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "poll_login_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.poll_login_status.name",
         "default": "查询扫码状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.refresh_qrcode": {
       "auto_start": false,
@@ -341,17 +365,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "refresh_qrcode",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.refresh_qrcode.name",
         "default": "刷新二维码"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.save_settings": {
       "auto_start": false,
@@ -362,6 +397,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "save_settings",
       "input_schema": {
         "additionalProperties": false,
@@ -379,11 +415,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.save_settings.name",
         "default": "保存微信设置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.send_message": {
       "auto_start": false,
@@ -394,6 +440,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "send_message",
       "input_schema": {
         "additionalProperties": false,
@@ -414,11 +461,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.send_message.name",
         "default": "发送微信消息"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.start_auto_reply": {
       "auto_start": false,
@@ -429,17 +486,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "start_auto_reply",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.start_auto_reply.name",
         "default": "开始消息监听"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.start_login": {
       "auto_start": false,
@@ -450,17 +518,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "start_login",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.start_login.name",
         "default": "开始扫码登录"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration.stop_auto_reply": {
       "auto_start": false,
@@ -471,17 +550,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "stop_auto_reply",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.stop_auto_reply.name",
         "default": "停止消息监听"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:lifecycle:shutdown": {
       "auto_start": false,
@@ -489,14 +579,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:lifecycle:startup": {
       "auto_start": false,
@@ -504,14 +605,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:get_dashboard_state": {
       "auto_start": false,
@@ -522,17 +634,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_dashboard_state",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.get_dashboard_state.name",
         "default": "获取控制面板状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:logout": {
       "auto_start": false,
@@ -543,17 +666,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "logout",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.logout.name",
         "default": "退出登录"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:poll_login_status": {
       "auto_start": false,
@@ -564,17 +698,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "poll_login_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.poll_login_status.name",
         "default": "查询扫码状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:refresh_qrcode": {
       "auto_start": false,
@@ -585,17 +730,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "refresh_qrcode",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.refresh_qrcode.name",
         "default": "刷新二维码"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:save_settings": {
       "auto_start": false,
@@ -606,6 +762,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "save_settings",
       "input_schema": {
         "additionalProperties": false,
@@ -623,11 +780,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.save_settings.name",
         "default": "保存微信设置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:send_message": {
       "auto_start": false,
@@ -638,6 +805,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "send_message",
       "input_schema": {
         "additionalProperties": false,
@@ -658,11 +826,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.send_message.name",
         "default": "发送微信消息"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:start_auto_reply": {
       "auto_start": false,
@@ -673,17 +851,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "start_auto_reply",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.start_auto_reply.name",
         "default": "开始消息监听"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:start_login": {
       "auto_start": false,
@@ -694,17 +883,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "start_login",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.start_login.name",
         "default": "开始扫码登录"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "wechat_integration:plugin_entry:stop_auto_reply": {
       "auto_start": false,
@@ -715,20 +915,31 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "stop_auto_reply",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.stop_auto_reply.name",
         "default": "停止消息监听"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 107766,
   "source_files": [

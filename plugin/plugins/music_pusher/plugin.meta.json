@@ -791,6 +791,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "create_schedule_task",
       "input_schema": {
         "properties": {
@@ -831,8 +832,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "task_id",
+        "status"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "status": {},
+          "task_id": {}
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "创建定时任务"
+      "model_validate": true,
+      "name": "创建定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.delete_music_item": {
       "auto_start": false,
@@ -840,6 +864,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "delete_music_item",
       "input_schema": {
         "properties": {
@@ -853,8 +878,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {}
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "删除音乐素材"
+      "model_validate": true,
+      "name": "删除音乐素材",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.delete_schedule_task": {
       "auto_start": false,
@@ -862,6 +907,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "delete_schedule_task",
       "input_schema": {
         "properties": {
@@ -875,8 +921,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {},
+          "task_id": {}
+        },
+        "required": [
+          "deleted",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "删除定时任务"
+      "model_validate": true,
+      "name": "删除定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.get_push_settings": {
       "auto_start": false,
@@ -884,14 +953,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_push_settings",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "attach_prompt_on_push"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "attach_prompt_on_push": {}
+        },
+        "required": [
+          "attach_prompt_on_push"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "获取推送设置"
+      "model_validate": true,
+      "name": "获取推送设置",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.list_music_items": {
       "auto_start": false,
@@ -899,14 +989,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_music_items",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "列出音乐素材"
+      "model_validate": true,
+      "name": "列出音乐素材",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.list_schedule_tasks": {
       "auto_start": false,
@@ -914,14 +1025,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_schedule_tasks",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "列出定时任务"
+      "model_validate": true,
+      "name": "列出定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.push_music_url": {
       "auto_start": false,
@@ -929,6 +1061,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "push_music_url",
       "input_schema": {
         "properties": {
@@ -964,8 +1097,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "pushed",
+        "chain",
+        "url"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "chain": {},
+          "pushed": {},
+          "url": {}
+        },
+        "required": [
+          "pushed",
+          "chain",
+          "url"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "推送音乐链接"
+      "model_validate": true,
+      "name": "推送音乐链接",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.report_playback_state": {
       "auto_start": false,
@@ -973,6 +1132,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "report_playback_state",
       "input_schema": {
         "properties": {
@@ -1000,8 +1160,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "updated"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "updated": {}
+        },
+        "required": [
+          "updated"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "上报播放状态"
+      "model_validate": true,
+      "name": "上报播放状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.run": {
       "auto_start": false,
@@ -1009,6 +1189,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "run",
       "input_schema": {
         "properties": {
@@ -1042,8 +1223,37 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "pushed",
+        "url",
+        "title",
+        "artist"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "artist": {},
+          "pushed": {},
+          "title": {},
+          "url": {}
+        },
+        "required": [
+          "pushed",
+          "url",
+          "title",
+          "artist"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "通用推歌入口"
+      "model_validate": true,
+      "name": "通用推歌入口",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.run_schedule_task_now": {
       "auto_start": false,
@@ -1051,6 +1261,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "run_schedule_task_now",
       "input_schema": {
         "properties": {
@@ -1068,8 +1279,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "queued",
+        "task_id",
+        "started_immediately"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "queued": {},
+          "started_immediately": {},
+          "task_id": {}
+        },
+        "required": [
+          "queued",
+          "task_id",
+          "started_immediately"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "立即执行任务"
+      "model_validate": true,
+      "name": "立即执行任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.set_push_settings": {
       "auto_start": false,
@@ -1077,6 +1314,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_push_settings",
       "input_schema": {
         "properties": {
@@ -1090,8 +1328,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "attach_prompt_on_push"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "attach_prompt_on_push": {}
+        },
+        "required": [
+          "attach_prompt_on_push"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "设置推送开关"
+      "model_validate": true,
+      "name": "设置推送开关",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.skip_current_track": {
       "auto_start": false,
@@ -1099,6 +1357,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "skip_current_track",
       "input_schema": {
         "properties": {
@@ -1118,8 +1377,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "accepted",
+        "direction",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "accepted": {},
+          "direction": {},
+          "task_id": {}
+        },
+        "required": [
+          "accepted",
+          "direction",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "切换当前曲目"
+      "model_validate": true,
+      "name": "切换当前曲目",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.stop_schedule_task": {
       "auto_start": false,
@@ -1127,6 +1412,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "stop_schedule_task",
       "input_schema": {
         "properties": {
@@ -1138,8 +1424,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "stopped",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "stopped": {},
+          "task_id": {}
+        },
+        "required": [
+          "stopped",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "停止执行任务"
+      "model_validate": true,
+      "name": "停止执行任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.toggle_schedule_task": {
       "auto_start": false,
@@ -1147,6 +1456,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "toggle_schedule_task",
       "input_schema": {
         "properties": {
@@ -1160,8 +1470,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "action",
+        "task_id",
+        "ok"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "action": {},
+          "ok": {},
+          "task_id": {}
+        },
+        "required": [
+          "action",
+          "task_id",
+          "ok"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "切换运行或停止"
+      "model_validate": true,
+      "name": "切换运行或停止",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.update_schedule_task": {
       "auto_start": false,
@@ -1169,6 +1505,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "update_schedule_task",
       "input_schema": {
         "properties": {
@@ -1210,8 +1547,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "updated",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "task_id": {},
+          "updated": {}
+        },
+        "required": [
+          "updated",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "更新定时任务"
+      "model_validate": true,
+      "name": "更新定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher.upload_music_file": {
       "auto_start": false,
@@ -1219,6 +1579,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "upload_music_file",
       "input_schema": {
         "properties": {
@@ -1263,8 +1624,37 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "saved",
+        "pushed",
+        "music_url_absolute",
+        "duration_sec"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "duration_sec": {},
+          "music_url_absolute": {},
+          "pushed": {},
+          "saved": {}
+        },
+        "required": [
+          "saved",
+          "pushed",
+          "music_url_absolute",
+          "duration_sec"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "上传音乐并自动推送"
+      "model_validate": true,
+      "name": "上传音乐并自动推送",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:lifecycle:shutdown": {
       "auto_start": false,
@@ -1272,14 +1662,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:lifecycle:startup": {
       "auto_start": false,
@@ -1287,14 +1688,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:create_schedule_task": {
       "auto_start": false,
@@ -1302,6 +1714,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "create_schedule_task",
       "input_schema": {
         "properties": {
@@ -1342,8 +1755,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "task_id",
+        "status"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "status": {},
+          "task_id": {}
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "创建定时任务"
+      "model_validate": true,
+      "name": "创建定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:delete_music_item": {
       "auto_start": false,
@@ -1351,6 +1787,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "delete_music_item",
       "input_schema": {
         "properties": {
@@ -1364,8 +1801,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {}
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "删除音乐素材"
+      "model_validate": true,
+      "name": "删除音乐素材",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:delete_schedule_task": {
       "auto_start": false,
@@ -1373,6 +1830,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "delete_schedule_task",
       "input_schema": {
         "properties": {
@@ -1386,8 +1844,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {},
+          "task_id": {}
+        },
+        "required": [
+          "deleted",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "删除定时任务"
+      "model_validate": true,
+      "name": "删除定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:get_push_settings": {
       "auto_start": false,
@@ -1395,14 +1876,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_push_settings",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "attach_prompt_on_push"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "attach_prompt_on_push": {}
+        },
+        "required": [
+          "attach_prompt_on_push"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "获取推送设置"
+      "model_validate": true,
+      "name": "获取推送设置",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:list_music_items": {
       "auto_start": false,
@@ -1410,14 +1912,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_music_items",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "列出音乐素材"
+      "model_validate": true,
+      "name": "列出音乐素材",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:list_schedule_tasks": {
       "auto_start": false,
@@ -1425,14 +1948,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_schedule_tasks",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "列出定时任务"
+      "model_validate": true,
+      "name": "列出定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:push_music_url": {
       "auto_start": false,
@@ -1440,6 +1984,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "push_music_url",
       "input_schema": {
         "properties": {
@@ -1475,8 +2020,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "pushed",
+        "chain",
+        "url"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "chain": {},
+          "pushed": {},
+          "url": {}
+        },
+        "required": [
+          "pushed",
+          "chain",
+          "url"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "推送音乐链接"
+      "model_validate": true,
+      "name": "推送音乐链接",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:report_playback_state": {
       "auto_start": false,
@@ -1484,6 +2055,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "report_playback_state",
       "input_schema": {
         "properties": {
@@ -1511,8 +2083,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "updated"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "updated": {}
+        },
+        "required": [
+          "updated"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "上报播放状态"
+      "model_validate": true,
+      "name": "上报播放状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:run": {
       "auto_start": false,
@@ -1520,6 +2112,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "run",
       "input_schema": {
         "properties": {
@@ -1553,8 +2146,37 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "pushed",
+        "url",
+        "title",
+        "artist"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "artist": {},
+          "pushed": {},
+          "title": {},
+          "url": {}
+        },
+        "required": [
+          "pushed",
+          "url",
+          "title",
+          "artist"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "通用推歌入口"
+      "model_validate": true,
+      "name": "通用推歌入口",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:run_schedule_task_now": {
       "auto_start": false,
@@ -1562,6 +2184,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "run_schedule_task_now",
       "input_schema": {
         "properties": {
@@ -1579,8 +2202,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "queued",
+        "task_id",
+        "started_immediately"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "queued": {},
+          "started_immediately": {},
+          "task_id": {}
+        },
+        "required": [
+          "queued",
+          "task_id",
+          "started_immediately"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "立即执行任务"
+      "model_validate": true,
+      "name": "立即执行任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:set_push_settings": {
       "auto_start": false,
@@ -1588,6 +2237,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_push_settings",
       "input_schema": {
         "properties": {
@@ -1601,8 +2251,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "attach_prompt_on_push"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "attach_prompt_on_push": {}
+        },
+        "required": [
+          "attach_prompt_on_push"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "设置推送开关"
+      "model_validate": true,
+      "name": "设置推送开关",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:skip_current_track": {
       "auto_start": false,
@@ -1610,6 +2280,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "skip_current_track",
       "input_schema": {
         "properties": {
@@ -1629,8 +2300,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "accepted",
+        "direction",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "accepted": {},
+          "direction": {},
+          "task_id": {}
+        },
+        "required": [
+          "accepted",
+          "direction",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "切换当前曲目"
+      "model_validate": true,
+      "name": "切换当前曲目",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:stop_schedule_task": {
       "auto_start": false,
@@ -1638,6 +2335,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "stop_schedule_task",
       "input_schema": {
         "properties": {
@@ -1649,8 +2347,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "stopped",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "stopped": {},
+          "task_id": {}
+        },
+        "required": [
+          "stopped",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "停止执行任务"
+      "model_validate": true,
+      "name": "停止执行任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:toggle_schedule_task": {
       "auto_start": false,
@@ -1658,6 +2379,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "toggle_schedule_task",
       "input_schema": {
         "properties": {
@@ -1671,8 +2393,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "action",
+        "task_id",
+        "ok"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "action": {},
+          "ok": {},
+          "task_id": {}
+        },
+        "required": [
+          "action",
+          "task_id",
+          "ok"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "切换运行或停止"
+      "model_validate": true,
+      "name": "切换运行或停止",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:update_schedule_task": {
       "auto_start": false,
@@ -1680,6 +2428,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "update_schedule_task",
       "input_schema": {
         "properties": {
@@ -1721,8 +2470,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "updated",
+        "task_id"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "task_id": {},
+          "updated": {}
+        },
+        "required": [
+          "updated",
+          "task_id"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "更新定时任务"
+      "model_validate": true,
+      "name": "更新定时任务",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "music_pusher:plugin_entry:upload_music_file": {
       "auto_start": false,
@@ -1730,6 +2502,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "upload_music_file",
       "input_schema": {
         "properties": {
@@ -1774,11 +2547,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "saved",
+        "pushed",
+        "music_url_absolute",
+        "duration_sec"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "duration_sec": {},
+          "music_url_absolute": {},
+          "pushed": {},
+          "saved": {}
+        },
+        "required": [
+          "saved",
+          "pushed",
+          "music_url_absolute",
+          "duration_sec"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "上传音乐并自动推送"
+      "model_validate": true,
+      "name": "上传音乐并自动推送",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 1206411,
   "source_files": [

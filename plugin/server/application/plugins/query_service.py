@@ -127,7 +127,7 @@ def _normalize_string_list(raw_value: object) -> list[str]:
 
 def _extract_llm_result_fields(raw_value: object, *, raw_schema: object = None) -> list[str]:
     fields = _normalize_string_list(raw_value)
-    if fields:
+    if isinstance(raw_value, list):
         return fields
     if isinstance(raw_schema, Mapping):
         properties_obj = raw_schema.get("properties")

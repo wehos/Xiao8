@@ -57,7 +57,10 @@ PACKAGED_METADATA_FILENAME = "plugin.meta.json"
 # schema 变了就该换号，否则一份没有 source_files 的元数据仍会被当成合法的第 1 版
 # 接受，增删源文件时那道确定性的判据整个静默失效（coderabbit）。旧包因此回落到
 # manifest 声明的 entries，重新打包即可恢复。
-PACKAGED_METADATA_SCHEMA_VERSION = 3
+# 4: handlers retain the complete entry contract, including slotted SDK fields.
+# v3 previews remain readable; the start path restores their truncated handlers
+# using the preview and the matching effective entries configuration.
+PACKAGED_METADATA_SCHEMA_VERSION = 4
 
 # 解析之前先封顶。这份文件来自第三方包，而 json.loads 会把整份内容读进内存再建对象；
 # 一个几百 MB 的 plugin.meta.json 足以在刷新注册表时把进程撑爆，而刷新现在整段持锁
@@ -140,6 +143,7 @@ class PackagedPluginMetadata:
     source_sha256: str = ""
     # 打包机和这台机器是不是同一套 (os, python, arch)。
     built_in_this_environment: bool = False
+    schema_version: int = PACKAGED_METADATA_SCHEMA_VERSION
 
 
 def _stamp_metadata_verified(meta_path: Path, newest_source_ns: int) -> None:
@@ -427,6 +431,26 @@ def _coerce_entries(raw: object) -> list[dict[str, object]]:
     return [dict(item) for item in raw if isinstance(item, Mapping)]
 
 
+def _drop_synthesized_result_fields(
+    entries: list[dict[str, object]], schema_version: object
+) -> list[dict[str, object]]:
+    """Drop a v3 preview's empty result-field list when a schema can supply it.
+
+    v3 generators normalized "not declared" into ``[]``, so an empty list there
+    carries no intent. Readers now take a list as the entry's final answer, and
+    an entry that only declares a result schema would lose its projection —
+    while a rescan of the same plugin derives the fields. v4 previews omit the
+    key when it was never declared, so an empty list there is a real choice and
+    must survive.
+    """
+    if schema_version != 3:
+        return entries
+    for entry in entries:
+        if entry.get("llm_result_fields") == [] and entry.get("llm_result_schema"):
+            entry.pop("llm_result_fields", None)
+    return entries
+
+
 def _coerce_handlers(raw: object) -> dict[str, dict[str, object]]:
     if not isinstance(raw, Mapping):
         return {}
@@ -471,14 +495,14 @@ def entries_config_digest(conf: object, pdata: object) -> str:
 
 
 def _tables_are_well_formed(raw: Mapping[str, object]) -> bool:
-    """Whether the v3 tables are the shapes v3 promises.
+    """Whether the metadata tables have their required shapes.
 
     An empty ``handlers`` mapping is a real answer — a background-only plugin
     registers nothing — and the start path now trusts it instead of rescanning.
     That makes the difference between "empty" and "malformed" load-bearing:
     coercing a missing or non-object table into an empty one would let a broken
     package install *no* handlers while its ``entries`` advertise tools, leaving
-    the plugin running with nothing dispatchable (codex). v3 always writes all
+    the plugin running with nothing dispatchable (codex). The current schema writes all
     three tables, so anything else is a package to fall back on, not to believe.
     """
     handlers = raw.get("handlers")
@@ -557,7 +581,7 @@ def read_packaged_metadata(plugin_dir: Path) -> PackagedPluginMetadata | None:
         return None
 
     schema_version = raw.get("schema_version")
-    if schema_version != PACKAGED_METADATA_SCHEMA_VERSION:
+    if schema_version not in (3, PACKAGED_METADATA_SCHEMA_VERSION):
         logger.warning(
             "packaged plugin metadata schema mismatch, falling back to manifest: "
             "path={}, found={}, expected={}",
@@ -688,8 +712,9 @@ def read_packaged_metadata(plugin_dir: Path) -> PackagedPluginMetadata | None:
         _stamp_metadata_verified(meta_path, newest_source_ns)
 
     return PackagedPluginMetadata(
+        schema_version=schema_version,
         built_in_this_environment=_environment_matches(raw.get("build_env")),
-        entries=_coerce_entries(raw.get("entries")),
+        entries=_drop_synthesized_result_fields(_coerce_entries(raw.get("entries")), schema_version),
         entries_config_sha256=str(raw.get("entries_config_sha256") or ""),
         handlers=_coerce_handlers(raw.get("handlers")),
         entry_methods=_coerce_entry_methods(raw.get("entry_methods")),

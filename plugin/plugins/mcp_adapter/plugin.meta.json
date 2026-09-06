@@ -485,6 +485,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "add_server",
       "input_schema": {
         "properties": {
@@ -567,11 +568,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.addServer.name",
         "default": "Add MCP Server"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.call_tool": {
       "auto_start": false,
@@ -582,6 +603,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "call_tool",
       "input_schema": {
         "properties": {
@@ -614,11 +636,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.callTool.name",
         "default": "Call MCP Tool"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.connect_server": {
       "auto_start": false,
@@ -629,6 +671,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "connect_server",
       "input_schema": {
         "properties": {
@@ -646,11 +689,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.connect.name",
         "default": "Connect MCP Server"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.disconnect_server": {
       "auto_start": false,
@@ -661,6 +724,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "disconnect_server",
       "input_schema": {
         "properties": {
@@ -678,11 +742,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.disconnect.name",
         "default": "Disconnect MCP Server"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.gateway_invoke": {
       "auto_start": false,
@@ -693,6 +777,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "gateway_invoke",
       "input_schema": {
         "properties": {
@@ -731,11 +816,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.gatewayInvoke.name",
         "default": "Gateway Invoke"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.list_servers": {
       "auto_start": false,
@@ -746,17 +851,38 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_servers",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.listServers.name",
         "default": "List MCP Servers"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.list_tools": {
       "auto_start": false,
@@ -767,6 +893,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_tools",
       "input_schema": {
         "properties": {
@@ -781,11 +908,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.listTools.name",
         "default": "List MCP Tools"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter.remove_servers": {
       "auto_start": false,
@@ -796,6 +943,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "remove_servers",
       "input_schema": {
         "properties": {
@@ -816,11 +964,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.removeServers.name",
         "default": "Remove MCP Servers"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:lifecycle:shutdown": {
       "auto_start": false,
@@ -828,14 +996,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:lifecycle:startup": {
       "auto_start": false,
@@ -843,14 +1022,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:add_server": {
       "auto_start": false,
@@ -861,6 +1051,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "add_server",
       "input_schema": {
         "properties": {
@@ -943,11 +1134,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.addServer.name",
         "default": "Add MCP Server"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:call_tool": {
       "auto_start": false,
@@ -958,6 +1169,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "call_tool",
       "input_schema": {
         "properties": {
@@ -990,11 +1202,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.callTool.name",
         "default": "Call MCP Tool"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:connect_server": {
       "auto_start": false,
@@ -1005,6 +1237,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "connect_server",
       "input_schema": {
         "properties": {
@@ -1022,11 +1255,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.connect.name",
         "default": "Connect MCP Server"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:disconnect_server": {
       "auto_start": false,
@@ -1037,6 +1290,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "disconnect_server",
       "input_schema": {
         "properties": {
@@ -1054,11 +1308,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.disconnect.name",
         "default": "Disconnect MCP Server"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:gateway_invoke": {
       "auto_start": false,
@@ -1069,6 +1343,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "gateway_invoke",
       "input_schema": {
         "properties": {
@@ -1107,11 +1382,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.gatewayInvoke.name",
         "default": "Gateway Invoke"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:list_servers": {
       "auto_start": false,
@@ -1122,17 +1417,38 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_servers",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.listServers.name",
         "default": "List MCP Servers"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:list_tools": {
       "auto_start": false,
@@ -1143,6 +1459,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_tools",
       "input_schema": {
         "properties": {
@@ -1157,11 +1474,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.listTools.name",
         "default": "List MCP Tools"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "mcp_adapter:plugin_entry:remove_servers": {
       "auto_start": false,
@@ -1172,6 +1509,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "remove_servers",
       "input_schema": {
         "properties": {
@@ -1192,14 +1530,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entries.removeServers.name",
         "default": "Remove MCP Servers"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 261548,
   "source_files": [

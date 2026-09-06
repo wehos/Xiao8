@@ -16,7 +16,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -119,7 +118,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -146,7 +144,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -165,7 +162,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -190,14 +186,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "clear_events",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "清空事件日志"
+      "model_validate": true,
+      "name": "清空事件日志",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion.get_events": {
       "auto_start": false,
@@ -205,6 +212,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_events",
       "input_schema": {
         "properties": {
@@ -217,8 +225,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "count",
+        "events"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {},
+          "events": {}
+        },
+        "required": [
+          "count",
+          "events"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "获取事件日志"
+      "model_validate": true,
+      "name": "获取事件日志",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion.get_status": {
       "auto_start": false,
@@ -226,14 +257,44 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "port",
+        "user_name",
+        "event_count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "event_count": {},
+          "port": {},
+          "status": {},
+          "user_name": {}
+        },
+        "required": [
+          "status",
+          "port",
+          "user_name",
+          "event_count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "获取状态"
+      "model_validate": true,
+      "name": "获取状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion.set_cooldown": {
       "auto_start": false,
@@ -241,6 +302,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_cooldown",
       "input_schema": {
         "properties": {
@@ -255,8 +317,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "设置冷却时间"
+      "model_validate": true,
+      "name": "设置冷却时间",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion.set_user_name": {
       "auto_start": false,
@@ -264,6 +336,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_user_name",
       "input_schema": {
         "properties": {
@@ -278,8 +351,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "设置用户名"
+      "model_validate": true,
+      "name": "设置用户名",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion.test_push": {
       "auto_start": false,
@@ -287,14 +370,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "test_push",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "测试推送"
+      "model_validate": true,
+      "name": "测试推送",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:lifecycle:shutdown": {
       "auto_start": false,
@@ -302,14 +396,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:lifecycle:startup": {
       "auto_start": false,
@@ -317,14 +422,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:plugin_entry:clear_events": {
       "auto_start": false,
@@ -332,14 +448,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "clear_events",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "清空事件日志"
+      "model_validate": true,
+      "name": "清空事件日志",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:plugin_entry:get_events": {
       "auto_start": false,
@@ -347,6 +474,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_events",
       "input_schema": {
         "properties": {
@@ -359,8 +487,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "count",
+        "events"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {},
+          "events": {}
+        },
+        "required": [
+          "count",
+          "events"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "获取事件日志"
+      "model_validate": true,
+      "name": "获取事件日志",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:plugin_entry:get_status": {
       "auto_start": false,
@@ -368,14 +519,44 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "port",
+        "user_name",
+        "event_count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "event_count": {},
+          "port": {},
+          "status": {},
+          "user_name": {}
+        },
+        "required": [
+          "status",
+          "port",
+          "user_name",
+          "event_count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "获取状态"
+      "model_validate": true,
+      "name": "获取状态",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:plugin_entry:set_cooldown": {
       "auto_start": false,
@@ -383,6 +564,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_cooldown",
       "input_schema": {
         "properties": {
@@ -397,8 +579,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "设置冷却时间"
+      "model_validate": true,
+      "name": "设置冷却时间",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:plugin_entry:set_user_name": {
       "auto_start": false,
@@ -406,6 +598,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_user_name",
       "input_schema": {
         "properties": {
@@ -420,8 +613,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "设置用户名"
+      "model_validate": true,
+      "name": "设置用户名",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "claude_companion:plugin_entry:test_push": {
       "auto_start": false,
@@ -429,17 +632,28 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "test_push",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "测试推送"
+      "model_validate": true,
+      "name": "测试推送",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 107242,
   "source_files": [

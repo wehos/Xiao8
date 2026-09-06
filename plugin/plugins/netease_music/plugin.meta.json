@@ -29,7 +29,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -71,7 +70,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -118,7 +116,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -146,6 +143,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "clear_music_u",
       "input_schema": {
         "additionalProperties": false,
@@ -162,11 +160,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.clear.name",
         "default": "清除网易云凭据"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "netease_music.play_netease_music": {
       "auto_start": false,
@@ -177,6 +185,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "play_netease_music",
       "input_schema": {
         "additionalProperties": false,
@@ -200,11 +209,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.play.name",
         "default": "播放网易云歌曲"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": 20.0
     },
     "netease_music.save_music_u": {
       "auto_start": false,
@@ -215,6 +234,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "save_music_u",
       "input_schema": {
         "additionalProperties": false,
@@ -243,11 +263,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.save.name",
         "default": "保存网易云凭据"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "netease_music:lifecycle:shutdown": {
       "auto_start": false,
@@ -255,14 +285,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "netease_music:lifecycle:startup": {
       "auto_start": false,
@@ -270,14 +311,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "netease_music:plugin_entry:clear_music_u": {
       "auto_start": false,
@@ -288,6 +340,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "clear_music_u",
       "input_schema": {
         "additionalProperties": false,
@@ -304,11 +357,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.clear.name",
         "default": "清除网易云凭据"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "netease_music:plugin_entry:play_netease_music": {
       "auto_start": false,
@@ -319,6 +382,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "play_netease_music",
       "input_schema": {
         "additionalProperties": false,
@@ -342,11 +406,21 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.play.name",
         "default": "播放网易云歌曲"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": 20.0
     },
     "netease_music:plugin_entry:save_music_u": {
       "auto_start": false,
@@ -357,6 +431,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "save_music_u",
       "input_schema": {
         "additionalProperties": false,
@@ -385,14 +460,24 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.save.name",
         "default": "保存网易云凭据"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 68416,
   "source_files": [

@@ -658,6 +658,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "add_app",
       "input_schema": {
         "properties": {
@@ -707,11 +708,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "name",
+        "path",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "message": {},
+          "name": {},
+          "path": {}
+        },
+        "required": [
+          "app_id",
+          "name",
+          "path",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.add_app.name",
         "default": "添加软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.export_apps": {
       "auto_start": false,
@@ -722,17 +752,44 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "export_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "apps",
+        "count",
+        "export_data"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "apps": {},
+          "count": {},
+          "export_data": {}
+        },
+        "required": [
+          "apps",
+          "count",
+          "export_data"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.export_apps.name",
         "default": "导出软件配置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.get_all_autostart_status": {
       "auto_start": false,
@@ -743,17 +800,44 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_all_autostart_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "autostart_apps",
+        "count",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "autostart_apps": {},
+          "count": {},
+          "message": {}
+        },
+        "required": [
+          "autostart_apps",
+          "count",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_all_autostart_status.name",
         "default": "获取所有软件开机自启状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.get_autostart_status": {
       "auto_start": false,
@@ -764,6 +848,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_autostart_status",
       "input_schema": {
         "properties": {
@@ -781,11 +866,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "app_name",
+        "enabled",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "app_name": {},
+          "enabled": {},
+          "message": {}
+        },
+        "required": [
+          "app_id",
+          "app_name",
+          "enabled",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_autostart_status.name",
         "default": "获取开机自启状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.get_available_apps": {
       "auto_start": false,
@@ -796,17 +910,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_available_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "available_apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "available_apps": {},
+          "count": {}
+        },
+        "required": [
+          "available_apps",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_available_apps.name",
         "default": "获取可用软件列表"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.get_categories": {
       "auto_start": false,
@@ -817,17 +955,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_categories",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "categories",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "categories": {},
+          "count": {}
+        },
+        "required": [
+          "categories",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_categories.name",
         "default": "获取分类列表"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.get_recent_apps": {
       "auto_start": false,
@@ -838,17 +1000,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_recent_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "recent_apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {},
+          "recent_apps": {}
+        },
+        "required": [
+          "recent_apps",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_recent_apps.name",
         "default": "获取最近使用记录"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.launch_app": {
       "auto_start": false,
@@ -859,6 +1045,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "launch_app",
       "input_schema": {
         "properties": {
@@ -880,11 +1067,37 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "success",
+        "message",
+        "app_name"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_name": {},
+          "message": {},
+          "success": {}
+        },
+        "required": [
+          "success",
+          "message",
+          "app_name"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.launch_app.name",
         "default": "启动软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.list_apps": {
       "auto_start": false,
@@ -895,17 +1108,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "apps": {},
+          "count": {}
+        },
+        "required": [
+          "apps",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.list_apps.name",
         "default": "列出已注册软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.remove_app": {
       "auto_start": false,
@@ -916,6 +1153,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "remove_app",
       "input_schema": {
         "properties": {
@@ -933,11 +1171,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted",
+        "name"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {},
+          "name": {}
+        },
+        "required": [
+          "deleted",
+          "name"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.remove_app.name",
         "default": "删除软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.set_autostart": {
       "auto_start": false,
@@ -948,6 +1209,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_autostart",
       "input_schema": {
         "properties": {
@@ -973,11 +1235,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "success",
+        "message",
+        "app_name",
+        "enabled"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_name": {},
+          "enabled": {},
+          "message": {},
+          "success": {}
+        },
+        "required": [
+          "success",
+          "message",
+          "app_name",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.set_autostart.name",
         "default": "设置开机自启"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher.update_app": {
       "auto_start": false,
@@ -988,6 +1279,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "update_app",
       "input_schema": {
         "properties": {
@@ -1036,11 +1328,37 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "name",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "message": {},
+          "name": {}
+        },
+        "required": [
+          "app_id",
+          "name",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.update_app.name",
         "default": "更新软件信息"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:lifecycle:shutdown": {
       "auto_start": false,
@@ -1048,14 +1366,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:lifecycle:startup": {
       "auto_start": false,
@@ -1063,14 +1392,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:add_app": {
       "auto_start": false,
@@ -1081,6 +1421,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "add_app",
       "input_schema": {
         "properties": {
@@ -1130,11 +1471,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "name",
+        "path",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "message": {},
+          "name": {},
+          "path": {}
+        },
+        "required": [
+          "app_id",
+          "name",
+          "path",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.add_app.name",
         "default": "添加软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:export_apps": {
       "auto_start": false,
@@ -1145,17 +1515,44 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "export_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "apps",
+        "count",
+        "export_data"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "apps": {},
+          "count": {},
+          "export_data": {}
+        },
+        "required": [
+          "apps",
+          "count",
+          "export_data"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.export_apps.name",
         "default": "导出软件配置"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:get_all_autostart_status": {
       "auto_start": false,
@@ -1166,17 +1563,44 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_all_autostart_status",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "autostart_apps",
+        "count",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "autostart_apps": {},
+          "count": {},
+          "message": {}
+        },
+        "required": [
+          "autostart_apps",
+          "count",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_all_autostart_status.name",
         "default": "获取所有软件开机自启状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:get_autostart_status": {
       "auto_start": false,
@@ -1187,6 +1611,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_autostart_status",
       "input_schema": {
         "properties": {
@@ -1204,11 +1629,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "app_name",
+        "enabled",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "app_name": {},
+          "enabled": {},
+          "message": {}
+        },
+        "required": [
+          "app_id",
+          "app_name",
+          "enabled",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_autostart_status.name",
         "default": "获取开机自启状态"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:get_available_apps": {
       "auto_start": false,
@@ -1219,17 +1673,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_available_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "available_apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "available_apps": {},
+          "count": {}
+        },
+        "required": [
+          "available_apps",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_available_apps.name",
         "default": "获取可用软件列表"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:get_categories": {
       "auto_start": false,
@@ -1240,17 +1718,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_categories",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "categories",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "categories": {},
+          "count": {}
+        },
+        "required": [
+          "categories",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_categories.name",
         "default": "获取分类列表"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:get_recent_apps": {
       "auto_start": false,
@@ -1261,17 +1763,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "get_recent_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "recent_apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {},
+          "recent_apps": {}
+        },
+        "required": [
+          "recent_apps",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.get_recent_apps.name",
         "default": "获取最近使用记录"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:launch_app": {
       "auto_start": false,
@@ -1282,6 +1808,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "launch_app",
       "input_schema": {
         "properties": {
@@ -1303,11 +1830,37 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "success",
+        "message",
+        "app_name"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_name": {},
+          "message": {},
+          "success": {}
+        },
+        "required": [
+          "success",
+          "message",
+          "app_name"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.launch_app.name",
         "default": "启动软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:list_apps": {
       "auto_start": false,
@@ -1318,17 +1871,41 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_apps",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "apps": {},
+          "count": {}
+        },
+        "required": [
+          "apps",
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.list_apps.name",
         "default": "列出已注册软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:remove_app": {
       "auto_start": false,
@@ -1339,6 +1916,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "remove_app",
       "input_schema": {
         "properties": {
@@ -1356,11 +1934,34 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted",
+        "name"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {},
+          "name": {}
+        },
+        "required": [
+          "deleted",
+          "name"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.remove_app.name",
         "default": "删除软件"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:set_autostart": {
       "auto_start": false,
@@ -1371,6 +1972,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "set_autostart",
       "input_schema": {
         "properties": {
@@ -1396,11 +1998,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "success",
+        "message",
+        "app_name",
+        "enabled"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_name": {},
+          "enabled": {},
+          "message": {},
+          "success": {}
+        },
+        "required": [
+          "success",
+          "message",
+          "app_name",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.set_autostart.name",
         "default": "设置开机自启"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "app_launcher:plugin_entry:update_app": {
       "auto_start": false,
@@ -1411,6 +2042,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "update_app",
       "input_schema": {
         "properties": {
@@ -1459,14 +2091,40 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "name",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "message": {},
+          "name": {}
+        },
+        "required": [
+          "app_id",
+          "name",
+          "message"
+        ],
+        "type": "object"
+      },
       "metadata": {},
+      "model_validate": true,
       "name": {
         "$i18n": "entry.update_app.name",
         "default": "更新软件信息"
-      }
+      },
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 201717,
   "source_files": [

@@ -81,7 +81,6 @@
         "type": "object"
       },
       "kind": "action",
-      "llm_result_fields": [],
       "llm_result_schema": {},
       "metadata": {},
       "model_validate": true,
@@ -200,6 +199,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "add_reminder",
       "input_schema": {
         "properties": {
@@ -228,8 +228,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message",
+        "trigger_at_local"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {},
+          "trigger_at_local": {}
+        },
+        "required": [
+          "message",
+          "trigger_at_local"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "添加提醒"
+      "model_validate": true,
+      "name": "添加提醒",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder.bind_task": {
       "auto_start": false,
@@ -237,6 +260,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "bind_task",
       "input_schema": {
         "properties": {
@@ -254,8 +278,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "绑定Agent任务ID"
+      "model_validate": true,
+      "name": "绑定Agent任务ID",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder.clear_reminders": {
       "auto_start": false,
@@ -263,14 +297,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "clear_reminders",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "cleared"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "cleared": {}
+        },
+        "required": [
+          "cleared"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "清空所有提醒"
+      "model_validate": true,
+      "name": "清空所有提醒",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder.delete_reminder": {
       "auto_start": false,
@@ -278,6 +333,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "delete_reminder",
       "input_schema": {
         "properties": {
@@ -292,8 +348,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {}
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "删除提醒"
+      "model_validate": true,
+      "name": "删除提醒",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder.list_reminders": {
       "auto_start": false,
@@ -301,14 +377,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_reminders",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {}
+        },
+        "required": [
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "查看提醒列表"
+      "model_validate": true,
+      "name": "查看提醒列表",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:lifecycle:shutdown": {
       "auto_start": false,
@@ -316,14 +413,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "shutdown",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "shutdown"
+      "model_validate": true,
+      "name": "shutdown",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:lifecycle:startup": {
       "auto_start": false,
@@ -331,14 +439,25 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "lifecycle",
+      "extra": {},
       "id": "startup",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "lifecycle",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "startup"
+      "model_validate": true,
+      "name": "startup",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:plugin_entry:add_reminder": {
       "auto_start": false,
@@ -346,6 +465,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "add_reminder",
       "input_schema": {
         "properties": {
@@ -374,8 +494,31 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "message",
+        "trigger_at_local"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {},
+          "trigger_at_local": {}
+        },
+        "required": [
+          "message",
+          "trigger_at_local"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "添加提醒"
+      "model_validate": true,
+      "name": "添加提醒",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:plugin_entry:bind_task": {
       "auto_start": false,
@@ -383,6 +526,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "bind_task",
       "input_schema": {
         "properties": {
@@ -400,8 +544,18 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": null,
+      "llm_result_schema": null,
       "metadata": {},
-      "name": "绑定Agent任务ID"
+      "model_validate": true,
+      "name": "绑定Agent任务ID",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:plugin_entry:clear_reminders": {
       "auto_start": false,
@@ -409,14 +563,35 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "clear_reminders",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "cleared"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "cleared": {}
+        },
+        "required": [
+          "cleared"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "清空所有提醒"
+      "model_validate": true,
+      "name": "清空所有提醒",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:plugin_entry:delete_reminder": {
       "auto_start": false,
@@ -424,6 +599,7 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "delete_reminder",
       "input_schema": {
         "properties": {
@@ -438,8 +614,28 @@
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "deleted"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {}
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "删除提醒"
+      "model_validate": true,
+      "name": "删除提醒",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     },
     "memo_reminder:plugin_entry:list_reminders": {
       "auto_start": false,
@@ -447,17 +643,38 @@
       "dynamic": false,
       "enabled": true,
       "event_type": "plugin_entry",
+      "extra": {},
       "id": "list_reminders",
       "input_schema": {
         "properties": {},
         "type": "object"
       },
       "kind": "action",
+      "llm_result_fields": [
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {}
+        },
+        "required": [
+          "count"
+        ],
+        "type": "object"
+      },
       "metadata": {},
-      "name": "查看提醒列表"
+      "model_validate": true,
+      "name": "查看提醒列表",
+      "persist": null,
+      "quick_action": false,
+      "quick_action_config": {
+        "icon": null,
+        "priority": 0
+      },
+      "timeout": null
     }
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sdk_version": "0.1.0",
   "source_bytes": 30092,
   "source_files": [

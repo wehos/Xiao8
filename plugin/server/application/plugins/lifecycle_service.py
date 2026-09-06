@@ -10,6 +10,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
     import tomli as tomllib  # type: ignore[no-redef]
 from collections.abc import Mapping
+from copy import deepcopy
 from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,12 +19,15 @@ from typing import Any, Protocol, runtime_checkable
 from fastapi import HTTPException
 
 from plugin._types.exceptions import PluginError, PluginLifecycleError
+from plugin._types.entry_metadata import entry_contract_fields
 from plugin.core.host import PluginProcessHost
 from plugin.core.registry import (
     _collect_plugin_python_requirements,
     _collect_plugin_python_requirement_paths,
     _check_plugin_dependency,
     _find_missing_python_requirements,
+    _effective_entries,
+    _overlay_entry_declaration,
     _parse_plugin_dependencies,
     _resolve_plugin_id_conflict,
 )
@@ -59,7 +63,10 @@ from plugin.server.application.plugins.metadata_scanner import (
     install_isolated_plugin_metadata,
     scan_plugin_metadata_isolated,
 )
-from plugin.server.infrastructure.packaged_metadata import read_packaged_metadata
+from plugin.server.infrastructure.packaged_metadata import (
+    PackagedPluginMetadata,
+    read_packaged_metadata,
+)
 from plugin.server.application.install_source import (
     InstallSourceError,
     get_install_source_manager,
@@ -131,6 +138,87 @@ def _resolve_python_requirements(
 
 
 _MIN_CLAMPED_STOP_TIMEOUT = 1.0
+# 必须补齐的三个：宿主从 handler meta 投影进 /plugins，缺了就改变行为。
+_V3_RECOVERABLE_ENTRY_FIELDS = ("timeout", "llm_result_fields", "metadata")
+# llm_result_schema 也会被投影，但它缺席不改变行为——结果字段一旦恢复，那条
+# "从 schema 的 properties 推导"的兜底就走不到。所以带得出就补，补不出不回落。
+# 剩下的控制字段（model_validate / persist / quick_action / quick_action_config /
+# extra）宿主一处都不读：校验在子进程按真 SDK 元数据做，快捷操作也没有服务端消费
+# 者；而 preview 根本不带后四个，把它们要求成"补不齐就重扫"等于让每个 v3 包都重
+# 扫，这条兼容路径就白写了（greptile）。
+_V3_BEST_EFFORT_ENTRY_FIELDS = ("llm_result_schema",)
+_V3_RESTORED_ENTRY_FIELDS = _V3_RECOVERABLE_ENTRY_FIELDS + _V3_BEST_EFFORT_ENTRY_FIELDS
+
+
+def _v3_entry_is_restored(meta: dict[str, object]) -> bool:
+    """Whether this handler now carries everything the host reads from it."""
+    for key in _V3_RECOVERABLE_ENTRY_FIELDS:
+        if key in meta:
+            continue
+        # 结果字段缺席但 schema 在，投影侧会按 schema 推，推出来的正是重扫会给的
+        # 那一份——不必为它把整个插件赶去重扫。v3 的 preview 把"没声明"规范化成
+        # 了 []，那份空列表已经在读取时被丢掉（packaged_metadata 里说明了原因）。
+        if key == "llm_result_fields" and meta.get("llm_result_schema"):
+            continue
+        return False
+    return True
+
+
+def _restore_v3_packaged_handlers(
+    packaged: PackagedPluginMetadata, conf: object, pdata: object,
+) -> dict[str, dict[str, object]] | None:
+    """Restore old controls only after the effective-config digest matches.
+
+    v3 dropped even explicitly cleared controls from configured entries. Their
+    decorator-first previews cannot recover that intent; overlay explicit
+    configuration on the preview, inheriting fields the configuration omits.
+    Decorator-only handlers can fill absent keys from their previews,
+    while existing values (including empty ones) remain authoritative.
+    Recovery is limited to timeout, result fields and metadata, not a general
+    schema migration. Other configured controls requiring changes need a scan.
+    """
+    configured: dict[str, dict[str, object]] = {}
+    for entry in _effective_entries(
+        dict(conf) if isinstance(conf, Mapping) else {},
+        dict(pdata) if isinstance(pdata, Mapping) else {},
+    ):
+        entry_id = entry.get("id") if isinstance(entry, dict) else str(entry)
+        if entry_id:
+            configured[str(entry_id)] = entry if isinstance(entry, dict) else {}
+    previews = {str(entry.get("id")): entry for entry in packaged.entries}
+    handlers = deepcopy(packaged.handlers)
+    for meta in handlers.values():
+        if meta.get("event_type", "plugin_entry") != "plugin_entry":
+            continue
+        entry_id = str(meta.get("id", ""))
+        if entry_id in configured:
+            # A configured id is resolved as a class attribute. An aliased
+            # decorator may have caused that declaration to be skipped; the
+            # artifact cannot tell us whether that attribute actually exists.
+            if packaged.entry_methods.get(entry_id, entry_id) != entry_id:
+                return None
+            controls = entry_contract_fields(configured[entry_id])
+            if any(
+                key not in _V3_RESTORED_ENTRY_FIELDS
+                and (key not in meta or meta[key] != value)
+                for key, value in controls.items()
+            ):
+                return None
+            for key in _V3_RESTORED_ENTRY_FIELDS:
+                if key in controls:
+                    meta[key] = deepcopy(controls[key])
+                elif key in previews.get(entry_id, {}):
+                    meta[key] = deepcopy(previews[entry_id][key])
+            if not _v3_entry_is_restored(meta):
+                return None
+        else:
+            preview = previews.get(entry_id, {})
+            for key in _V3_RESTORED_ENTRY_FIELDS:
+                if key not in meta and key in preview:
+                    meta[key] = deepcopy(preview[key])
+            if not _v3_entry_is_restored(meta):
+                return None
+    return handlers
 
 
 def _read_packaged_isolated_metadata(
@@ -157,12 +245,12 @@ def _read_packaged_isolated_metadata(
     worker in that case, since it mints keys under the id we pass it.
 
     An empty ``handlers`` mapping is an answer, not a gap: a background-only
-    plugin registers no entries, and schema v3 always writes the key. Treating
-    empty as "no metadata" sent exactly those plugins back through the worker —
+    plugin registers no entries, and the current schema always writes the key.
+    Treating empty as "no metadata" sent exactly those plugins back through the worker —
     one import for the scan, one for the host, so any module-level side effect
     (writing state, sending a notification, launching a helper) happened twice
-    (codex). There is no older package to protect: the version gate above only
-    accepts v3, and v1/v2 were never released.
+    (codex). v3 handler controls are restored in memory after the same source,
+    configuration, environment and ownership checks as current artifacts.
 
     Returns ``None`` when there is no usable metadata at all.
     """
@@ -196,9 +284,23 @@ def _read_packaged_isolated_metadata(
             plugin_id,
         )
         return None
+    handlers = (
+        _restore_v3_packaged_handlers(packaged, conf, pdata)
+        if packaged.schema_version == 3 else dict(packaged.handlers)
+    )
+    if handlers is None:
+        logger.info(
+            "v3 packaged controls cannot be restored unambiguously; rescanning: plugin_id={}",
+            plugin_id,
+        )
+        return None
     return IsolatedPluginMetadata(
-        entries_preview=list(packaged.entries),
-        handlers=dict(packaged.handlers),
+        entries_preview=_overlay_entry_declaration(
+            packaged.entries,
+            dict(conf) if isinstance(conf, Mapping) else {},
+            dict(pdata) if isinstance(pdata, Mapping) else {},
+        ),
+        handlers=handlers,
         entry_methods=dict(packaged.entry_methods),
     )
 

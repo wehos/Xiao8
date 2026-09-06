@@ -251,6 +251,16 @@ test('frame-pacing：非 Pet 页面 currentTimerTickFps 恒为 null', () => {
     assert.equal(sb.window.nekoFramePacing.currentTimerTickFps(), null);
 });
 
+test('契约：反应气泡跟随循环通过 frame-pacing 排帧', () => {
+    const src = read('static/avatar/avatar-reaction-bubble.js');
+    assert.match(src, /function scheduleFollowFrame\(tick\)[\s\S]*?state\.followPacedCancel = pacing\.requestPacedFrame\(tick\);/);
+    assert.match(src, /function stopFollowLoop\(\) \{\s*cancelFollowFrame\(\);/);
+    const follow = src.slice(src.indexOf('function extendFollowLoop('), src.indexOf('function syncPositionOnce('));
+    assert.doesNotMatch(follow, /requestAnimationFrame\(tick\)/, 'extendFollowLoop 内不允许直接排 rAF');
+    assert.equal((follow.match(/scheduleFollowFrame\(tick\);/g) || []).length, 2, '首帧与续帧都走 paced 排帧');
+    assert.match(follow, /if \(isFollowFrameScheduled\(\)\) \{\s*return;/, '已排帧判定要同时认 rAF 与定时器句柄');
+});
+
 test('契约：麦克风音量监测与口型同步循环通过 frame-pacing 排帧', () => {
     const capture = read('static/app/app-audio-capture.js');
     assert.match(capture, /function scheduleMonitorInputVolume\(\)[\s\S]*?pacing\.requestPacedFrame\(monitorInputVolume\)/);
@@ -619,21 +629,33 @@ function loadVrmPhysicsStep() {
     return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', helperSrc + src.slice(start, end));
 }
 function makeVrmPhysicsCtx({ componentApi = true } = {}) {
-    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, lookAtTime: [], materialTime: [], currentModel: null };
+    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, lookAtTime: [], materialTime: [], order: [], currentModel: null };
     ctx.newModel = () => {
         const vrm = {
-            update: (d) => { ctx.simulated += d; ctx.lookAtTime.push(d); ctx.materialTime.push(d); },
-            lookAt: { update: (d) => { ctx.lookAtTime.push(d); } },
-            expressionManager: { update() {} },
-            humanoid: { update() {} },
-            materials: [{ update: (d) => { ctx.materialTime.push(d); } }, {}],
+            update: (d) => { ctx.simulated += d; ctx.lookAtTime.push(d); ctx.materialTime.push(d); ctx.order.push('whole'); },
+            lookAt: { update: (d) => { ctx.lookAtTime.push(d); ctx.order.push('lookAt'); } },
+            expressionManager: { update() { ctx.order.push('expression'); } },
+            humanoid: { update() { ctx.order.push('humanoid'); } },
+            nodeConstraintManager: { update() { ctx.order.push('constraint'); } },
+            materials: [{ update: (d) => { ctx.materialTime.push(d); ctx.order.push('material'); } }, {}],
         };
-        if (componentApi) vrm.springBoneManager = { update: (d) => { ctx.simulated += d; } };
+        if (componentApi) vrm.springBoneManager = { update: (d) => { ctx.simulated += d; ctx.order.push('spring'); } };
         ctx.currentModel = { vrm };
     };
     ctx.newModel();
     return ctx;
 }
+
+test('VRM 分量更新顺序与 three-vrm VRM.update 一致：humanoid → lookAt → 表情 → 约束 → 弹簧骨 → 材质', () => {
+    const run = loadVrmPhysicsStep();
+    const ctx = makeVrmPhysicsCtx();
+    run.call(ctx, 0.0167, { renderQuality: 'high' }, 0.05);
+    assert.deepEqual(ctx.order, ['humanoid', 'lookAt', 'expression', 'constraint', 'spring', 'material'],
+        '约束/弹簧骨必须在 LookAt 驱动的姿态之后');
+    // 打包版 three-vrm 里 VRM.update 的真实顺序，防止库升级后两边漂移
+    const lib = read('static/libs/three-vrm.module.min.js');
+    assert.match(lib, /update\(e\)\{super\.update\(e\),this\.nodeConstraintManager&&this\.nodeConstraintManager\.update\(\),this\.springBoneManager&&this\.springBoneManager\.update\(e\),this\.materials&&this\.materials\.forEach/);
+});
 
 test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt / MToon 材质每 tick 只推进当前 delta', () => {
     const run = loadVrmPhysicsStep();

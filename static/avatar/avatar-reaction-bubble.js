@@ -132,6 +132,7 @@
         turnEndedAt: 0,
         speechStartedAt: 0,
         followRafId: 0,
+        followPacedCancel: null,
         followUntilAt: 0,
         hideTimerId: 0,
         timeoutTimerId: 0,
@@ -312,11 +313,37 @@
         clearTimer('emotionSwapTimerId');
     }
 
-    function stopFollowLoop() {
+    // 取消已排的跟随帧：rAF / 定时器（frame-pacing）两种句柄都覆盖
+    function cancelFollowFrame() {
         if (state.followRafId) {
             cancelAnimationFrame(state.followRafId);
             state.followRafId = 0;
         }
+        if (state.followPacedCancel) {
+            try { state.followPacedCancel(); } catch (_) {}
+            state.followPacedCancel = null;
+        }
+    }
+
+    // 排下一帧跟随：Electron Pet 里渲染后端切到定时器驱动时，本循环也走同周期定时器
+    // （否则 10s 跟随窗口会单独把 Blink 主帧顶回显示器刷新率）；否则 rAF。
+    function scheduleFollowFrame(tick) {
+        var pacing = window.nekoFramePacing;
+        if (pacing && typeof pacing.requestPacedFrame === 'function') {
+            state.followRafId = 0;
+            state.followPacedCancel = pacing.requestPacedFrame(tick);
+            return;
+        }
+        state.followPacedCancel = null;
+        state.followRafId = requestAnimationFrame(tick);
+    }
+
+    function isFollowFrameScheduled() {
+        return !!(state.followRafId || state.followPacedCancel);
+    }
+
+    function stopFollowLoop() {
+        cancelFollowFrame();
         state.followUntilAt = 0;
         state.isAvatarPointerActive = false;
     }
@@ -2151,12 +2178,13 @@
         }
 
         state.followUntilAt = Math.max(state.followUntilAt, perfNow() + duration);
-        if (state.followRafId) {
+        if (isFollowFrameScheduled()) {
             return;
         }
 
         var tick = function () {
             state.followRafId = 0;
+            state.followPacedCancel = null;
             if (!state.visible) {
                 state.followUntilAt = 0;
                 return;
@@ -2164,13 +2192,13 @@
 
             updatePosition();
             if (state.followUntilAt > perfNow()) {
-                state.followRafId = requestAnimationFrame(tick);
+                scheduleFollowFrame(tick);
             } else {
                 state.followUntilAt = 0;
             }
         };
 
-        state.followRafId = requestAnimationFrame(tick);
+        scheduleFollowFrame(tick);
     }
 
     function syncPositionOnce() {

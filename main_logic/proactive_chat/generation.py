@@ -2361,6 +2361,33 @@ def _strip_proactive_intent_label_leak(text: str) -> str:
     return text
 
 
+def _link_matches_phase1_title(title: str, link: dict) -> bool:
+    """Match a model-returned title against canonical or prompt-safe text."""
+
+    title_lower = title.lower().strip()
+    if not title_lower:
+        return False
+    for field in ("title", "phase1_title"):
+        link_title = str(link.get(field) or "").lower().strip()
+        if link_title and (
+            link_title == title_lower
+            or link_title in title_lower
+            or title_lower in link_title
+        ):
+            return True
+    return False
+
+
+def _link_has_exact_phase1_title(title: str, link: dict) -> bool:
+    """Return whether a returned title exactly identifies this candidate."""
+
+    title_lower = title.lower().strip()
+    return bool(title_lower) and any(
+        str(link.get(field) or "").lower().strip() == title_lower
+        for field in ("title", "phase1_title")
+    )
+
+
 def _lookup_link_by_title(title: str, all_links: list[dict]) -> dict | None:
     """
     Look up the link matching a Phase 1 output title in all_web_links.
@@ -2368,15 +2395,36 @@ def _lookup_link_by_title(title: str, all_links: list[dict]) -> dict | None:
     - exact match (ignoring case and surrounding whitespace)
     - partial match (title contains or is contained, ignoring case and surrounding whitespace)
     """
-    title_lower = title.lower().strip()
     for link in all_links:
-        link_title = link.get("title", "").lower().strip()
-        if not link_title:
-            continue
-        if (
-            link_title == title_lower
-            or link_title in title_lower
-            or title_lower in link_title
-        ):
+        if _link_has_exact_phase1_title(title, link):
+            return link
+    for link in all_links:
+        if _link_matches_phase1_title(title, link):
             return link
     return None
+
+
+def _lookup_link_by_phase1_selection(
+    selection: dict[str, Any], all_links: list[dict]
+) -> dict | None:
+    """Resolve a Phase 1 pick by its source-global number before title fallback."""
+
+    source = str(selection.get("source") or "").strip()
+    try:
+        number = int(selection.get("number"))
+    except (TypeError, ValueError):
+        number = 0
+    if source and number > 0:
+        source_links = [
+            link
+            for link in all_links
+            if str(link.get("title") or "").strip()
+            and str(link.get("source") or "").strip().casefold() == source.casefold()
+        ]
+        if number <= len(source_links):
+            candidate = source_links[number - 1]
+            if _link_has_exact_phase1_title(
+                str(selection.get("title") or ""), candidate
+            ):
+                return candidate
+    return _lookup_link_by_title(str(selection.get("title") or ""), all_links)

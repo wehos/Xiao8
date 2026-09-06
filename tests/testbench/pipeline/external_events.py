@@ -1018,7 +1018,7 @@ async def simulate_agent_callback(
 
 
 _PROACTIVE_KINDS = frozenset({
-    "home", "screenshot", "window", "news", "video", "personal", "music",
+    "home", "screenshot", "window", "news", "community", "video", "personal", "music",
 })
 
 
@@ -1362,7 +1362,7 @@ def _build_proactive_instruction_bundle(
             requested=requested_kind,
             applied="home",
             note=(
-                "proactive kind 不在合法集合 (home/screenshot/window/news/"
+                "proactive kind 不在合法集合 (home/screenshot/window/news/community/"
                 "video/personal/music), 已回退到 home."
             ),
         ))

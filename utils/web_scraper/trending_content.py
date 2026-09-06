@@ -21,11 +21,12 @@ from itertools import zip_longest
 import httpx
 from utils.cookies_login import load_cookies_from_file
 from utils.external_http_client import get_external_http_client
+from utils.social_base import social_base_url
 import random
 import re
 import time
 from typing import TYPE_CHECKING, Dict, List, Any
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urljoin, urlparse
 
 # bs4 惰性 import（各解析函数内首用加载，utils.module_warmup 后台预热兜底）：本模块被
 # system_router 顶层引用、坐在 main_server 启动 import 链上，顶层 bs4 会拖慢端口就绪。
@@ -51,6 +52,17 @@ XHH_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/125.0.0.0 Safari/537.36"
 )
+# The community API's discover feed is deliberately fetched as its first page
+# of 60 cards. The caller's smaller ``limit`` is applied after normalization,
+# so Phase 1 keeps its existing prompt budget while still getting a varied pool.
+NEKO_COMMUNITY_FEED_PAGE_SIZE = 60
+
+
+def _neko_community_urls() -> tuple[str, str]:
+    """Return community feed and discover URLs for the configured social host."""
+
+    base_url = social_base_url().rstrip("/")
+    return f"{base_url}/api/feed", f"{base_url}/discover"
 
 
 async def fetch_bilibili_trending(limit: int = 30) -> Dict[str, Any]:
@@ -1683,6 +1695,208 @@ def format_xhh_feed(posts: list[dict[str, Any]]) -> str:
             line += f"\n   {description[:300]}"
         lines.append(line)
     return "\n".join(lines)
+
+
+def _community_feed_items(payload: Any) -> list[dict[str, Any]]:
+    """Return the first list-shaped card collection from a feed response."""
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+
+    containers: list[Any] = [payload]
+    for key in ("data", "result", "feed"):
+        value = payload.get(key)
+        if isinstance(value, (dict, list)):
+            containers.append(value)
+    for container in containers:
+        if isinstance(container, list):
+            return [item for item in container if isinstance(item, dict)]
+        if not isinstance(container, dict):
+            continue
+        for key in ("items", "posts", "cards", "results", "list"):
+            value = container.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _community_text(value: Any) -> str:
+    """Flatten the common text shapes used by public community feed cards."""
+    if isinstance(value, str):
+        return _plain_xhh_text(value)
+    if isinstance(value, dict):
+        for key in ("text", "content", "body", "value", "name", "display_name"):
+            text = _community_text(value.get(key))
+            if text:
+                return text
+        return ""
+    if isinstance(value, list):
+        return _plain_xhh_text(" ".join(_community_text(item) for item in value))
+    return ""
+
+
+def _community_label_values(items: Any) -> list[str]:
+    values: list[str] = []
+    for item in items if isinstance(items, list) else []:
+        value = _community_text(item)
+        if value and value not in values:
+            values.append(value)
+    return values
+
+
+def _community_identifier(value: Any) -> str:
+    """Normalize a public card identifier while retaining scalar numeric IDs."""
+
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return str(value).strip()
+    return _community_text(value)
+
+
+def _community_card_url(raw: dict[str, Any]) -> str:
+    _, discover_url = _neko_community_urls()
+    community_origin = urlparse(discover_url)
+    for key in (
+        "url",
+        "link",
+        "href",
+        "permalink",
+        "canonical_url",
+        "post_url",
+        "detail_url",
+        "path",
+    ):
+        candidate = _community_text(raw.get(key))
+        if not candidate or "\\" in candidate:
+            continue
+        try:
+            parsed_candidate = urlparse(candidate)
+        except ValueError:
+            continue
+        if parsed_candidate.scheme:
+            if parsed_candidate.scheme.lower() not in {"http", "https"}:
+                continue
+            resolved_url = candidate
+        else:
+            resolved_url = urljoin(discover_url, candidate)
+        try:
+            parsed_url = urlparse(resolved_url)
+        except ValueError:
+            continue
+        if (
+            parsed_url.scheme.lower() == community_origin.scheme.lower()
+            and parsed_url.netloc.casefold() == community_origin.netloc.casefold()
+        ):
+            return resolved_url
+    # The feed API does not need to expose a post permalink for a card to stay
+    # useful: the discover page is a safe, stable fallback for the source card.
+    return discover_url
+
+
+def normalize_neko_community_feed(
+    payload: Any,
+    *,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Normalize public N.E.K.O community feed cards for proactive chat."""
+    posts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in _community_feed_items(payload):
+        title = _community_text(
+            raw.get("title") or raw.get("headline") or raw.get("subject")
+        )
+        content = _community_text(
+            raw.get("story_md")
+            or raw.get("summary")
+            or raw.get("content")
+            or raw.get("body")
+            or raw.get("text")
+            or raw.get("description")
+            or raw.get("excerpt")
+        )
+        if not title:
+            title = content[:80]
+        if not title:
+            continue
+        author_data = (
+            raw.get("author")
+            or raw.get("author_name")
+            or raw.get("user")
+            or raw.get("creator")
+        )
+        author = _community_text(author_data)
+        labels = _community_label_values(
+            raw.get("tags") or raw.get("topics") or raw.get("categories")
+        )
+        url = _community_card_url(raw)
+        item_id = _community_identifier(
+            raw.get("id") or raw.get("post_id") or raw.get("uuid")
+        )
+        dedupe_key = item_id or f"{url}|{title.casefold()}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        posts.append(
+            {
+                "id": item_id,
+                "title": title,
+                "content": content,
+                "author": author,
+                "tags": labels,
+                "url": url,
+                "created_at": raw.get("created_at") or raw.get("createdAt"),
+            }
+        )
+        if len(posts) >= max(1, int(limit)):
+            break
+    return posts
+
+
+def format_neko_community_feed(posts: list[dict[str, Any]]) -> str:
+    """Format N.E.K.O community cards as bounded, prompt-ready material."""
+    lines: list[str] = []
+    for index, post in enumerate(posts, start=1):
+        details: list[str] = []
+        if post.get("author"):
+            details.append(f"作者: {post['author']}")
+        if post.get("tags"):
+            details.append("话题: " + "、".join(post["tags"][:5]))
+        suffix = f"（{'；'.join(details)}）" if details else ""
+        line = f"{index}. {post['title']}{suffix}"
+        content = _plain_xhh_text(post.get("content"))
+        if content and content != post["title"]:
+            line += f"\n   {content[:300]}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+async def fetch_neko_community_feed(limit: int = 10) -> dict[str, Any]:
+    """Fetch the public first-page discover cards from the N.E.K.O community."""
+    try:
+        feed_api, discover_url = _neko_community_urls()
+        response = await get_external_http_client().get(
+            feed_api,
+            params={"offset": 0, "limit": NEKO_COMMUNITY_FEED_PAGE_SIZE},
+            headers={
+                "Accept": "application/json",
+                "Referer": discover_url,
+                "User-Agent": XHH_USER_AGENT,
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        posts = normalize_neko_community_feed(payload, limit=limit)
+        if not posts:
+            raise ValueError("喵宇宙社区 feed 未返回可用卡牌")
+        return {
+            "success": True,
+            "posts": posts,
+            "formatted_content": format_neko_community_feed(posts),
+        }
+    except Exception as exc:
+        logger.warning(f"获取喵宇宙社区内容失败: {type(exc).__name__}: {exc}")
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}", "posts": []}
 
 
 async def fetch_xhh_feed_content(limit: int = 10) -> dict[str, Any]:

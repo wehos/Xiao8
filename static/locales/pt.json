@@ -3008,6 +3008,8 @@
             "proactiveVisionChatTooltip": "Requer Chat Proativo ativado e Modo Privacidade desativado",
             "proactiveNewsChat": "Site de notícias",
             "proactiveNewsChatTooltip": "Use tópicos populares e conteúdo inicial do Xiaoheihe",
+            "proactiveCommunityChat": "Comunidade N.E.K.O",
+            "proactiveCommunityChatTooltip": "Usar cartões públicos do feed Descobrir da comunidade N.E.K.O para iniciar conversas",
             "proactiveVideoChat": "Site de vídeo",
             "proactiveVideoChatTooltip": "Use conteúdo de vídeo para bate-papo proativo",
             "proactivePersonalChat": "Atualizações pessoais",

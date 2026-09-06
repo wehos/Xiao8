@@ -549,7 +549,7 @@
      * 检查是否有任何搭话方式被选中
      */
     function hasAnyChatModeEnabled() {
-        return S.proactiveVisionChatEnabled || S.proactiveNewsChatEnabled ||
+        return S.proactiveVisionChatEnabled || S.proactiveNewsChatEnabled || S.proactiveCommunityChatEnabled ||
             S.proactiveVideoChatEnabled || S.proactivePersonalChatEnabled ||
             S.proactiveMusicEnabled || S.proactiveMemeEnabled ||
             S.proactiveMiniGameInviteEnabled;
@@ -658,7 +658,7 @@
         }
 
         // 必须选择至少一种搭话方式
-        if (!S.proactiveVisionChatEnabled && !S.proactiveNewsChatEnabled &&
+        if (!S.proactiveVisionChatEnabled && !S.proactiveNewsChatEnabled && !S.proactiveCommunityChatEnabled &&
             !S.proactiveVideoChatEnabled && !S.proactivePersonalChatEnabled &&
             !S.proactiveMusicEnabled && !S.proactiveMemeEnabled &&
             !S.proactiveMiniGameInviteEnabled) {
@@ -666,7 +666,7 @@
         }
 
         // 如果只选择了视觉搭话，需要同时开启自主视觉
-        if (S.proactiveVisionChatEnabled && !S.proactiveNewsChatEnabled &&
+        if (S.proactiveVisionChatEnabled && !S.proactiveNewsChatEnabled && !S.proactiveCommunityChatEnabled &&
             !S.proactiveVideoChatEnabled && !S.proactivePersonalChatEnabled &&
             !S.proactiveMusicEnabled && !S.proactiveMemeEnabled &&
             !S.proactiveMiniGameInviteEnabled) {
@@ -674,7 +674,7 @@
         }
 
         // 如果只选择了个人动态搭话，需要同时开启个人动态
-        if (!S.proactiveVisionChatEnabled && !S.proactiveNewsChatEnabled &&
+        if (!S.proactiveVisionChatEnabled && !S.proactiveNewsChatEnabled && !S.proactiveCommunityChatEnabled &&
             !S.proactiveVideoChatEnabled && S.proactivePersonalChatEnabled &&
             !S.proactiveMusicEnabled && !S.proactiveMemeEnabled &&
             !S.proactiveMiniGameInviteEnabled) {
@@ -1129,9 +1129,14 @@
                 availableModes.push('window');
             }
 
-            // 新闻搭话：使用微博热议与小黑盒首页内容
+            // 新闻搭话：使用微博热议、贴吧与小黑盒首页内容
             if (S.proactiveNewsChatEnabled && S.proactiveChatEnabled) {
                 availableModes.push('news');
+            }
+
+            // 喵宇宙社区搭话：使用发现页的公开卡牌。
+            if (S.proactiveCommunityChatEnabled && S.proactiveChatEnabled) {
+                availableModes.push('community');
             }
 
             // 视频搭话：中文地区使用 B站，非中文地区使用 YouTube 首页 Feed
@@ -1252,6 +1257,9 @@
                 }
                 if (S.proactiveNewsChatEnabled && S.proactiveChatEnabled) {
                     latestModes.push('news');
+                }
+                if (S.proactiveCommunityChatEnabled && S.proactiveChatEnabled) {
+                    latestModes.push('community');
                 }
                 if (S.proactiveVideoChatEnabled && S.proactiveChatEnabled) {
                     latestModes.push('video');

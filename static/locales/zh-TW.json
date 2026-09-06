@@ -3008,6 +3008,8 @@
             "proactiveVisionChatTooltip": "需開啟主動搭話且關閉隱私模式",
             "proactiveNewsChat": "新聞網站",
             "proactiveNewsChatTooltip": "使用微博熱議和小黑盒首頁內容進行搭話",
+            "proactiveCommunityChat": "喵宇宙社群",
+            "proactiveCommunityChatTooltip": "使用喵宇宙社群探索頁的公開卡牌進行搭話",
             "proactiveVideoChat": "影片網站",
             "proactiveVideoChatTooltip": "使用視頻內容進行搭話",
             "proactivePersonalChat": "個人動態",

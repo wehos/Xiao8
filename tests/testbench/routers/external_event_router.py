@@ -73,7 +73,7 @@ class _ExternalEventRequest(BaseModel):
             "P25_BLUEPRINT §2.1). avatar 需 {interaction_id, tool_id, "
             "action_id, target='avatar', intensity?, ...}; agent_callback "
             "需 {callbacks: [str | {text:str}, ...]}; proactive 需 "
-            "{kind: home|screenshot|window|news|video|personal|music}."
+            "{kind: home|screenshot|window|news|community|video|personal|music}."
         ),
     )
     mirror_to_recent: bool = Field(

@@ -3008,6 +3008,8 @@
             "proactiveVisionChatTooltip": "自発的会話を有効にし、プライバシーモードを無効にする必要があります",
             "proactiveNewsChat": "ニュースサイト",
             "proactiveNewsChatTooltip": "トレンド話題と小黒盒のホーム内容をもとに話しかける",
+            "proactiveCommunityChat": "N.E.K.O コミュニティ",
+            "proactiveCommunityChatTooltip": "N.E.K.O コミュニティの発見ページにある公開カードを使って話しかける",
             "proactiveVideoChat": "動画サイト",
             "proactiveVideoChatTooltip": "動画コンテンツを使用してチャット",
             "proactivePersonalChat": "アクティビティ更新",

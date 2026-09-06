@@ -243,6 +243,7 @@
         proactiveVisionEnabled: false,
         proactiveVisionChatEnabled: true,
         proactiveNewsChatEnabled: false,
+        proactiveCommunityChatEnabled: false,
         proactiveVideoChatEnabled: true,
         proactivePersonalChatEnabled: false,
         proactiveMusicEnabled: true,
@@ -567,7 +568,7 @@
     // 使用 defineProperty 使 window.xxx 始终和 S.xxx 同步
     const proactiveKeys = [
         'proactiveChatEnabled', 'proactiveVisionEnabled', 'proactiveVisionChatEnabled',
-        'proactiveNewsChatEnabled', 'proactiveVideoChatEnabled', 'proactivePersonalChatEnabled',
+        'proactiveNewsChatEnabled', 'proactiveCommunityChatEnabled', 'proactiveVideoChatEnabled', 'proactivePersonalChatEnabled',
         'proactiveMusicEnabled', 'proactiveMemeEnabled', 'proactiveMiniGameInviteEnabled',
         'mergeMessagesEnabled', 'focusModeEnabled', 'focusCognitionEnabled',
         'proactiveChatInterval', 'proactiveVisionInterval', 'avatarReactionBubbleEnabled',

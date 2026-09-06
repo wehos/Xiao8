@@ -19,6 +19,7 @@ Owned by the proactive-chat domain layer.
 """
 
 __all__ = [
+    "_log_neko_community_content",
     "_log_news_content",
     "_log_personal_dynamics",
     "_log_trending_content",
@@ -75,6 +76,16 @@ def _log_news_content(lanlan_name: str, news_content: dict):
             print(f"[{lanlan_name}] 成功获取贴吧资源池: {len(tieba_items)} 条")
             for title in titles:
                 print(f"  - {title}")
+
+
+def _log_neko_community_content(lanlan_name: str, community_content: dict):
+    """Log cards fetched through the independent N.E.K.O community source."""
+    posts = community_content.get("posts") or []
+    titles = [post.get("title", "") for post in posts[:5]]
+    if titles:
+        print(f"[{lanlan_name}] 成功获取喵宇宙社区内容:")
+        for title in titles:
+            print(f"  - {title}")
 
 
 def _log_video_content(lanlan_name: str, video_content: dict):

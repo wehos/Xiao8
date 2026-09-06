@@ -86,6 +86,7 @@ from main_logic.proactive_chat.delivery import (
 )
 from main_logic.proactive_chat.candidate_selection import (
     _format_phase1_link_candidate,
+    _number_phase1_links_by_source,
     _phase1_linkless_modes,
     _round_robin_phase1_links,
 )
@@ -95,7 +96,7 @@ from main_logic.proactive_chat.generation import (
     _append_directives_section,
     _decide_phase1_channels,
     _fetch_phase1_followups,
-    _lookup_link_by_title,
+    _lookup_link_by_phase1_selection,
     _proactive_llm_retry_error_types,
     _run_phase2_generation,
     _run_unified_phase1,
@@ -1650,6 +1651,7 @@ async def handle_proactive_chat(
                 len(items) for items in selected_by_mode.values()
             )
             remaining_fallback_modes = len(fallback_modes)
+            phase1_source_positions: dict[str, int] = {}
             for mode in web_modes:
                 src = sources[mode]
                 label_map = PROACTIVE_SOURCE_LABELS.get(
@@ -1665,13 +1667,18 @@ async def handle_proactive_chat(
                             _format_phase1_link_candidate(index, item),
                             PROACTIVE_EXTERNAL_PER_ITEM_MAX_TOKENS,
                         )
-                        for index, item in enumerate(selected_links, start=1)
-                        if item.get("title", "").strip()
+                        for index, item in _number_phase1_links_by_source(
+                            selected_links, source_positions=phase1_source_positions
+                        )
                     ]
                     if lines:
                         parts.append(f"--- {label} ---\n" + "\n".join(lines))
                         continue
 
+                # Community cards only enter Phase 1 through selected links:
+                # a formatted fallback would bypass cooldown and data escaping.
+                if mode == "community":
+                    continue
                 content_text = src.get("formatted_content", "")
                 if content_text and remaining_total > 0:
                     compact_lines = [
@@ -1744,9 +1751,11 @@ async def handle_proactive_chat(
         # ============================================================
         web_parsed = unified_parsed.get("web")
         if web_parsed and web_parsed.get("title"):
-            matched = _lookup_link_by_title(web_parsed.get("title", ""), all_web_links)
+            matched = _lookup_link_by_phase1_selection(web_parsed, all_web_links)
             topic_key = _source_hash(
-                matched.get("url", "") if matched else "",
+                (matched.get("dedupe_key") or matched.get("url", ""))
+                if matched
+                else "",
                 web_parsed.get("title", ""),
             )
             # matched 的链接已经在 picking 阶段过了一次 _should_skip_source，
@@ -1760,11 +1769,15 @@ async def handle_proactive_chat(
             else:
                 if matched:
                     selected_web_link = dict(matched)
+                    canonical_title = matched.get("title", "")
+                    selected_title = (
+                        canonical_title
+                        if matched.get("mode") == "community"
+                        else web_parsed.get("title", canonical_title)
+                    )
                     selected_web_link.update(
                         {
-                            "title": web_parsed.get(
-                                "title", matched.get("title", "")
-                            ),
+                            "title": selected_title,
                             "url": matched["url"],
                             "source": web_parsed.get(
                                 "source", matched.get("source", "")

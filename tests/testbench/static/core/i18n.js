@@ -2618,6 +2618,7 @@ export const I18N = {
             screenshot: 'screenshot (桌面截图场景)',
             window: 'window (窗口搜索场景)',
             news: 'news (新闻推荐)',
+            community: 'community (喵宇宙社区卡牌)',
             video: 'video (视频推荐)',
             personal: 'personal (用户画像私聊)',
             music: 'music (音乐关键词推荐)',

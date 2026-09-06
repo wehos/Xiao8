@@ -14,14 +14,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from urllib.parse import urlparse
 
 import httpx
+from utils.social_base import (
+    DEFAULT_SOCIAL_BASE_URL,
+    configured_social_base_url,
+    social_base_url,
+)
 
 logger = logging.getLogger("neko.client_registration")
 
-DEFAULT_SOCIAL_BASE_URL = "https://community.project-neko.cn"
 HTTP_TIMEOUT_SEC = 15.0
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -33,19 +36,6 @@ UNREGISTERED_DETAILS = frozenset(
 
 _registered: dict[str, bool] = {}
 _register_lock = asyncio.Lock()
-
-
-def configured_social_base_url() -> str | None:
-    """Return the explicitly configured cloud base URL, or ``None`` when unset."""
-    raw = (os.environ.get("NEKO_SOCIAL_BASE_URL", "") or "").strip().rstrip("/")
-    return raw or None
-
-
-def social_base_url() -> str:
-    """Return the cloud base URL, falling back to production."""
-    return configured_social_base_url() or DEFAULT_SOCIAL_BASE_URL
-
-
 def proof_transport_allowed(base_url: str) -> bool:
     """Whether ``client_proof`` may be sent to ``base_url`` at all.
 

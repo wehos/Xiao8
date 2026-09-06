@@ -90,6 +90,7 @@ const PROACTIVE_KINDS = [
   'screenshot',
   'window',
   'news',
+  'community',
   'video',
   'personal',
   'music',

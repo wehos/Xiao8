@@ -62,6 +62,7 @@ from .bilibili_content import (
     format_bilibili_phase2_context,
 )
 from .trending_content import (
+    NEKO_COMMUNITY_FEED_PAGE_SIZE,
     _fetch_content_by_region,
     _fetch_twitter_trending_fallback,
     _fetch_weibo_trending_fallback,
@@ -73,6 +74,7 @@ from .trending_content import (
     _format_twitter_trending,
     _format_weibo_trending,
     fetch_bilibili_trending,
+    fetch_neko_community_feed,
     fetch_news_content,
     fetch_tieba_content,
     fetch_reddit_popular,
@@ -81,11 +83,13 @@ from .trending_content import (
     fetch_video_content,
     fetch_weibo_trending,
     fetch_xhh_feed_content,
+    format_neko_community_feed,
     format_news_content,
     format_tieba_content,
     format_trending_content,
     format_video_content,
     format_xhh_feed,
+    normalize_neko_community_feed,
     normalize_xhh_feed,
 )
 from .twitch_feed import fetch_twitch_live_streams

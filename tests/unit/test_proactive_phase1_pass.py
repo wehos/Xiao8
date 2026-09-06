@@ -53,6 +53,120 @@ def test_phase1_web_candidates_are_balanced_across_modes(monkeypatch):
     assert all(link["mode"] == "personal" for link in selected["personal"])
 
 
+def test_phase1_selection_uses_source_local_number_for_duplicate_titles():
+    first = {
+        "title": "同名社区卡",
+        "source": "喵宇宙社区",
+        "dedupe_key": "neko-community:first",
+    }
+    second = {
+        "title": "同名社区卡",
+        "source": "喵宇宙社区",
+        "dedupe_key": "neko-community:second",
+    }
+
+    selected = sr_parsing._lookup_link_by_phase1_selection(
+        {"title": "同名社区卡", "source": "喵宇宙社区", "number": "2"},
+        [first, second],
+    )
+
+    assert selected is second
+
+
+def test_phase1_candidate_numbers_are_source_local_when_sources_interleave():
+    links = [
+        {"title": "微博一", "source": "微博"},
+        {"title": "社区一", "source": "喵宇宙社区"},
+        {"title": "微博二", "source": "微博"},
+        {"title": "社区二", "source": "喵宇宙社区"},
+    ]
+
+    numbered = candidate_selection._number_phase1_links_by_source(links)
+
+    assert [(number, link["title"]) for number, link in numbered] == [
+        (1, "微博一"),
+        (1, "社区一"),
+        (2, "微博二"),
+        (2, "社区二"),
+    ]
+    assert (
+        sr_parsing._lookup_link_by_phase1_selection(
+            {"title": "社区二", "source": "喵宇宙社区", "number": "2"}, links
+        )
+        is links[3]
+    )
+
+
+def test_phase1_candidate_numbers_continue_across_source_sections():
+    positions: dict[str, int] = {}
+    personal_links = [{"title": "个人动态", "source": "B站"}]
+    video_links = [{"title": "视频推荐", "source": "B站"}]
+
+    first_section = candidate_selection._number_phase1_links_by_source(
+        personal_links, source_positions=positions
+    )
+    second_section = candidate_selection._number_phase1_links_by_source(
+        video_links, source_positions=positions
+    )
+
+    assert [number for number, _ in first_section] == [1]
+    assert [number for number, _ in second_section] == [2]
+    assert (
+        sr_parsing._lookup_link_by_phase1_selection(
+            {"title": "视频推荐", "source": "B站", "number": "2"},
+            personal_links + video_links,
+        )
+        is video_links[0]
+    )
+
+
+def test_phase1_title_fallback_wins_when_numbered_candidate_disagrees():
+    first = {"title": "第一张卡", "source": "喵宇宙社区"}
+    second = {"title": "第二张卡", "source": "喵宇宙社区"}
+
+    selected = sr_parsing._lookup_link_by_phase1_selection(
+        {"title": "第二张卡", "source": "喵宇宙社区", "number": "1"},
+        [first, second],
+    )
+
+    assert selected is second
+
+
+def test_phase1_numbered_selection_requires_exact_title_match():
+    first = {"title": "A", "source": "喵宇宙社区"}
+    second = {"title": "A|B", "source": "喵宇宙社区"}
+
+    selected = sr_parsing._lookup_link_by_phase1_selection(
+        {"title": "A|B", "source": "喵宇宙社区", "number": "1"},
+        [first, second],
+    )
+
+    assert selected is second
+
+
+def test_phase1_lookup_maps_escaped_community_title_to_canonical_card():
+    links = candidate_selection._round_robin_phase1_links(
+        ["community"],
+        {
+            "community": {
+                "links": [{"title": "A|B", "source": "喵宇宙社区"}]
+            }
+        },
+        total=1,
+    )["community"]
+
+    assert links[0]["phase1_title"] == r"A\u007cB"
+    assert (
+        sr_parsing._lookup_link_by_phase1_selection(
+            {"title": r"A\u007cB", "source": "喵宇宙社区", "number": "1"},
+            links,
+        )
+        is links[0]
+    )
+    assert sr_parsing._lookup_link_by_title(r"A\u007cB", links) is links[0]
+    assert links[0]["title"] == "A|B"
+
+
 def test_phase1_reserves_budget_for_linkless_window_context(monkeypatch):
     monkeypatch.setattr(candidate_selection, "_should_skip_source", lambda _key: False)
     sources = {

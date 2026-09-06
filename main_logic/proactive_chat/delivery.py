@@ -460,7 +460,7 @@ async def _record_committed_delivery(
             web_parsed.get("title", "") if web_parsed else ""
         )
         await _record_source_used(
-            url=web_link.get("url", "") or "",
+            url=web_link.get("dedupe_key") or web_link.get("url", "") or "",
             kind="web",
             title=web_title,
             **state_storage_kwargs,

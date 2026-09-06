@@ -417,6 +417,12 @@ window.CHAT_MODE_CONFIG = [
         globalVarName: 'proactiveNewsChatEnabled'
     },
     {
+        mode: 'community',
+        labelKey: 'settings.toggles.proactiveCommunityChat',
+        tooltipKey: 'settings.toggles.proactiveCommunityChatTooltip',
+        globalVarName: 'proactiveCommunityChatEnabled'
+    },
+    {
         mode: 'video',
         labelKey: 'settings.toggles.proactiveVideoChat',
         tooltipKey: 'settings.toggles.proactiveVideoChatTooltip',

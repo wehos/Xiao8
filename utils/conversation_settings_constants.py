@@ -19,6 +19,7 @@ ALLOWED_CONVERSATION_SETTINGS = frozenset({
     "proactiveVisionEnabled",
     "proactiveVisionChatEnabled",
     "proactiveNewsChatEnabled",
+    "proactiveCommunityChatEnabled",
     "proactiveVideoChatEnabled",
     "proactivePersonalChatEnabled",
     "proactiveMusicEnabled",

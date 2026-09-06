@@ -321,6 +321,8 @@ def _select_source_modes(
         enabled_modes = ["window"]
     elif command.content_type == "news":
         enabled_modes = ["news"]
+    elif command.content_type == "community":
+        enabled_modes = ["community"]
     elif command.content_type == "video":
         enabled_modes = ["video"]
     elif command.use_personal_dynamic:

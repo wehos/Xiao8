@@ -48,6 +48,7 @@ _PROACTIVE_BOOL_FIELDS = frozenset({
     "proactiveChatEnabled",
     "proactiveVisionChatEnabled",
     "proactiveNewsChatEnabled",
+    "proactiveCommunityChatEnabled",
     "proactiveVideoChatEnabled",
     "proactivePersonalChatEnabled",
     "proactiveMusicEnabled",

@@ -58,7 +58,11 @@ function createElement(tagName = 'div') {
       const listener = listeners.get(type);
       if (listener) listener(event);
     },
-    matches() { return false; },
+    _pseudo: new Set(),
+    matches(selector) {
+      // 支持 ':hover, :focus-within' 这类逗号选择器：任一命中即为真。
+      return String(selector).split(',').some((part) => this._pseudo.has(part.trim()));
+    },
     focus() { document.activeElement = this; },
     blur() { if (document.activeElement === this) document.activeElement = null; },
     getBoundingClientRect() {
@@ -90,7 +94,7 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
-function createHarness() {
+function createHarness(options = {}) {
   const callbacks = {};
   const mouseThrough = [];
   const timers = new Map();
@@ -137,7 +141,7 @@ function createHarness() {
   };
 
   const api = {
-    supportsStatusPointerTracking: true,
+    supportsStatusPointerTracking: options.supportsStatusPointerTracking !== false,
     getCursorPoint() { return cursorProvider(); },
     setMouseThrough(ignore) { mouseThrough.push(ignore); },
     onShowStatusToast(callback) { callbacks.status = callback; },
@@ -188,6 +192,18 @@ function createHarness() {
     },
     hasTimer(delay) {
       return Array.from(timers.values()).some((timer) => timer.delay === delay);
+    },
+    // 自动消失计时器是唯一延迟大于 1s 的：show=10ms、轮询=50ms、cleanup=400ms。
+    // 按区间而不是精确值判定，因为暂停/恢复会把剩余时长按实际经过时间扣掉。
+    hasAutoHideTimer() {
+      return Array.from(timers.values()).some((timer) => timer.delay >= 2000);
+    },
+    hasWatchdogTimer() {
+      return Array.from(timers.values()).some((timer) => timer.delay === 1000);
+    },
+    setHover(on) {
+      if (on) statusToast._pseudo.add(':hover');
+      else statusToast._pseudo.delete(':hover');
     },
     getProminentButton() {
       const overlay = document.getElementById('prominent-notice-overlay');
@@ -269,4 +285,247 @@ test('page teardown force-restores desktop passthrough', () => {
   assert.deepEqual(harness.mouseThrough, [false]);
   harness.dispatchBeforeUnload();
   assert.deepEqual(harness.mouseThrough, [false, true]);
+});
+
+// 窗口从穿透态起步，且渲染进程在穿透期间收不到任何鼠标事件。harness 的
+// matches() 恒为 false 正是这个语义：DOM :hover 从不置起、mouseenter 从不派发。
+// 于是「hover 保留」必须由轮询自己驱动，不能等 DOM 事件。
+test('poll-driven hover pin pauses auto-hide without any DOM mouseenter', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 }); // 光标本就压在提示矩形上，全程不移动
+
+  harness.emitStatus();
+  assert.equal(harness.hasAutoHideTimer(), true, '前置条件：显示时应排定自动消失');
+
+  harness.runTimer(10);
+  await flushPromises();
+
+  assert.deepEqual(harness.mouseThrough, [true, false]);
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    false,
+    '轮询判定光标在提示上时必须暂停自动消失，而不是等一个永远不会来的 mouseenter',
+  );
+});
+
+test('poll-driven hover release resumes auto-hide', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.setCursor({ x: 20, y: 20 }); // 光标移出矩形
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.deepEqual(harness.mouseThrough, [true, false, true]);
+  assert.equal(harness.hasAutoHideTimer(), true, '光标离开后必须恢复自动消失');
+});
+
+test('a real DOM mouseenter does not double-count the poll-driven pause', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  // 光标随后真的动了一下，DOM 事件补到：处理器幂等，不得重复记账或复活计时器。
+  harness.statusToast.dispatch('mouseenter', {});
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.statusToast.dispatch('mouseleave', {});
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    false,
+    '轮询仍判定光标在提示内时，DOM mouseleave 不得抢先恢复自动消失',
+  );
+});
+
+// Niri 小窗与非 Electron 环境走 supportsStatusPointerTracking === false，
+// 此时轮询不启动，hover 判定必须退回纯 DOM 语义。
+test('with pointer tracking unsupported the DOM hover path still governs', async () => {
+  const harness = createHarness({ supportsStatusPointerTracking: false });
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+
+  assert.deepEqual(harness.mouseThrough, [true], '不支持时应全程穿透，不发起轮询');
+  assert.equal(harness.hasTimer(50), false);
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    '没有轮询权威时，光标位置不该凭空暂停自动消失',
+  );
+
+  harness.statusToast.dispatch('mouseenter', {});
+  assert.equal(harness.hasAutoHideTimer(), false, 'DOM hover 仍应能暂停');
+});
+
+// 连发场景：光标全程停在矩形上不动。第二条提示必须重新 pin —— 若 inside 标志位
+// 跨提示残留，边沿判定会认为「没变化」而跳过 _enter，第二条照旧 3s 后消失。
+test('a second toast re-pins with the cursor parked in place', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus('first');
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.emitStatus('second');
+  assert.equal(harness.hasAutoHideTimer(), true, '新提示会重新排定自动消失');
+  harness.runTimer(10);
+  await flushPromises();
+
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    false,
+    '第二条提示同样必须被 pin：inside 标志位不得跨提示残留',
+  );
+});
+
+// 轮询把提示 pin 住之后，窗口回到穿透态就再也不会有 mouseleave 到达。
+// 所以任何中断追踪的路径都必须自己解开 pin，否则提示一直挂在屏幕上。
+test('cursor IPC failure releases a poll-driven pin instead of stranding the toast', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false, '前置条件：轮询已 pin 住提示');
+
+  // 下一拍光标 IPC 失败 —— stopStatusPointerTracking 会停掉轮询。
+  harness.setCursorProvider(() => Promise.reject(new Error('ipc down')));
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    '追踪中断后必须恢复自动消失，否则被 pin 住的提示永远不会消失',
+  );
+});
+
+test('a prominent notice interrupting a pinned toast still leaves auto-hide armed', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.emitProminent();
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    'prominent notice 打断追踪时同样要把 pin 解开',
+  );
+});
+
+// 追踪停止后窗口回到穿透态，陈旧的 :hover 再也不会被 mouseleave 纠正。
+// 恢复自动消失时若还去问 DOM :hover，提示就会永久滞留。
+test('a stale DOM :hover does not block auto-hide resume when tracking stops', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false, '前置条件：轮询已 pin 住提示');
+
+  // 光标确实进来过，DOM :hover 已经置起。
+  harness.setHover(true);
+
+  harness.setCursorProvider(() => Promise.reject(new Error('ipc down')));
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    '停止追踪时必须无视陈旧 :hover 恢复自动消失，否则提示永久滞留',
+  );
+});
+
+// 光标 IPC 悬挂（既不 resolve 也不 reject）时，轮询两条分支都走不到。
+// 此时窗口可能已处可命中态，全屏透明层会一直吞掉桌面输入。
+test('a hung cursor IPC falls back to passthrough via the watchdog', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.deepEqual(harness.mouseThrough, [true, false], '前置条件：窗口已因命中变为可交互');
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  // 下一拍的 IPC 永不 settle。
+  harness.setCursorProvider(() => new Promise(() => {}));
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.equal(harness.hasWatchdogTimer(), true, '飞行中的光标 IPC 必须挂看门狗');
+
+  harness.runTimer(1000);
+  await flushPromises();
+
+  assert.deepEqual(
+    harness.mouseThrough,
+    [true, false, true],
+    '看门狗超时后必须强制回到穿透态，不能让全屏透明窗口继续拦截桌面输入',
+  );
+  assert.equal(harness.hasAutoHideTimer(), true, '同时要恢复自动消失');
+});
+
+// 看门狗是全局单槽的。旧世代的光标 Promise 可能在新一轮已经武装好看门狗之后才
+// settle —— 若它抢先清掉，新请求悬挂时就再无兜底，透明全屏窗口会持续拦截桌面输入。
+test('a stale-generation cursor result must not clear the new watchdog', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  const first = createDeferred();
+  let call = 0;
+  harness.setCursorProvider(() => {
+    call += 1;
+    // 第一拍交出我们手动控制的 Promise，之后的拍永不 settle（模拟悬挂）。
+    return call === 1 ? first.promise : new Promise(() => {});
+  });
+
+  harness.emitStatus('first');
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasWatchdogTimer(), true, '第一拍已挂看门狗');
+
+  // 新提示到来 → stopStatusPointerTracking 提升世代 → 新一拍挂上新的看门狗。
+  harness.emitStatus('second');
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasWatchdogTimer(), true, '新世代已挂上自己的看门狗');
+
+  // 旧世代的 Promise 现在才落地。
+  first.resolve({ x: 150, y: 60 });
+  await flushPromises();
+
+  assert.equal(
+    harness.hasWatchdogTimer(),
+    true,
+    '旧世代的回调不得清掉新世代的看门狗',
+  );
+
+  harness.runTimer(1000);
+  await flushPromises();
+  assert.equal(
+    harness.mouseThrough[harness.mouseThrough.length - 1],
+    true,
+    '新请求悬挂时看门狗仍须把窗口拉回穿透态',
+  );
 });

@@ -816,10 +816,9 @@ class VRMManager {
                             this._updateVrmWithPhysicsStep(this.currentModel.vrm, delta, physicsStep);
                         } else {
                             this._physicsPendingDelta = pendingDelta + delta;
-                            if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
-                            if (this.currentModel.vrm.expressionManager) this.currentModel.vrm.expressionManager.update(delta);
-                            // 跳过的只是弹簧骨物理；MToon 材质的 UV 动画按 delta 累积，每帧都要推进
-                            this._updateVrmMaterials(this.currentModel.vrm, delta);
+                            // 跳过的只是弹簧骨物理：其余分量（humanoid / lookAt / 表情 / 约束 / 材质）
+                            // 仍按库顺序每帧推进，受约束的骨骼不会显示上一帧姿态
+                            this._updateVrmWithoutPhysics(this.currentModel.vrm, delta);
                         }
                     } else {
                         this._physicsFrameSkip = 0;
@@ -980,15 +979,27 @@ class VRMManager {
 
     _updateVrmWithPhysicsStep(vrm, delta, physicsStep) {
         if (this._canSplitVrmPhysicsUpdate(vrm)) {
-            if (vrm.humanoid && typeof vrm.humanoid.update === 'function') vrm.humanoid.update();
-            if (vrm.lookAt) vrm.lookAt.update(delta);
-            if (vrm.expressionManager) vrm.expressionManager.update(delta);
-            if (vrm.nodeConstraintManager && typeof vrm.nodeConstraintManager.update === 'function') vrm.nodeConstraintManager.update();
+            this._updateVrmPoseComponents(vrm, delta);
             vrm.springBoneManager.update(physicsStep);
             this._updateVrmMaterials(vrm, delta);
             return;
         }
         vrm.update(physicsStep);
+    }
+
+    // 跳过弹簧骨物理的帧：除 springBoneManager 外的分量全部按当前 delta 推进（库顺序不变）
+    _updateVrmWithoutPhysics(vrm, delta) {
+        this._updateVrmPoseComponents(vrm, delta);
+        this._updateVrmMaterials(vrm, delta);
+    }
+
+    // VRM.update 里弹簧骨之前的部分：humanoid → lookAt → 表情 → 约束
+    _updateVrmPoseComponents(vrm, delta) {
+        if (!vrm) return;
+        if (vrm.humanoid && typeof vrm.humanoid.update === 'function') vrm.humanoid.update();
+        if (vrm.lookAt) vrm.lookAt.update(delta);
+        if (vrm.expressionManager) vrm.expressionManager.update(delta);
+        if (vrm.nodeConstraintManager && typeof vrm.nodeConstraintManager.update === 'function') vrm.nodeConstraintManager.update();
     }
 
     // MToon 等材质的逐帧推进（three-vrm VRM.update 的最后一步）；跳过物理的帧也要调

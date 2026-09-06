@@ -620,11 +620,16 @@ function loadVrmPhysicsStep() {
     const canSplitStart = src.indexOf('_canSplitVrmPhysicsUpdate(vrm) {');
     const canSplitEnd = src.indexOf('\n    }\n', canSplitStart) + 7;
     assert.ok(canSplitStart > 0 && canSplitEnd > canSplitStart, '_canSplitVrmPhysicsUpdate 定位失败');
-    const matStart = src.indexOf('_updateVrmMaterials(vrm, delta) {');
-    const matEnd = src.indexOf('\n    }\n', matStart) + 7;
-    assert.ok(matStart > 0 && matEnd > matStart, '_updateVrmMaterials 定位失败');
+    const sliceMethod = (name) => {
+        const s = src.indexOf(name + '(vrm, delta) {');
+        const e = src.indexOf('\n    }\n', s) + 7;
+        assert.ok(s > 0 && e > s, name + ' 定位失败');
+        return 'this.' + name + ' = function ' + src.slice(s, e) + ';';
+    };
     const helperSrc = 'this._canSplitVrmPhysicsUpdate = function ' + src.slice(canSplitStart, canSplitEnd) + ';'
-        + 'this._updateVrmMaterials = function ' + src.slice(matStart, matEnd) + ';'
+        + sliceMethod('_updateVrmMaterials')
+        + sliceMethod('_updateVrmPoseComponents')
+        + sliceMethod('_updateVrmWithoutPhysics')
         + 'this._updateVrmWithPhysicsStep = function ' + src.slice(helperStart, helperEnd) + ';';
     return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', helperSrc + src.slice(start, end));
 }
@@ -652,6 +657,12 @@ test('VRM 分量更新顺序与 three-vrm VRM.update 一致：humanoid → lookA
     run.call(ctx, 0.0167, { renderQuality: 'high' }, 0.05);
     assert.deepEqual(ctx.order, ['humanoid', 'lookAt', 'expression', 'constraint', 'spring', 'material'],
         '约束/弹簧骨必须在 LookAt 驱动的姿态之后');
+    // medium 跳过物理的帧：除弹簧骨外全部分量照常按库顺序推进（约束不能只在另一帧跑）
+    const skipCtx = makeVrmPhysicsCtx();
+    run.call(skipCtx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.deepEqual(skipCtx.order, ['humanoid', 'lookAt', 'expression', 'constraint', 'material'], '跳过帧只少弹簧骨');
+    run.call(skipCtx, 0.0167, { renderQuality: 'medium' }, 0.05);
+    assert.deepEqual(skipCtx.order.slice(5), ['humanoid', 'lookAt', 'expression', 'constraint', 'spring', 'material'], '更新帧完整顺序');
     // 打包版 three-vrm 里 VRM.update 的真实顺序，防止库升级后两边漂移
     const lib = read('static/libs/three-vrm.module.min.js');
     assert.match(lib, /update\(e\)\{super\.update\(e\),this\.nodeConstraintManager&&this\.nodeConstraintManager\.update\(\),this\.springBoneManager&&this\.springBoneManager\.update\(e\),this\.materials&&this\.materials\.forEach/);

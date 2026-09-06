@@ -276,6 +276,18 @@ test('契约：VRM / MMD 浮动按钮循环在定时器模式下到点直接 upd
     }
 });
 
+test('契约：演出舞台的 tween / 漂浮 / 呼吸 / 姿态时间线循环通过 frame-pacing 排帧', () => {
+    const src = read('static/avatar/avatar-performance-stage.js');
+    assert.match(src, /function scheduleStageFrame\(callback\)[\s\S]*?return pacing\.requestPacedFrame\(callback\);/);
+    assert.equal((src.match(/tween\.cancelFrame = scheduleStageFrame\(step\);/g) || []).length, 6, 'transition/idleFloat/breathe 三条循环各两处排帧');
+    assert.equal((src.match(/cancelFrame = scheduleStageFrame\(tick\);/g) || []).length, 2, '姿态时间线两处排帧');
+    assert.doesNotMatch(src, /tween\.rafId/, 'tween 不再持有裸 rAF id');
+    assert.doesNotMatch(src, /frameId = window\.requestAnimationFrame\(tick\)/, '姿态时间线不再裸排 rAF');
+    // 允许残留的裸 rAF 只剩等待 Live2D 上下文那条有界短循环（check）
+    const remaining = (src.match(/window\.requestAnimationFrame\(/g) || []).length;
+    assert.equal(remaining, 3, `裸 rAF 只剩 scheduleStageFrame 内一处 + check 两处，实际 ${remaining}`);
+});
+
 test('契约：反应气泡跟随循环通过 frame-pacing 排帧', () => {
     const src = read('static/avatar/avatar-reaction-bubble.js');
     assert.match(src, /function scheduleFollowFrame\(tick\)[\s\S]*?state\.followPacedCancel = pacing\.requestPacedFrame\(tick\);/);

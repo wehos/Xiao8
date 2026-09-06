@@ -31,7 +31,7 @@ Main conversation, reload its roles, or change Agent inference configuration.
 The same page exposes recent request statuses and token usage. Its totals cover
 retained local history and distinguish reported, partial and unknown usage;
 they are not a complete provider billing report. For a runnable developer
-example, see [text, image and streaming calls](../examples/model_api_example/README.md).
+example, see [text, image and streaming calls](https://github.com/Project-N-E-K-O/N.E.K.O/blob/main/docs/examples/model_api_example/README.md).
 
 ## Manifest declarations
 
@@ -225,8 +225,9 @@ request preparation, provider I/O, generation, backpressure and fallback share
 that budget. HTTP response sends use the same deadline, so a connected client
 that stops reading cannot hold a send indefinitely. Only a final error frame
 gets a bounded 100 ms flush window beyond that deadline; model work, fallback
-and ordinary content sends never use it. Resource cleanup and local accounting
-are protected finalization work; they do not start further model requests. If
+and ordinary content sends never use it. Upstream resource cleanup remains
+protected finalization work. Local accounting is queued separately and never
+delays response delivery or cancellation. If
 an error cannot be flushed in time, the SDK sees a closed response stream rather
 than a success terminator.
 
@@ -237,8 +238,9 @@ belongs to the plugin HTTP application's loop, not Main or Agent inference.
 
 Streaming uses one producer task and a one-item queue. The task owns its timeout
 and provider iterator across route prefetch and ASGI response tasks. It reports
-completion/errors independently of queue capacity, and emits `[DONE]` only after
-successful completion and accounting. Consumer cancellation and service shutdown
+completion/errors independently of queue capacity, and emits `[DONE]` after
+successful upstream completion, cleanup and accounting enqueue. It does not wait
+for accounting to reach disk. Consumer cancellation and service shutdown
 cancel that producer and await its cleanup.
 
 A request can try its configured fallback slot once, only for connection,
@@ -285,3 +287,23 @@ ordinary Main/Agent and external provider requests keep their existing tracking.
 A standalone gateway starts a periodic tracker saver only if none is active and
 stops only the task it owns. Usage persistence failure is logged without changing
 the model result; corrupted history is preserved instead of overwritten.
+
+Each executor owns one background accounting writer and a queue of at most 256
+pending records, plus the current write. Completed model calls enqueue once;
+there is no accounting retry that could double-count them. Recent usage is
+eventually visible, so an immediate read may precede persistence. If the queue
+fills, further records are dropped with a warning and a shutdown drop count;
+model requests still complete normally.
+
+Shutdown first closes model requests so their final records can be queued, then
+allows up to two seconds in total for the accounting writer and recorder to
+finish. Pending records left at that deadline are reported as unconfirmed and
+no longer awaited. An interrupted response or stopped plugin does not wait for
+that shutdown drain. An abrupt process exit can lose records still in memory.
+
+The serial writer performs file writes in a daemon thread with inherited
+storage-transaction context. This prevents a blocked accounting write from
+holding up the event loop's default-executor shutdown. Python cannot interrupt
+an OS filesystem operation already in progress: that write may finish later,
+and any storage lock it owns remains held until it returns. General Main/Agent
+TokenTracker periodic-save and exit behavior is unchanged by this policy.

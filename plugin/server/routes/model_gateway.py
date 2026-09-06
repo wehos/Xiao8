@@ -12,10 +12,16 @@ from fastapi import APIRouter, Request
 from starlette.requests import ClientDisconnect
 from starlette.responses import JSONResponse, StreamingResponse
 
-from plugin.core.model_gateway_access import ModelGatewayAccessError, model_gateway_access
+from plugin.core.model_gateway_access import (
+    ModelGatewayAccessError,
+    model_gateway_access,
+)
 from plugin.logging_config import get_logger
 from plugin.server.application.model_config_service import load_model_requirements
-from plugin.server.application.model_gateway_service import MAX_REQUEST_BYTES, ModelGatewayService
+from plugin.server.application.model_gateway_service import (
+    MAX_REQUEST_BYTES,
+    ModelGatewayService,
+)
 from plugin.server.domain.errors import ServerDomainError
 from plugin.server.infrastructure.model_config_store import ModelConfigStore
 from plugin.server.infrastructure.model_usage_store import ModelUsageRecorder
@@ -115,13 +121,8 @@ async def close_model_executor(app) -> None:
         try:
             await executor.aclose()
         finally:
-            try:
-                await executor.recorder.aclose()
-            except Exception as exc:
-                # Usage persistence must not prevent plugin-service teardown.
-                logger.warning("Model usage cleanup failed: {}", type(exc).__name__)
-            finally:
-                app.state.model_executor = None
+            # Executor shutdown owns the bounded accounting drain and close.
+            app.state.model_executor = None
 
 
 class _RequestGuard:

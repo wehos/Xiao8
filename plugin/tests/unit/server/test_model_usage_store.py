@@ -5,12 +5,16 @@ import copy
 import json
 import threading
 from contextlib import nullcontext
+from contextvars import ContextVar
 
 import pytest
 
 from plugin.server.domain.errors import ServerDomainError
 from plugin.server.infrastructure import model_usage_store as usage_store
-from plugin.server.infrastructure.model_usage_store import ModelUsageRecorder, USAGE_FILENAME
+from plugin.server.infrastructure.model_usage_store import (
+    USAGE_FILENAME,
+    ModelUsageRecorder,
+)
 from utils.file_utils import atomic_write_json
 
 pytestmark = pytest.mark.plugin_unit
@@ -354,3 +358,87 @@ async def test_query_limit_validation(usage_env, limit):
     with pytest.raises(ServerDomainError) as error:
         await recorder.get_usage(limit=limit)
     assert error.value.code == "MODEL_USAGE_INVALID_LIMIT"
+
+
+async def test_daemon_writer_preserves_storage_context_and_ignores_cancelled_result():
+    marker = ContextVar("storage_transaction_marker", default=None)
+    entered, release, completed = threading.Event(), threading.Event(), threading.Event()
+    seen = []
+    loop = asyncio.get_running_loop()
+    errors = []
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: errors.append(context))
+
+    def operation():
+        seen.append((marker.get(), threading.current_thread().daemon))
+        entered.set()
+        release.wait(2)
+        completed.set()
+        return "late result"
+
+    token = marker.set("inherited-root-transaction")
+    try:
+        task = asyncio.create_task(usage_store._write_in_daemon(operation))
+        async with asyncio.timeout(1):
+            while not entered.is_set():
+                await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        release.set()
+        async with asyncio.timeout(1):
+            while not completed.is_set():
+                await asyncio.sleep(0)
+        await asyncio.sleep(0.02)
+        assert seen == [("inherited-root-transaction", True)]
+        assert errors == []  # No InvalidStateError publishing to a cancelled future.
+    finally:
+        release.set()
+        marker.reset(token)
+        loop.set_exception_handler(previous_handler)
+
+
+def test_blocked_accounting_io_does_not_block_asyncio_run_exit(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    from textwrap import dedent
+
+    source = dedent('''
+        import asyncio
+        import threading
+        from plugin.server.domain.model_config import ModelSlot
+        from plugin.server.infrastructure.model_usage_store import ModelUsageRecorder
+        from plugin.server.model_gateway.execution import ModelExecutor, ResolvedModelCall
+
+        entered = threading.Event()
+        class StuckRecorder(ModelUsageRecorder):
+            def _persist(self, record):
+                entered.set()
+                threading.Event().wait()
+
+        class Gateway:
+            async def complete(self, slot, body, *, observation):
+                return {"ok": True}
+
+        async def main():
+            recorder = StuckRecorder(tracker_getter=lambda: None)
+            executor = ModelExecutor(Gateway(), recorder, accounting_flush_timeout_seconds=0.02)
+            slot = ModelSlot(name="test", protocol="openai_chat", base_url="https://unused.test/v1", model="test")
+            result = await executor.complete(ResolvedModelCall("test", "analysis", "slot", slot), {})
+            assert result == {"ok": True}
+            async with asyncio.timeout(2):
+                while not entered.is_set():
+                    await asyncio.sleep(0)
+            await executor.aclose()
+        asyncio.run(main())
+        print("ACCOUNTING_LOOP_EXITED")
+    ''')
+    env = {**os.environ, "NEKO_STORAGE_SELECTED_ROOT": str(tmp_path / "runtime")}
+    result = subprocess.run(
+        [sys.executable, "-c", source], cwd=Path(__file__).resolve().parents[4],
+        env=env, capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ACCOUNTING_LOOP_EXITED" in result.stdout

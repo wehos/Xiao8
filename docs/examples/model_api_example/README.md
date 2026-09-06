@@ -54,4 +54,4 @@ fallback attempts, and partial or unknown usage.
 The supported model API is Chat Completions with text, images, ordinary function
 tools, and streaming. Responses, files/PDF, audio, video, generated images,
 Realtime, and Anthropic-specific options are outside this API's scope. See the
-[full configuration and protocol contract](../../design/plugin-model-slots.md).
+[full configuration and protocol contract](https://github.com/Project-N-E-K-O/N.E.K.O/blob/main/docs/design/plugin-model-slots.md).

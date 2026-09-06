@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -72,7 +73,7 @@ def _failure(exc: BaseException, *, expired: bool = False) -> tuple[str, str | N
 
 async def _cancel_and_wait(task: asyncio.Task) -> None:
     # Do not inject a second cancellation while the task closes HTTP resources
-    # and writes its ledger entry. ASGI may cancel the caller repeatedly.
+    # and enqueues its ledger entry. ASGI may cancel the caller repeatedly.
     if not task.done() and not task.cancelling():
         task.cancel()
     with anyio.CancelScope(shield=True):
@@ -87,28 +88,36 @@ async def _cancel_and_wait(task: asyncio.Task) -> None:
             task.result()
 
 
-async def _record_safely(recorder, request: dict) -> None:
-    with anyio.CancelScope(shield=True):
-        task = asyncio.create_task(recorder.record_request(request))
-        # A direct task.cancel() is not blocked by an AnyIO shield. Keep the one
-        # write alive and wait for it rather than starting a replacement write.
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                continue
-            except Exception:
-                break
+async def _wait_before(task: asyncio.Task, deadline: float) -> bool:
+    """Shield caller cancellation only until the shared shutdown deadline."""
+    loop = asyncio.get_running_loop()
+    while not task.done():
         try:
-            task.result()
-        except (asyncio.CancelledError, Exception) as exc:
-            logger.warning("Plugin model accounting failed ({})", type(exc).__name__)
+            # Even timeout=0 yields once, allowing recorder shutdown to mark
+            # itself closed and stop its periodic saver before cancellation.
+            done, _ = await asyncio.wait({task}, timeout=max(0, deadline - loop.time()))
+            return bool(done)
+        except asyncio.CancelledError:
+            if loop.time() >= deadline:
+                return task.done()
+    return True
+
+
+def _accounting_task_done(task: asyncio.Task) -> None:
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.warning("Plugin model accounting failed ({})", type(error).__name__)
 
 
 class ModelExecutor:
-    def __init__(self, gateway, recorder, *, max_active: int = 4, max_waiting: int = 16):
+    def __init__(self, gateway, recorder, *, max_active: int = 4, max_waiting: int = 16,
+                 max_pending_records: int = 256, accounting_flush_timeout_seconds: float = 2.0):
         if type(max_active) is not int or max_active < 1 or type(max_waiting) is not int or max_waiting < 0:
             raise ValueError("Model concurrency limits must be positive active and nonnegative waiting integers")
+        if type(max_pending_records) is not int or max_pending_records < 1:
+            raise ValueError("Accounting queue capacity must be a positive integer")
+        if (type(accounting_flush_timeout_seconds) not in (int, float)
+                or not math.isfinite(accounting_flush_timeout_seconds) or accounting_flush_timeout_seconds < 0):
+            raise ValueError("Accounting shutdown timeout must be finite and nonnegative")
         self.gateway = gateway
         self.recorder = recorder
         self._max_active = max_active
@@ -118,6 +127,72 @@ class ModelExecutor:
         self._admitted = 0
         self._tasks: set[asyncio.Task] = set()
         self._closed = False
+        self._accounting_queue = asyncio.Queue(maxsize=max_pending_records)
+        self._accounting_worker: asyncio.Task | None = None
+        self._accounting_shutdown: asyncio.Task | None = None
+        self._accounting_accepting = True
+        self._accounting_active = False
+        self._dropped_records = 0
+        self._accounting_flush_timeout = accounting_flush_timeout_seconds
+
+    def _enqueue_record(self, request: dict) -> None:
+        if self._accounting_accepting:
+            try:
+                self._accounting_queue.put_nowait(request)
+            except asyncio.QueueFull:
+                pass
+            else:
+                if self._accounting_worker is None or self._accounting_worker.done():
+                    self._accounting_worker = asyncio.create_task(self._write_records())
+                    self._accounting_worker.add_done_callback(_accounting_task_done)
+                return
+        self._dropped_records += 1
+        if self._dropped_records == 1:
+            logger.warning("Plugin model accounting unavailable; dropping usage records")
+
+    async def _write_records(self) -> None:
+        # One writer bounds in-flight disk operations. Exit when idle instead
+        # of leaving a permanent queue.get task attached to an inactive app.
+        while not self._accounting_queue.empty():
+            request = self._accounting_queue.get_nowait()
+            self._accounting_active = True
+            try:
+                await self.recorder.record_request(request)
+            except asyncio.CancelledError:
+                if asyncio.current_task().cancelling():
+                    raise
+                logger.warning("Plugin model accounting failed (CancelledError)")
+            except Exception as exc:
+                logger.warning("Plugin model accounting failed ({})", type(exc).__name__)
+            finally:
+                self._accounting_active = False
+                self._accounting_queue.task_done()
+
+    async def _finish_accounting(self) -> None:
+        self._accounting_accepting = False
+        deadline = asyncio.get_running_loop().time() + self._accounting_flush_timeout
+        worker = self._accounting_worker
+        if worker is not None and not await _wait_before(worker, deadline):
+            unconfirmed = self._accounting_queue.qsize() + int(self._accounting_active)
+            worker.cancel()
+            while not self._accounting_queue.empty():
+                self._accounting_queue.get_nowait()
+                self._accounting_queue.task_done()
+            # A thread already in filesystem I/O may still finish later.
+            logger.warning("Plugin model accounting shutdown timed out; {} usage records unconfirmed", unconfirmed)
+        if self._dropped_records:
+            logger.warning("Plugin model accounting dropped {} usage records", self._dropped_records)
+        close = getattr(self.recorder, "aclose", None)
+        if close is not None:
+            task = asyncio.create_task(close())
+            task.add_done_callback(_accounting_task_done)
+            if not await _wait_before(task, deadline):
+                task.cancel()
+                logger.warning("Plugin model accounting close exceeded its shutdown budget")
+        # Process cancellation of cooperative writer/close tasks without an
+        # additional unbounded gather after the deadline has expired.
+        with suppress(asyncio.CancelledError):
+            await asyncio.sleep(0)
 
     def _start(self, call: ResolvedModelCall, body: object, stream: _StreamState | None = None) -> asyncio.Task:
         loop = asyncio.get_running_loop()
@@ -158,7 +233,7 @@ class ModelExecutor:
                 elif task.done():
                     await asyncio.shield(task)
                     # The SDK may immediately close after DONE. Deliver it only
-                    # once the upstream and its ledger cleanup really completed.
+                    # once upstream cleanup and accounting enqueue completed.
                     if state.terminal is not None:
                         yield state.terminal
                     return
@@ -182,6 +257,14 @@ class ModelExecutor:
                     task.cancel()
             for task in tasks:
                 await _cancel_and_wait(task)
+            if self._accounting_shutdown is None:
+                self._accounting_shutdown = asyncio.create_task(self._finish_accounting())
+            while not self._accounting_shutdown.done():
+                try:
+                    await asyncio.shield(self._accounting_shutdown)
+                except asyncio.CancelledError:
+                    continue
+            self._accounting_shutdown.result()
 
     async def _run(self, call, body, started, started_at, stream):
         loop = asyncio.get_running_loop()
@@ -220,7 +303,7 @@ class ModelExecutor:
             request["duration_ms"] = round((loop.time() - started) * 1000, 3)
             # Metrics cannot change the model result or prevent resource release.
             # Each owned execution task reaches this once, including cancellation.
-            await _record_safely(self.recorder, request)
+            self._enqueue_record(request)
 
     async def _attempts(self, call, body, attempts, deadline, stream):
         slot_id, slot = call.slot_id, call.slot

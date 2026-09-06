@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,7 +10,6 @@ from plugin.server.domain.model_config import ModelSlot
 from plugin.server.model_gateway.errors import ModelGatewayError
 from plugin.server.model_gateway.execution import ModelExecutor, ResolvedModelCall
 from plugin.server.model_gateway.request import prepare_chat_request
-
 
 USAGE = {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}
 DONE = b"data: [DONE]\n\n"
@@ -170,9 +170,11 @@ async def test_fallback_failure_is_final_without_following_its_fallback():
     gateway = Gateway(complete=fail)
     recorder = Recorder()
     fallback = slot("backup", fallback_slot_id="slot_" + "c" * 32)
+    executor = ModelExecutor(gateway, recorder)
     with pytest.raises(ModelGatewayError):
-        await ModelExecutor(gateway, recorder).complete(call(fallback=fallback), body())
+        await executor.complete(call(fallback=fallback), body())
     assert gateway.calls == ["primary", "backup"]
+    await executor.aclose()
     assert len(recorder.requests[0]["attempts"]) == 2
 
 
@@ -300,7 +302,7 @@ async def test_close_before_runner_starts_still_accounts_for_the_request():
     assert recorder.requests[0]["attempts"] == []
 
 
-async def test_complete_cancellation_waits_for_single_record_even_if_cancelled_twice():
+async def test_complete_cancellation_does_not_wait_for_accounting_even_if_cancelled_twice():
     recorder = Recorder()
     recorder.gate = asyncio.Event()
     gateway = Gateway(complete=stalled)
@@ -311,10 +313,11 @@ async def test_complete_cancellation_waits_for_single_record_even_if_cancelled_t
     await recorder.entered.wait()
     consumer.cancel()
     await asyncio.sleep(0)
-    assert not consumer.done()
-    recorder.gate.set()
     with pytest.raises(asyncio.CancelledError):
-        await consumer
+        await asyncio.wait_for(consumer, 0.5)
+    assert recorder.requests == []
+    recorder.gate.set()
+    await executor.aclose()
     assert len(recorder.requests) == 1
     assert recorder.requests[0]["status"] == "cancelled"
     assert gateway.closed.is_set()
@@ -342,19 +345,21 @@ async def test_stream_prefetch_and_body_consumption_can_use_different_tasks():
     assert recorder.requests[0]["status"] == "success"
 
 
-async def test_done_is_delivered_only_after_successful_accounting():
+async def test_done_is_delivered_before_slow_accounting_completes():
     recorder = Recorder()
     recorder.gate = asyncio.Event()
     gateway = Gateway()
-    stream = ModelExecutor(gateway, recorder).stream(call(), body(stream=True))
+    executor = ModelExecutor(gateway, recorder)
+    stream = executor.stream(call(), body(stream=True))
     assert await anext(stream) == b"first"
     terminal = asyncio.create_task(anext(stream))
     await recorder.entered.wait()
-    assert not terminal.done()
+    assert await asyncio.wait_for(terminal, 0.5) == DONE
     assert gateway.closed.is_set()
+    assert recorder.requests == []
     recorder.gate.set()
-    assert await terminal == DONE
     await stream.aclose()
+    await executor.aclose()
     assert len(recorder.requests) == 1
     assert recorder.requests[0]["status"] == "success"
 
@@ -375,6 +380,7 @@ async def test_stream_fallback_discards_primary_chunks_not_yet_delivered():
     output = [chunk async for chunk in executor.stream(call(fallback=slot("backup")), body(stream=True))]
     assert output == [b"backup", DONE]
     assert gateway.calls == ["primary", "backup"]
+    await executor.aclose()
     assert len(recorder.requests[0]["attempts"]) == 2
 
 
@@ -452,3 +458,88 @@ async def test_empty_bytes_do_not_prevent_fallback():
 def test_invalid_concurrency_limits_are_rejected(active, waiting):
     with pytest.raises(ValueError):
         ModelExecutor(None, None, max_active=active, max_waiting=waiting)
+
+
+async def test_accounting_queue_is_bounded_without_blocking_models(monkeypatch):
+    from plugin.server.model_gateway import execution
+
+    warnings = []
+    monkeypatch.setattr(execution, "logger", SimpleNamespace(warning=lambda *args: warnings.append(args)))
+    recorder = Recorder()
+    recorder.gate = asyncio.Event()
+    executor = ModelExecutor(Gateway(), recorder, max_pending_records=1)
+    first = await executor.complete(call(), body())
+    await recorder.entered.wait()
+    second = await executor.complete(call(), body())
+    third = await executor.complete(call(), body())
+    assert first == second == third
+    assert recorder.requests == []
+    assert warnings  # Queue overflow must not silently discard usage.
+    recorder.gate.set()
+    await executor.aclose()
+    assert len(recorder.requests) == 2  # One active write and one queued record.
+    assert len({record["request_id"] for record in recorder.requests}) == 2
+
+
+async def test_shutdown_drain_and_recorder_close_share_one_budget():
+    class SlowRecorder(Recorder):
+        def __init__(self):
+            super().__init__()
+            self.close_started = asyncio.Event()
+            self.close_cancelled = asyncio.Event()
+
+        async def aclose(self):
+            self.close_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.close_cancelled.set()
+
+    recorder = SlowRecorder()
+    recorder.gate = asyncio.Event()
+    executor = ModelExecutor(Gateway(), recorder, accounting_flush_timeout_seconds=0.05)
+    await executor.complete(call(), body())
+    await recorder.entered.wait()
+    started = asyncio.get_running_loop().time()
+    await asyncio.wait_for(executor.aclose(), 0.5)
+    assert asyncio.get_running_loop().time() - started < 0.3
+    assert recorder.close_started.is_set()
+    assert recorder.close_cancelled.is_set()
+    assert recorder.requests == []
+    await executor.aclose()  # Closing again never launches a second drain.
+
+
+@pytest.mark.parametrize("options", [
+    {"max_pending_records": 0}, {"max_pending_records": True},
+    {"accounting_flush_timeout_seconds": -1}, {"accounting_flush_timeout_seconds": float("inf")},
+])
+def test_invalid_accounting_limits_are_rejected(options):
+    with pytest.raises(ValueError):
+        ModelExecutor(None, None, **options)
+
+
+@pytest.mark.parametrize("failure", [OSError("disk failure"), asyncio.CancelledError()])
+async def test_one_failed_record_does_not_abandon_the_accounting_queue(failure):
+    class FailingOnce(Recorder):
+        def __init__(self):
+            super().__init__()
+            self.gate = asyncio.Event()
+            self.calls = 0
+
+        async def record_request(self, request):
+            self.calls += 1
+            if self.calls == 1:
+                self.entered.set()
+                await self.gate.wait()
+                raise failure
+            self.requests.append(deepcopy(request))
+
+    recorder = FailingOnce()
+    executor = ModelExecutor(Gateway(), recorder)
+    await executor.complete(call(), body())
+    await recorder.entered.wait()
+    await executor.complete(call(), body())
+    recorder.gate.set()
+    await executor.aclose()
+    assert recorder.calls == 2
+    assert len(recorder.requests) == 1

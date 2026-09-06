@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from fastapi import FastAPI, Request
-from openai import APIError, APIStatusError
+from openai import APIError, APIStatusError, AsyncOpenAI
 from starlette.requests import ClientDisconnect
 
 from plugin.config.schema import PluginModelRequirementSchema
@@ -18,10 +18,13 @@ from plugin.core.model_gateway_access import ModelGatewayAccessRegistry
 from plugin.sdk.shared.core.context import SdkContext
 from plugin.server.application.model_gateway_service import ModelGatewayService
 from plugin.server.domain.model_config import ModelSlot, PluginModelsConfig
+from plugin.server.infrastructure.model_usage_store import (
+    USAGE_FILENAME,
+    ModelUsageRecorder,
+)
 from plugin.server.model_gateway.execution import ModelExecutor
 from plugin.server.routes import model_gateway as routes
 from plugin.server.routes import model_usage as usage_routes
-from plugin.server.infrastructure.model_usage_store import ModelUsageRecorder, USAGE_FILENAME
 from utils.file_utils import atomic_write_json
 
 PREFIX = "/api/models/v1"
@@ -498,6 +501,7 @@ async def policy_usage(setup_gateway, tmp_path, monkeypatch):
 async def test_successful_http_call_is_persisted_and_counted_once(http_client, setup_gateway, policy_usage):
     response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
     assert response.status_code == 200
+    await policy_usage.executor.aclose()
     stats = (await http_client.get("/api/model-config/usage")).json()
     assert stats["summary"]["logical_request_count"] == 1
     assert stats["summary"]["upstream_attempt_count"] == 1
@@ -543,6 +547,7 @@ async def test_http_fallback_uses_one_snapshot_and_records_both_attempts(http_cl
     response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
     assert response.status_code == 200 and response.json()["model"] == "analysis"
     assert len(seen) == 2
+    await policy_usage.executor.aclose()
     stats = (await http_client.get("/api/model-config/usage")).json()
     assert stats["summary"]["logical_request_count"] == 1
     assert stats["summary"]["upstream_attempt_count"] == 2
@@ -567,6 +572,7 @@ async def test_nonretryable_http_failures_do_not_use_fallback(http_client, setup
     response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
     assert response.status_code in (400, 502)
     assert len(seen) == 1
+    await policy_usage.executor.aclose()
     record = (await policy_usage.recorder.get_usage())["requests"][0]
     assert len(record["attempts"]) == 1
     assert record["attempts"][0]["usage"] is None
@@ -603,6 +609,7 @@ async def test_busy_and_queue_timeout_do_not_start_extra_upstreams(http_client, 
     finally:
         release.set()
         await asyncio.gather(first, *( [second] if second is not None else []), return_exceptions=True)
+    await policy_usage.executor.aclose()
     stats = await policy_usage.recorder.get_usage()
     assert stats["summary"]["logical_request_count"] == 3
     assert stats["summary"]["upstream_attempt_count"] == 1
@@ -625,6 +632,7 @@ async def test_http_fallback_keeps_primary_total_deadline(http_client, setup_gat
     setup_gateway.upstream.handler = upstream
     response = await asyncio.wait_for(http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body()), 2)
     assert response.status_code == 504 and closed.is_set()
+    await policy_usage.executor.aclose()
     record = (await policy_usage.recorder.get_usage())["requests"][0]
     assert record["status"] == "timeout"
     assert [attempt["status"] for attempt in record["attempts"]] == ["error", "timeout"]
@@ -653,6 +661,7 @@ async def test_stream_deadline_preserves_partial_usage_and_sends_error(http_clie
     assert response.status_code == 200
     assert '"code":"gateway_timeout"' in response.text and "[DONE]" not in response.text
     assert closed.is_set()
+    await policy_usage.executor.aclose()
     stats = await policy_usage.recorder.get_usage()
     assert stats["requests"][0]["status"] == "timeout"
     assert stats["summary"]["usage_counts"]["partial"] == 1
@@ -671,6 +680,7 @@ async def test_usage_hidden_from_stream_is_still_recorded(http_client, setup_gat
     response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body(stream=True))
     assert response.status_code == 200 and "[DONE]" in response.text
     assert '"usage"' not in response.text
+    await policy_usage.executor.aclose()
     record = (await policy_usage.recorder.get_usage())["requests"][0]
     assert record["status"] == "success" and record["attempts"][0]["usage_status"] == "reported"
     assert len(policy_usage.tracker_calls) == 1
@@ -774,3 +784,140 @@ async def test_final_error_flush_window_is_bounded(setup_gateway):
         if not task.done():
             task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_sdk_response_does_not_wait_for_usage_persistence(setup_gateway, monkeypatch, streaming):
+    @setup_gateway.app.middleware("http")
+    async def pass_through(request, call_next):
+        return await call_next(request)
+
+    setup_gateway.config.slots[SLOT_ID].timeout_seconds = 0.2
+    executor = setup_gateway.app.state.model_executor
+    recording, release_recording = asyncio.Event(), asyncio.Event()
+    records = []
+
+    async def delayed_record(record):
+        recording.set()
+        await release_recording.wait()
+        records.append(copy.deepcopy(record))
+
+    monkeypatch.setattr(executor.recorder, "record_request", delayed_record)
+    client = AsyncOpenAI(
+        api_key=setup_gateway.tokens["alpha"], base_url="http://gateway.test" + PREFIX,
+        max_retries=0, http_client=httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=setup_gateway.app), trust_env=False,
+        ),
+    )
+
+    async def request():
+        if streaming:
+            # High-level SDK iteration can also end at EOF. Check the actual
+            # completion marker so truncated output cannot satisfy this test.
+            async with client.chat.completions.with_streaming_response.create(**body(stream=True)) as response:
+                return [line async for line in response.iter_lines()]
+        return await client.chat.completions.create(**body())
+
+    task = asyncio.create_task(request())
+    try:
+        await asyncio.wait_for(recording.wait(), 2)
+        done, pending = await asyncio.wait({task}, timeout=0.5)
+        assert task in done and not pending, "Usage persistence blocked a successful model response"
+        result = task.result()
+        if streaming:
+            assert "data: [DONE]" in result
+            assert any('"hello"' in line for line in result)
+            assert not any('"error"' in line for line in result)
+        else:
+            assert result.choices[0].message.content == "hello"
+        assert not release_recording.is_set() and not records
+        assert all(upstream.is_closed for upstream in setup_gateway.clients)
+    finally:
+        release_recording.set()
+        await asyncio.gather(task, return_exceptions=True)
+        await executor.aclose()
+        await client.close()
+    assert len(records) == 1 and records[0]["status"] == "success"
+
+
+async def test_sdk_cancellation_does_not_wait_for_usage_persistence(setup_gateway, monkeypatch):
+    @setup_gateway.app.middleware("http")
+    async def pass_through(request, call_next):
+        return await call_next(request)
+
+    upstream_started, upstream_closed = asyncio.Event(), asyncio.Event()
+    recording, release_recording = asyncio.Event(), asyncio.Event()
+    executor = setup_gateway.app.state.model_executor
+    records = []
+
+    async def waiting_upstream(request):
+        upstream_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            upstream_closed.set()
+
+    async def delayed_record(record):
+        recording.set()
+        await release_recording.wait()
+        records.append(copy.deepcopy(record))
+
+    setup_gateway.upstream.handler = waiting_upstream
+    monkeypatch.setattr(executor.recorder, "record_request", delayed_record)
+    client = AsyncOpenAI(
+        api_key=setup_gateway.tokens["alpha"], base_url="http://gateway.test" + PREFIX,
+        max_retries=0, http_client=httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=setup_gateway.app), trust_env=False,
+        ),
+    )
+    task = asyncio.create_task(client.chat.completions.create(**body()))
+    try:
+        await asyncio.wait_for(upstream_started.wait(), 2)
+        task.cancel()
+        await asyncio.wait_for(recording.wait(), 2)
+        done, pending = await asyncio.wait({task}, timeout=0.5)
+        assert task in done and not pending, "Usage persistence prevented request cancellation"
+        assert task.cancelled()
+        assert upstream_closed.is_set()
+        assert all(upstream.is_closed for upstream in setup_gateway.clients)
+        assert not release_recording.is_set() and not records
+    finally:
+        release_recording.set()
+        await asyncio.gather(task, return_exceptions=True)
+        await executor.aclose()
+        await client.close()
+    assert len(records) == 1 and records[0]["status"] == "cancelled"
+
+
+async def test_gateway_shutdown_bounds_blocked_usage_flush(setup_gateway, monkeypatch):
+    recording, release_recording, recording_stopped = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    recorder = setup_gateway.app.state.model_executor.recorder
+
+    async def delayed_record(record):
+        recording.set()
+        try:
+            await release_recording.wait()
+        finally:
+            recording_stopped.set()
+
+    monkeypatch.setattr(recorder, "record_request", delayed_record)
+    executor = ModelExecutor(routes.gateway_service, recorder, accounting_flush_timeout_seconds=0.05)
+    setup_gateway.app.state.model_executor = executor
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=setup_gateway.app), base_url="http://gateway.test",
+    ) as client:
+        request = asyncio.create_task(client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body()))
+        closing = None
+        try:
+            await asyncio.wait_for(recording.wait(), 2)
+            closing = asyncio.create_task(routes.close_model_executor(setup_gateway.app))
+            done, pending = await asyncio.wait({closing}, timeout=0.5)
+            assert closing in done and not pending, "Shutdown waited indefinitely for the usage recorder"
+            closing.result()
+            assert not release_recording.is_set()
+            assert recording_stopped.is_set()
+            assert (await request).status_code == 200
+        finally:
+            release_recording.set()
+            await asyncio.gather(request, *([closing] if closing is not None else []), return_exceptions=True)
+            await executor.aclose()

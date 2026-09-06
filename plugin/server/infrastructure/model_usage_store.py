@@ -9,6 +9,7 @@ import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
+from contextvars import copy_context
 from typing import Any
 
 from plugin.server.domain.errors import ServerDomainError
@@ -121,11 +122,44 @@ def _clean_record(raw: object) -> dict:
     return record
 
 
+async def _write_in_daemon(operation: Callable, *args):
+    """Wait for a serial writer without attaching blocked I/O to loop shutdown.
+
+    Cancelling the waiter cannot stop an OS write. It may finish later, but must
+    not make asyncio's default-executor shutdown join a stuck filesystem thread.
+    Preserve inherited storage transaction context just as to_thread does.
+    """
+    loop = asyncio.get_running_loop()
+    result = loop.create_future()
+    context = copy_context()
+
+    def deliver(value, error):
+        if not result.done():
+            if error is None:
+                result.set_result(value)
+            else:
+                result.set_exception(error)
+
+    def run():
+        try:
+            value, error = context.run(operation, *args), None
+        except Exception as exc:
+            value, error = None, exc
+        try:
+            loop.call_soon_threadsafe(deliver, value, error)
+        except RuntimeError:
+            pass  # The owning event loop has already shut down.
+
+    threading.Thread(target=run, name="plugin-model-usage", daemon=True).start()
+    return await result
+
+
 class ModelUsageRecorder:
     """Read through the runtime file; never cache request data or credentials.
 
-    Request writes finish locally before returning. TokenTracker.record only
-    updates its in-memory delta; its existing periodic saver handles telemetry.
+    Executor-owned background writes finish before record_request returns,
+    independently of model responses. TokenTracker.record only updates its
+    in-memory delta; its existing periodic saver handles telemetry.
     """
 
     def __init__(self, config_manager: Any = None, tracker_getter: Callable | None = None):
@@ -224,10 +258,16 @@ class ModelUsageRecorder:
         return tracker
 
     async def record_request(self, record: dict) -> None:
-        normalized = _clean_record(record)
-        if not await asyncio.to_thread(self._persist, normalized):
+        if self._closed:
             return
-        tracker = await asyncio.to_thread(self._record_tokens, normalized)
+        normalized = _clean_record(record)
+
+        def write():
+            if not self._persist(normalized) or self._closed:
+                return None
+            return self._record_tokens(normalized)
+
+        tracker = await _write_in_daemon(write)
         if tracker is None or self._closed:
             return
         with _periodic_lock:
@@ -285,4 +325,4 @@ class ModelUsageRecorder:
         await asyncio.gather(task, return_exceptions=True)
         if getattr(tracker, "_save_task", None) is task:
             tracker._save_task = None
-        await asyncio.to_thread(tracker.save)
+        await _write_in_daemon(tracker.save)

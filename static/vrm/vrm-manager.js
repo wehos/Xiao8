@@ -9,6 +9,8 @@
 const VRM_IDLE_FPS = 30;
 const VRM_INTERACTIVE_FPS_HOLD_MS = 900;
 const VRM_IDLE_FPS_GOVERNOR_INTERVAL_MS = 300;
+// medium 画质隔帧物理允许的最低 tick 频率：2×(1000/40) = 50ms，正好是物理 delta 的防爆 clamp
+const VRM_PHYSICS_FRAME_SKIP_MIN_FPS = 40;
 
 const COMPRESSED_BUNDLED_VRMA_NAMES = new Set([
     'liked',
@@ -926,12 +928,14 @@ class VRMManager {
         return Number.isFinite(fps) && fps > 0 ? fps : null;
     }
 
-    // 当前是否以「地板级」低频 tick 在跑（≤ VRM_IDLE_FPS）。与 _idleTickMode 区分：
-    // 活动态定时器驱动也置 _idleTickMode，但频率是配置帧率，不算低频。
+    // 当前定时器 tick 频率是否低到不能再隔帧做物理：隔帧后的步长 2×(1000/fps) 必须
+    // 落在 50ms 防爆 clamp 之内，即 fps ≥ 40；再低（含 30 地板、以及 31~39 的非
+    // 标准配置）就每 tick 全量物理。与 _idleTickMode 区分：活动态定时器驱动也置
+    // 该标志，但频率是配置帧率，45/60 仍按 medium 隔帧。
     _isLowTickRate() {
         if (!this._idleTickMode) return false;
         const fps = Number(this._idleTickFps);
-        return !(fps > VRM_IDLE_FPS);
+        return !(fps >= VRM_PHYSICS_FRAME_SKIP_MIN_FPS);
     }
 
     _enterIdleTickMode(fps) {

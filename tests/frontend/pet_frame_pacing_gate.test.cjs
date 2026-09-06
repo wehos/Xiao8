@@ -325,6 +325,11 @@ test('VRM Pet + 配置低于刷新率：活动态定时器驱动，衰减只换�
     assert.equal(mgr._idleTickMode, true);
     assert.equal(mgr._idleTickFps, 30);
     assert.equal(mgr._isLowTickRate(), true, '30fps 地板才绕过隔帧物理');
+    // 非标准配置 35fps：隔帧后步长 57ms 超出 50ms clamp，同样按低频全量物理
+    mgr._enterIdleTickMode(35);
+    assert.equal(mgr._isLowTickRate(), true, '35fps 隔帧步长会超 clamp，不隔帧');
+    mgr._enterIdleTickMode(40);
+    assert.equal(mgr._isLowTickRate(), false, '40fps 隔帧步长恰为 50ms，允许隔帧');
     assert.equal(sb.rafQueue.length, 0, '从未重新排 rAF');
     // 设置变更事件驱动换周期
     sb.window.targetFrameRate = 24;

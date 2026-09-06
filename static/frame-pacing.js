@@ -1,18 +1,22 @@
 /**
- * 帧率总闸（仅 Electron Pet 窗口生效）
+ * Frame pacing gate (Electron Pet window only).
  *
- * 背景：设置里的「帧率」只写 `window.targetFrameRate`，各渲染后端（Live2D / VRM / MMD）
- * 原本各自用 rAF + 跳帧实现节流。跳帧只省掉 draw 本身，rAF 请求仍让 Blink 以显示器
- * 刷新率跑完整主帧生命周期，CPU/GPU 降不下来。
+ * Background: the "frame rate" setting only writes `window.targetFrameRate`, and each
+ * renderer backend (Live2D / VRM / MMD) used to throttle on its own with rAF + frame
+ * skipping. Skipping only saves the draw itself; the pending rAF request still makes
+ * Blink run a full main-frame lifecycle at the display refresh rate, so CPU/GPU never
+ * actually go down.
  *
- * 本文件只做两件事：
- *   1. 在 Pet 窗口里用 rAF 时间戳量出显示器刷新率；
- *   2. 回答「活动态是否该改用定时器驱动、用多少帧」——配置帧率明显低于刷新率时，
- *      各后端把 rAF 链整个停掉、改 setInterval 按配置帧率手动 tick（与现有
- *      空闲低频 tick 模式同一套机制，只是频率换成配置值）。
+ * This file does two things:
+ *   1. measures the display refresh rate from rAF timestamps inside the Pet window;
+ *   2. answers "should the active state switch to timer driving, and at what rate" —
+ *      when the configured frame rate is clearly below the refresh rate, backends stop
+ *      their rAF chain entirely and tick manually via setInterval at the configured rate
+ *      (same mechanism as the existing idle low-rate tick mode, just at a different rate).
  *
- * 非 Pet 页面（浏览器单窗口、模型管理器、角色卡等）不加载本文件，`window.nekoFramePacing`
- * 不存在，各后端保持原有 rAF + 跳帧行为不变。
+ * Non-Pet pages (browser single window, model manager, character cards, ...) do not load
+ * this file, `window.nekoFramePacing` does not exist there, and every backend keeps its
+ * original rAF + frame-skipping behaviour.
  */
 (function () {
     'use strict';

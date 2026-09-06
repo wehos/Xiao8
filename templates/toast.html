@@ -106,8 +106,14 @@
                 clearTimeout(statusPointerPollTimer);
                 statusPointerPollTimer = null;
             }
+            var wasPinnedByPointer = statusPointerInside;
             statusPointerTrackingActive = false;
             statusPointerInside = false;
+            // 轮询驱动的 pin 只能由轮询自己解开：一旦停止追踪，窗口回到穿透态，
+            // 再也不会有 mouseleave 到达。此处不恢复计时，被 pin 住的提示就会一直
+            // 挂在屏幕上（光标 IPC 失败、prominent notice 打断、页面转入后台都会走到
+            // 这里）。先清掉上面两个标志再调，_leave 才会按 DOM 语义重新判定。
+            if (wasPinnedByPointer && statusToast._leave) statusToast._leave();
             if (!keepCurrentMouseState && !prominentNoticeInteractive) {
                 setToastMouseThrough(true);
             }

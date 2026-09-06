@@ -21,7 +21,13 @@ def test_status_toast_uses_precise_pointer_tracking_instead_of_fullscreen_captur
 
     assert "getBoundingClientRect()" in status_section
     assert "api.getCursorPoint()" in status_section
-    assert "setToastMouseThrough(!isCursorInsideStatusToast(point));" in status_section
+    assert "var inside = isCursorInsideStatusToast(point);" in status_section
+    assert "setToastMouseThrough(!inside);" in status_section
+    # 命中结果必须同时驱动 hover 暂停：窗口在穿透态收不到 mouseenter，
+    # 光标停稳时 DOM 事件永不到达，pin 只能由轮询自己驱动。
+    assert "applyStatusPointerHover(inside);" in status_section
+    # 停止追踪时必须解开轮询驱动的 pin，否则提示会一直挂在屏幕上。
+    assert "if (wasPinnedByPointer && statusToast._leave) statusToast._leave();" in status_section
     assert "if (api && api.setMouseThrough) api.setMouseThrough(false);" not in status_section
     assert "stopStatusPointerTracking(false);" in status_section
 

@@ -379,3 +379,43 @@ test('a second toast re-pins with the cursor parked in place', async () => {
     '第二条提示同样必须被 pin：inside 标志位不得跨提示残留',
   );
 });
+
+// 轮询把提示 pin 住之后，窗口回到穿透态就再也不会有 mouseleave 到达。
+// 所以任何中断追踪的路径都必须自己解开 pin，否则提示一直挂在屏幕上。
+test('cursor IPC failure releases a poll-driven pin instead of stranding the toast', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false, '前置条件：轮询已 pin 住提示');
+
+  // 下一拍光标 IPC 失败 —— stopStatusPointerTracking 会停掉轮询。
+  harness.setCursorProvider(() => Promise.reject(new Error('ipc down')));
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    '追踪中断后必须恢复自动消失，否则被 pin 住的提示永远不会消失',
+  );
+});
+
+test('a prominent notice interrupting a pinned toast still leaves auto-hide armed', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.emitProminent();
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    'prominent notice 打断追踪时同样要把 pin 解开',
+  );
+});

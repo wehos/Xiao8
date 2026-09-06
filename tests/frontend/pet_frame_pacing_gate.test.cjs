@@ -574,24 +574,53 @@ test('契约：VRM medium 隔帧物理按实际 delta 兜底，且模式切换�
     // 跳过帧累计时间，物理更新时补上（受 clamp）；全量分支冲掉累计并重置奇偶计数
     assert.match(src, /this\._physicsPendingDelta = pendingDelta \+ delta;/);
     assert.match(src, /const physicsStep = Math\.min\(delta \+ pendingDelta, VRM_PHYSICS_MAX_STEP_S\);/);
-    assert.match(src, /\} else \{\s*this\._physicsFrameSkip = 0;\s*this\._physicsPendingDelta = 0;\s*this\.currentModel\.vrm\.update\(physicsStep\);/);
+    assert.match(src, /\} else \{\s*this\._physicsFrameSkip = 0;\s*this\._physicsPendingDelta = 0;\s*this\._updateVrmWithPhysicsStep\(this\.currentModel\.vrm, delta, physicsStep\);/);
     assert.doesNotMatch(src, /vrm\.update\(delta \* 2\)/, '不再盲目用 delta*2，改用实际累计时间');
+    assert.doesNotMatch(src.slice(src.indexOf("const quality = window.renderQuality"), src.indexOf('// 6. CursorFollow')), /currentModel\.vrm\.update\(/, '物理段不再直接整体 vrm.update，累计步长只喂弹簧骨');
 });
 
-// 把源码里「5. VRM 核心更新」整段抠出来单独执行（含 enablePhysics / 画质 / 换模型 / 隔帧分支）
+// 把源码里「5. VRM 核心更新」整段 + _updateVrmWithPhysicsStep 抠出来单独执行
+// （含 enablePhysics / 画质 / 换模型 / 隔帧分支）
 function loadVrmPhysicsStep() {
     const src = read('static/vrm/vrm-manager.js');
     const start = src.indexOf("const quality = window.renderQuality || 'medium';");
     const end = src.indexOf('// 6. CursorFollow', start);
     assert.ok(start > 0 && end > start, 'VRM 物理段定位失败');
-    return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', src.slice(start, end));
+    const helperStart = src.indexOf('_updateVrmWithPhysicsStep(vrm, delta, physicsStep) {');
+    const helperEnd = src.indexOf('\n    }\n', helperStart) + 7;
+    assert.ok(helperStart > 0 && helperEnd > helperStart, '_updateVrmWithPhysicsStep 定位失败');
+    const helperSrc = 'this._updateVrmWithPhysicsStep = function ' + src.slice(helperStart, helperEnd) + ';';
+    return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', helperSrc + src.slice(start, end));
 }
-function makeVrmPhysicsCtx() {
-    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, currentModel: null };
-    ctx.newModel = () => { ctx.currentModel = { vrm: { update: (d) => { ctx.simulated += d; }, lookAt: { update() {} }, expressionManager: { update() {} } } }; };
+function makeVrmPhysicsCtx({ componentApi = true } = {}) {
+    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, lookAtTime: [], currentModel: null };
+    ctx.newModel = () => {
+        const vrm = {
+            update: (d) => { ctx.simulated += d; ctx.lookAtTime.push(d); },
+            lookAt: { update: (d) => { ctx.lookAtTime.push(d); } },
+            expressionManager: { update() {} },
+            humanoid: { update() {} },
+        };
+        if (componentApi) vrm.springBoneManager = { update: (d) => { ctx.simulated += d; } };
+        ctx.currentModel = { vrm };
+    };
     ctx.newModel();
     return ctx;
 }
+
+test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt 每 tick 只推进当前 delta', () => {
+    const run = loadVrmPhysicsStep();
+    const ctx = makeVrmPhysicsCtx();
+    const frames = [0.0167, 0.0167, 0.0333, 0.0167, 0.0167];
+    let elapsed = 0;
+    for (const d of frames) { elapsed += d; run.call(ctx, d, { renderQuality: 'medium' }, 0.05); }
+    assert.ok(Math.abs(ctx.simulated - elapsed) < 1e-9, '弹簧骨物理时间守恒');
+    assert.deepEqual(ctx.lookAtTime, frames, 'LookAt 每帧只拿当前 delta，不吃累计');
+    // 旧版 three-vrm（无 springBoneManager.update）退回整体 update
+    const legacy = makeVrmPhysicsCtx({ componentApi: false });
+    for (const d of [0.0167, 0.0167]) run.call(legacy, d, { renderQuality: 'medium' }, 0.05);
+    assert.ok(Math.abs(legacy.simulated - 0.0334) < 1e-9, '退回整体 update 时物理时间仍守恒');
+});
 
 test('VRM 物理隔帧：隔帧↔全量切换时物理时间总和 = 实际经过时间', () => {
     const run = loadVrmPhysicsStep();

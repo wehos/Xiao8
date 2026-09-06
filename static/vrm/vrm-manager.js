@@ -810,7 +810,7 @@ class VRMManager {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
                             this._physicsPendingDelta = 0;
-                            this.currentModel.vrm.update(physicsStep);
+                            this._updateVrmWithPhysicsStep(this.currentModel.vrm, delta, physicsStep);
                         } else {
                             this._physicsPendingDelta = pendingDelta + delta;
                             if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
@@ -819,7 +819,7 @@ class VRMManager {
                     } else {
                         this._physicsFrameSkip = 0;
                         this._physicsPendingDelta = 0;
-                        this.currentModel.vrm.update(physicsStep);
+                        this._updateVrmWithPhysicsStep(this.currentModel.vrm, delta, physicsStep);
                     }
                 } else {
                     // 物理关闭 / low 画质：清掉隔帧状态，重新开启时从干净状态起步，
@@ -961,6 +961,23 @@ class VRMManager {
         if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
         const fps = Number(pacing.activeTimerTickFps(this._resolveConfiguredTargetFps()));
         return Number.isFinite(fps) && fps > 0 ? fps : null;
+    }
+
+    // 分量更新：只有弹簧骨物理吃「当前帧 + 上一跳过帧」的累计步长，LookAt / 表情仍按
+    // 当前帧 delta 推进——three-vrm 的 VRM.update(t) 会把 t 一并喂给 lookAt，直接传累计
+    // 步长会让视线在一帧里多走一倍。顺序与 VRM.update 一致：humanoid → 约束 → 弹簧骨 →
+    // lookAt → 表情。没有分量 API（旧版 three-vrm）时退回整体 update。
+    _updateVrmWithPhysicsStep(vrm, delta, physicsStep) {
+        const springBones = vrm.springBoneManager;
+        if (springBones && typeof springBones.update === 'function') {
+            if (vrm.humanoid && typeof vrm.humanoid.update === 'function') vrm.humanoid.update();
+            if (vrm.nodeConstraintManager && typeof vrm.nodeConstraintManager.update === 'function') vrm.nodeConstraintManager.update();
+            springBones.update(physicsStep);
+            if (vrm.lookAt) vrm.lookAt.update(delta);
+            if (vrm.expressionManager) vrm.expressionManager.update(delta);
+            return;
+        }
+        vrm.update(physicsStep);
     }
 
     // 当前定时器 tick 频率是否低到不能再隔帧做物理：隔帧后的步长 2×(1000/fps) 必须

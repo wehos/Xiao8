@@ -66,12 +66,14 @@ function createSandbox({ pet, targetFrameRate }) {
         createElement() { return { style: {} }; },
         body: { classList: { contains() { return false; } } },
     };
+    // 沙盒时钟：随 pumpFrames 推进；rAF 时间戳与 performance.now() 同源
+    let frameClock = 0;
     const sandbox = {
         window,
         document,
         PIXI,
         console: { log() {}, warn() {}, error() {}, info() {}, debug() {} },
-        performance,
+        performance: { now: () => frameClock },
         navigator: window.navigator,
         localStorage: window.localStorage,
         // 走 globalThis 间接调用，让 node:test 的 mock timers 生效
@@ -88,7 +90,6 @@ function createSandbox({ pet, targetFrameRate }) {
     vm.createContext(sandbox);
     vm.runInContext(FRAME_PACING_SRC, sandbox, { filename: 'frame-pacing.js' });
 
-    let frameClock = 0;
     // 手动推 n 个 rAF 帧，时间戳按 hz 递增
     const pumpFrames = (n, hz) => {
         for (let i = 0; i < n; i++) {
@@ -347,6 +348,25 @@ test('MMD：目标帧率接到设置里的帧率滑块，0 = 不限帧', withMoc
     delete sb.window.targetFrameRate;
     core._refreshTargetFps();
     assert.ok([30, 45, 60].includes(core.targetFPS), '没有该配置时退回 performanceMode 档位');
+}));
+
+test('MMD rAF 路径：不限帧后切回有限帧率，节流状态不能被 NaN 污染', withMockTimers(() => {
+    const sb = createSandbox({ pet: false, targetFrameRate: 0 });
+    const { core, manager } = setupMMD(sb);
+    manager._animationFrameId = null;
+    // 不限帧：连续 rAF 全部渲染
+    core._render();
+    sb.pumpFrames(1, 60);
+    sb.pumpFrames(1, 60);
+    assert.equal(core.renders, 3, '不限帧时每个 rAF 都渲染');
+    assert.ok(Number.isFinite(core.lastFrameTime), 'lastFrameTime 必须是有限数');
+    // 切回 45fps：60Hz 推 60 帧应只渲染约 45 帧
+    sb.window.targetFrameRate = 45;
+    const before = core.renders;
+    sb.pumpFrames(60, 60);
+    const rendered = core.renders - before;
+    assert.ok(rendered >= 40 && rendered <= 50, `切回 45fps 后应重新节流，实际渲染 ${rendered}/60`);
+    assert.ok(Number.isFinite(core.lastFrameTime));
 }));
 
 test('MMD Pet + 配置低于刷新率：活动态定时器驱动，衰减只换周期', withMockTimers(() => {

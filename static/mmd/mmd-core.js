@@ -1186,6 +1186,13 @@ class MMDCore {
         // 由 interval 直接调用 _renderFrame，不经过这里）
         this._refreshTargetFps();
         const now = performance.now();
+        if (!(this.frameTime > 0)) {
+            // 不限帧：每个 rAF 都渲染。不能走下面的取模（elapsed % 0 = NaN 会把
+            // lastFrameTime 污染成 NaN，之后切回有限帧率也永远节流不了）。
+            this.lastFrameTime = now;
+            this._renderFrame(now);
+            return;
+        }
         const elapsed = now - this.lastFrameTime;
         if (elapsed < this.frameTime) return;
         this.lastFrameTime = now - (elapsed % this.frameTime);

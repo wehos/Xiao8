@@ -821,14 +821,19 @@ class Live2DManager {
         const globals = this._resolveGlobalTickers();
         if (this._idleTickMode) {
             this._idleTickSavedMaxFPS = resolved;
-            if (globals) this._idleTickSavedGlobalMaxFPS = resolved;
+        } else if (ticker.maxFPS !== resolved) {
+            ticker.maxFPS = resolved;
+        }
+        if (!globals) return;
+        // 全局 ticker 被扣住（定时器模式 / 外部 stop 期间）时只更新待恢复值，放开时才生效；
+        // 否则直接写——两者分开存，虽然本 manager 总是给同一个值，但恢复时不互相串
+        if (this._globalTickersHeld) {
+            this._idleTickSavedSharedMaxFPS = resolved;
+            this._idleTickSavedSystemMaxFPS = resolved;
             return;
         }
-        if (ticker.maxFPS !== resolved) ticker.maxFPS = resolved;
-        if (globals) {
-            if (globals.shared.maxFPS !== resolved) globals.shared.maxFPS = resolved;
-            if (globals.system.maxFPS !== resolved) globals.system.maxFPS = resolved;
-        }
+        if (globals.shared.maxFPS !== resolved) globals.shared.maxFPS = resolved;
+        if (globals.system.maxFPS !== resolved) globals.system.maxFPS = resolved;
     }
 
     // 有渲染活动时升回配置帧率，并安排在 durationMs 后衰减回静止地板（全平台）。
@@ -923,7 +928,8 @@ class Live2DManager {
         this._idleTickSystemWasStarted = !!PixiTicker.system.started;
         const globals = this._resolveGlobalTickers();
         if (globals) {
-            this._idleTickSavedGlobalMaxFPS = globals.shared.maxFPS;
+            this._idleTickSavedSharedMaxFPS = globals.shared.maxFPS;
+            this._idleTickSavedSystemMaxFPS = globals.system.maxFPS;
             globals.shared.maxFPS = 0;
             globals.system.maxFPS = 0;
         }
@@ -1003,16 +1009,15 @@ class Live2DManager {
         const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
         if (!PixiTicker) return;
         try {
-            if (typeof this._idleTickSavedGlobalMaxFPS === 'number') {
-                PixiTicker.shared.maxFPS = this._idleTickSavedGlobalMaxFPS;
-                PixiTicker.system.maxFPS = this._idleTickSavedGlobalMaxFPS;
-            }
+            if (typeof this._idleTickSavedSharedMaxFPS === 'number') PixiTicker.shared.maxFPS = this._idleTickSavedSharedMaxFPS;
+            if (typeof this._idleTickSavedSystemMaxFPS === 'number') PixiTicker.system.maxFPS = this._idleTickSavedSystemMaxFPS;
             if (this._idleTickSharedWasStarted && !PixiTicker.shared.started) PixiTicker.shared.start();
             if (this._idleTickSystemWasStarted && !PixiTicker.system.started) PixiTicker.system.start();
         } catch (_) {}
         this._idleTickSharedWasStarted = false;
         this._idleTickSystemWasStarted = false;
-        this._idleTickSavedGlobalMaxFPS = null;
+        this._idleTickSavedSharedMaxFPS = null;
+        this._idleTickSavedSystemMaxFPS = null;
     }
 
     // 向后兼容旧调用名（live2d-interaction.js 的交互升帧），现已推广到全平台。

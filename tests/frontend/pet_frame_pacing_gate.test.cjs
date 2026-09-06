@@ -479,13 +479,34 @@ test('Live2D：真实切角色序列 stop → removeModel 的 start → 最终 s
     app.ticker.stop();          // app-character：最终停掉 Live2D 给 VRM/MMD 让路
     assert.equal(shared.started, false, '不在定时器模式的 stop 也必须把 Pet 全局 ticker 扣住');
     assert.equal(system.started, false);
+    // 扣住期间改帧率设置：放开时全局 ticker 拿到的是新上限，且 shared/system 各自独立恢复
+    system.maxFPS = 45; // 模拟两者原本不同（放开后应各回各的，不互相串）
+    sb.window.targetFrameRate = 24;
+    mgr.setTargetFPS(24);
     app.ticker.start();         // 切回 Live2D
     assert.equal(shared.started, true, 'start 再放开');
+    assert.equal(shared.maxFPS, 24, '扣住期间改的设置在放开时生效');
+    assert.equal(system.maxFPS, 24, 'system 同样拿到新上限');
     // 非 Pet：stop 不扣全局 ticker（保持既有行为）
     const sb2 = createSandbox({ pet: false, targetFrameRate: 30 });
     const l2 = setupLive2D(sb2);
     l2.app.ticker.stop();
     assert.equal(l2.shared.started, true, '非 Pet 页面 stop 不动全局 ticker');
+}));
+
+test('Live2D：shared/system 的帧率上限分别保存、分别恢复，不互相串', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 60 });
+    sb.measureRefresh(60);
+    const { mgr, app, shared, system } = setupLive2D(sb);
+    mgr.boostInteractiveFPS(); // rAF 模式，shared/system = 60
+    shared.maxFPS = 50; // 外部把两者改成不同值
+    system.maxFPS = 20;
+    app.ticker.stop();  // 扣住：各自记下
+    assert.equal(shared.maxFPS, 0);
+    assert.equal(system.maxFPS, 0);
+    app.ticker.start(); // 放开：各回各的
+    assert.equal(shared.maxFPS, 50);
+    assert.equal(system.maxFPS, 20, 'system 不能被 shared 的保存值覆盖');
 }));
 
 test('Live2D：stop() 后直接销毁（不经 start）也必须释放全局 ticker，否则重建后模型 autoUpdate 冻住', withMockTimers(() => {

@@ -760,6 +760,33 @@ test('契约：Live2D 交互层只有坐标真变了才升帧', () => {
     );
 });
 
+test('VRM legacy 视线跟随（CursorFollow 未加载）：重复坐标不续期活动保持期', withMockTimers(() => {
+    const sb = createSandbox({ pet: false, targetFrameRate: 60 });
+    const vrm = setupVRM(sb);
+    vrm.isMouseTrackingEnabled = () => true;
+    vrm._setLookAtTargetByMouse = () => {};
+    // 从源码抠出 legacy handler 的闭包体，避免依赖 THREE 初始化
+    const src = VRM_MANAGER_SRC;
+    const start = src.indexOf('this._mouseMoveHandler = (event) => {');
+    const end = src.indexOf('document.addEventListener(\'mousemove\', this._mouseMoveHandler', start);
+    assert.ok(start > 0 && end > start, 'legacy handler 定位失败');
+    // 必须在沙盒 realm 里构造，handler 读到的才是沙盒的 performance.now()
+    const install = vm.runInContext('(function () {' + src.slice(start, end) + '})', sb.sandbox);
+    install.call(vrm);
+    sb.tick(1000);
+    vrm._mouseMoveHandler({ clientX: 10, clientY: 20 });
+    const first = vrm._lastLookAtPointerMoveAt;
+    assert.equal(first, sb.sandbox.performance.now(), '首次坐标记录时间戳');
+    sb.tick(500);
+    vrm._mouseMoveHandler({ clientX: 10, clientY: 20 });
+    assert.equal(vrm._lastLookAtPointerMoveAt, first, '同坐标重复事件不刷新时间戳');
+    sb.tick(500);
+    assert.equal(vrm._hasRenderActivity(), false, '保持期过后可进空闲');
+    vrm._mouseMoveHandler({ clientX: 11, clientY: 20 });
+    assert.equal(vrm._lastLookAtPointerMoveAt, sb.sandbox.performance.now(), '坐标一变立即刷新');
+    assert.equal(vrm._hasRenderActivity(), true);
+}));
+
 test('契约：VRM / MMD 光标跟随对坐标没变的事件不刷新活动时间戳', () => {
     const vrm = read('static/vrm/vrm-cursor-follow.js');
     assert.match(vrm, /const moved = e\.clientX !== this\._rawMouseX \|\| e\.clientY !== this\._rawMouseY;/);

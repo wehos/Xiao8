@@ -345,8 +345,13 @@ class VRMManager {
         if (!this._mouseMoveHandler) {
             this._mouseMoveHandler = (event) => {
                 if (!this.isMouseTrackingEnabled()) return;
-                // 供空闲低频 governor 判定"光标最近在动"（legacy 视线跟随路径）
-                this._lastLookAtPointerMoveAt = performance.now();
+                // 供空闲低频 governor 判定"光标最近在动"（legacy 视线跟随路径）。
+                // 坐标没变的重复事件（Electron Pet 的 preload 轮询在光标静止时也会转发）不算，
+                // 否则 VRM 永远降不到空闲帧率。
+                const moved = event.clientX !== this._lastLookAtMouseX || event.clientY !== this._lastLookAtMouseY;
+                this._lastLookAtMouseX = event.clientX;
+                this._lastLookAtMouseY = event.clientY;
+                if (moved) this._lastLookAtPointerMoveAt = performance.now();
                 this._setLookAtTargetByMouse(event.clientX, event.clientY);
             };
             document.addEventListener('mousemove', this._mouseMoveHandler, { passive: true });

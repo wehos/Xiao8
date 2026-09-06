@@ -2662,6 +2662,8 @@ Live2DManager.prototype.enableMouseTracking = function (model, options = {}) {
         // 静止时也周期性派发合成 pointermove，不加这道闸它会把升帧的 hold 窗口无限续命，
         // 空闲低频 tick 永远进不去。其余悬停/淡化状态逻辑照常执行，不受影响。
         const pointerMoved = pointer.x !== this._lastMouseX || pointer.y !== this._lastMouseY;
+        // 供 live2d-core 的活动判定：isFocusing 只在光标最近真的动过时才算活动
+        if (pointerMoved) this._lastPointerMoveAt = performance.now();
         this._lastMouseX = pointer.x;
         this._lastMouseY = pointer.y;
         this._lastMouseLocalX = localPointer.x;

@@ -138,10 +138,16 @@ function setupLive2D(sb) {
     const origStart = app.ticker.start.bind(app.ticker);
     mgr._tickerOrigStop = origStop;
     mgr._tickerOrigStart = origStart;
-    app.ticker.stop = function () { mgr._exitIdleTickMode(); return origStop(); };
-    app.ticker.start = function () { mgr._exitIdleTickMode(); return origStart(); };
+    // 与 live2d-core.js initPIXI 里的包装保持一致（下面有契约断言防漂移）
+    app.ticker.stop = function () { mgr._exitIdleTickMode({ restartGlobals: false }); return origStop(); };
+    app.ticker.start = function () { mgr._exitIdleTickMode(); mgr._releaseGlobalTickers(); return origStart(); };
     return { mgr, app, shared: sb.PIXI.Ticker.shared, system: sb.PIXI.Ticker.system };
 }
+
+test('契约：initPIXI 的 ticker.stop/start 包装语义与测试复刻一致', () => {
+    assert.match(LIVE2D_CORE_SRC, /ticker\.stop = function \(\) \{ mgr\._exitIdleTickMode\(\{ restartGlobals: false \}\); return origStop\(\); \};/);
+    assert.match(LIVE2D_CORE_SRC, /ticker\.start = function \(\) \{ mgr\._exitIdleTickMode\(\); mgr\._releaseGlobalTickers\(\); return origStart\(\); \};/);
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // frame-pacing.js
@@ -339,6 +345,47 @@ test('Live2D Pet + 配置 = 刷新率：rAF 模式接管 shared/system 的 maxFP
     assert.equal(app.ticker.maxFPS, 0);
     assert.equal(shared.maxFPS, 0);
 }));
+
+test('Live2D：外部 ticker.stop()（切 VRM/MMD、pauseRendering）退出定时器模式时不拉起全局 ticker；start() 再拉回', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 30 });
+    sb.measureRefresh(60);
+    const { mgr, app, shared, system } = setupLive2D(sb);
+    shared.maxFPS = 0;
+    mgr.boostInteractiveFPS();
+    assert.equal(mgr._idleTickMode, true);
+    assert.equal(shared.started, false);
+    app.ticker.stop(); // 切角色 / pauseRendering 走的是包装后的 stop
+    assert.ok(!mgr._idleTickMode);
+    assert.equal(app.ticker.started, false);
+    assert.equal(shared.started, false, 'Live2D 停了，shared 不能被拉起来空跑 rAF');
+    assert.equal(system.started, false, 'system 同理');
+    app.ticker.start(); // 切回 Live2D
+    assert.equal(app.ticker.started, true);
+    assert.equal(shared.started, true, '回到 Live2D 时全局 ticker 一并恢复');
+    assert.equal(system.started, true);
+    assert.equal(shared.maxFPS, 30, '恢复时帧率上限也恢复到配置值');
+}));
+
+test('Live2D：光标停在悬停范围内（isFocusing 常驻）不算持续活动，保持期过后可进空闲', withMockTimers(() => {
+    const sb = createSandbox({ pet: false, targetFrameRate: 60 });
+    const { mgr } = setupLive2D(sb);
+    sb.tick(1000);
+    mgr.isFocusing = true;
+    assert.equal(mgr._hasRenderActivity(), false, '没有任何指针位移记录时 isFocusing 不算活动');
+    mgr._lastPointerMoveAt = sb.sandbox.performance.now();
+    assert.equal(mgr._hasRenderActivity(), true, '刚动过算活动');
+    sb.tick(899);
+    assert.equal(mgr._hasRenderActivity(), true);
+    sb.tick(2);
+    assert.equal(mgr._hasRenderActivity(), false, '保持期过后视线目标已收敛，不再算活动');
+    mgr._isDraggingModel = true;
+    assert.equal(mgr._hasRenderActivity(), true, '拖拽仍无条件算活动');
+}));
+
+test('契约：Live2D 交互层在坐标变化时记录 _lastPointerMoveAt', () => {
+    const src = read('static/live2d/live2d-interaction.js');
+    assert.match(src, /if \(pointerMoved\) this\._lastPointerMoveAt = performance\.now\(\);/);
+});
 
 test('Live2D：外部 pauseRendering 时不接管；ticker.start() 让位后 governor 自愈回定时器', withMockTimers(() => {
     const sb = createSandbox({ pet: true, targetFrameRate: 30 });

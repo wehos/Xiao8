@@ -383,8 +383,10 @@ class Live2DManager {
                     const origStart = ticker.start.bind(ticker);
                     this._tickerOrigStop = origStop;
                     this._tickerOrigStart = origStart;
-                    ticker.stop = function () { mgr._exitIdleTickMode(); return origStop(); };
-                    ticker.start = function () { mgr._exitIdleTickMode(); return origStart(); };
+                    // stop：退出定时器模式但不拉起全局 ticker（Live2D 停了就不该让 PIXI 的
+                    // rAF 链继续跑）；start：退出定时器模式并把全局 ticker 一并拉回来。
+                    ticker.stop = function () { mgr._exitIdleTickMode({ restartGlobals: false }); return origStop(); };
+                    ticker.start = function () { mgr._exitIdleTickMode(); mgr._releaseGlobalTickers(); return origStart(); };
                 }
                 // 启动自适应帧率守护：静止时降到地板（LIVE2D_IDLE_FPS），活动时升回配置帧率。
                 this._startIdleFpsGovernor();
@@ -933,36 +935,48 @@ class Live2DManager {
         }, intervalMs);
     }
 
-    _exitIdleTickMode() {
+    /**
+     * 退出定时器驱动模式。默认把定时器模式停掉的全局 shared/system ticker 一并拉起
+     * （回到 rAF 驱动）；`restartGlobals: false` 用于外部 ticker.stop() 路径（切到
+     * VRM/MMD、pauseRendering）：Live2D 本身都不渲染了，全局 ticker 拉起来只会让
+     * PIXI 的 rAF 链继续按刷新率空跑，之后由 ticker.start() 包装再 _releaseGlobalTickers。
+     */
+    _exitIdleTickMode(options) {
         if (!this._idleTickMode) return;
+        const restartGlobals = !(options && options.restartGlobals === false);
         this._idleTickMode = false;
         if (this._idleTickTimer) {
             clearInterval(this._idleTickTimer);
             this._idleTickTimer = null;
         }
-        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
-        try {
-            if (PixiTicker) {
-                if (this._idleTickSharedWasStarted && !PixiTicker.shared.started) PixiTicker.shared.start();
-                if (this._idleTickSystemWasStarted && !PixiTicker.system.started) PixiTicker.system.start();
-            }
-        } catch (_) {}
         const app = this.pixi_app;
         if (app && app.ticker && typeof this._idleTickSavedMaxFPS === 'number') {
             app.ticker.maxFPS = this._idleTickSavedMaxFPS;
         }
-        if (PixiTicker && typeof this._idleTickSavedGlobalMaxFPS === 'number') {
-            try {
-                PixiTicker.shared.maxFPS = this._idleTickSavedGlobalMaxFPS;
-                PixiTicker.system.maxFPS = this._idleTickSavedGlobalMaxFPS;
-            } catch (_) {}
-        }
+        if (restartGlobals) this._releaseGlobalTickers();
         if (app && app.ticker && app.ticker.started === false && this._tickerOrigStart) {
             try { this._tickerOrigStart(); } catch (_) {}
         }
         this._idleTickSavedMaxFPS = null;
-        this._idleTickSavedGlobalMaxFPS = null;
         this._idleTickFps = null;
+    }
+
+    // 把定时器模式接管（停掉）的全局 shared/system ticker 拉回来并恢复它们的帧率上限。
+    // 幂等：没接管过就什么都不做。
+    _releaseGlobalTickers() {
+        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
+        if (!PixiTicker) return;
+        try {
+            if (typeof this._idleTickSavedGlobalMaxFPS === 'number') {
+                PixiTicker.shared.maxFPS = this._idleTickSavedGlobalMaxFPS;
+                PixiTicker.system.maxFPS = this._idleTickSavedGlobalMaxFPS;
+            }
+            if (this._idleTickSharedWasStarted && !PixiTicker.shared.started) PixiTicker.shared.start();
+            if (this._idleTickSystemWasStarted && !PixiTicker.system.started) PixiTicker.system.start();
+        } catch (_) {}
+        this._idleTickSharedWasStarted = false;
+        this._idleTickSystemWasStarted = false;
+        this._idleTickSavedGlobalMaxFPS = null;
     }
 
     // 向后兼容旧调用名（live2d-interaction.js 的交互升帧），现已推广到全平台。
@@ -977,7 +991,11 @@ class Live2DManager {
                 return true;
             }
         } catch (_) {}
-        if (this._isDraggingModel || this.isFocusing) return true;
+        if (this._isDraggingModel) return true;
+        // 光标停在模型悬停范围内时 isFocusing 会一直为 true；只有光标最近真的动过才算活动，
+        // 否则视线目标已收敛、却永远进不了空闲低频 tick。
+        if (this.isFocusing && this._lastPointerMoveAt &&
+            (performance.now() - this._lastPointerMoveAt) < LIVE2D_INTERACTIVE_FPS_HOLD_MS) return true;
         const appState = window.appState;
         if (appState && appState.lipSyncActive) return true;
         return false;

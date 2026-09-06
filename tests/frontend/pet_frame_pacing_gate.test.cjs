@@ -597,8 +597,11 @@ test('MMD / VRM：时间戳 0 是合法的活动时间戳，不能被当成未�
         assert.equal(vrm._hasRenderActivity(), true, `VRM ${key} = 0 在保持期内算活动`);
         vrm[key] = undefined;
     }
-    vrm._cursorFollow = { isEnabled: () => true, _lastPointerMoveAt: 0 };
-    assert.equal(vrm._hasRenderActivity(), true, 'VRM 光标时间戳 0 在保持期内算活动');
+    // CursorFollow 构造/重置时 _lastPointerMoveAt = 0 表示「尚无指针输入」，必须靠 _hasPointerInput 区分
+    vrm._cursorFollow = { isEnabled: () => true, _lastPointerMoveAt: 0, _hasPointerInput: false };
+    assert.equal(vrm._hasRenderActivity(), false, '尚无指针输入时 0 不算活动');
+    vrm._cursorFollow = { isEnabled: () => true, _lastPointerMoveAt: 0, _hasPointerInput: true };
+    assert.equal(vrm._hasRenderActivity(), true, '有过指针输入时时间戳 0 在保持期内算活动');
     sb2.tick(901);
     assert.equal(vrm._hasRenderActivity(), false);
 }));

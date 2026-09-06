@@ -1043,8 +1043,9 @@ class VRMManager {
         try { if (this.interaction && this.interaction.isDragging) return true; } catch (_) {}
         try {
             const cf = this._cursorFollow;
-            // 时间戳 0 是合法值（performance.now() 起点），不能用真值判断
-            if (cf && typeof cf.isEnabled === 'function' && cf.isEnabled() &&
+            // 时间戳 0 是合法值（performance.now() 起点），不能用真值判断；但 CursorFollow
+            // 构造/重置时把 _lastPointerMoveAt 置 0 当「尚无指针输入」，要靠 _hasPointerInput 区分
+            if (cf && typeof cf.isEnabled === 'function' && cf.isEnabled() && cf._hasPointerInput === true &&
                 Number.isFinite(cf._lastPointerMoveAt) && (performance.now() - cf._lastPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {

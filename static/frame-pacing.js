@@ -22,11 +22,12 @@
     'use strict';
     if (window.nekoFramePacing) return;
 
-    const REFRESH_SAMPLE_FRAMES = 24;        // 采样的 rAF 帧数
-    const REFRESH_SAMPLE_TIMEOUT_MS = 3000;  // 采样超时：测不到就一律走 rAF（保守）
-    const REFRESH_SAMPLE_START_DELAY_MS = 1500; // 页面 load 后延迟再采样，避开加载抖动
-    // 配置帧率必须低于「刷新率 × 该比例」才切定时器驱动：60fps 配置在 60Hz 屏上留在
-    // rAF（vsync 对齐更平滑，定时器也省不出东西），在 120/144Hz 屏上才切定时器。
+    const REFRESH_SAMPLE_FRAMES = 24;        // number of rAF frames to sample
+    const REFRESH_SAMPLE_TIMEOUT_MS = 3000;  // sampling timeout: unmeasurable -> stay on rAF (conservative)
+    const REFRESH_SAMPLE_START_DELAY_MS = 1500; // delay after load before sampling, to skip load-time jank
+    // The configured rate must be below "refresh rate x this ratio" to switch to timer
+    // driving: a 60fps setting stays on rAF on a 60Hz display (vsync-aligned is smoother
+    // and a timer would save nothing) and only switches on 120/144Hz displays.
     const TIMER_DRIVE_REFRESH_RATIO = 0.9;
 
     const state = { refreshHz: null, sampling: false, resamplePending: false, pendingCallbacks: [] };
@@ -36,7 +37,7 @@
         return window.__LANLAN_IS_ELECTRON_PET__ === true;
     }
 
-    // 用户配置的目标帧率；0 = 不限帧（跟随 VSync）。与 live2d-core 的解析规则一致。
+    // User-configured target frame rate; 0 = uncapped (follow VSync). Same parsing rules as live2d-core.
     function configuredTargetFps() {
         const raw = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
         return Number.isFinite(raw) && raw >= 0 ? raw : 60;
@@ -47,10 +48,11 @@
     }
 
     /**
-     * 活动态应使用的定时器驱动帧率；返回 null 表示留在 rAF 驱动。
-     * 只有 Pet 窗口 + 配置帧率 > 0 + 已测出刷新率 + 配置明显低于刷新率时才给出数值。
-     * 调用方可传入自己解析出的目标帧率（如 MMD 在没有 window.targetFrameRate 时按
-     * performanceMode 回退），保证总闸与后端对「目标帧率」的理解一致。
+     * Timer-driving frame rate the active state should use; null means stay on rAF.
+     * A value is returned only for Pet window + configured rate > 0 + refresh rate measured
+     * + configured rate clearly below the refresh rate.
+     * Callers may pass their own resolved target rate (e.g. MMD falls back to performanceMode
+     * when window.targetFrameRate is absent) so the gate and the backend agree on "target rate".
      */
     function activeTimerTickFps(fpsOverride) {
         if (!isElectronPet()) return null;
@@ -62,14 +64,16 @@
     }
 
     /**
-     * 用连续 rAF 时间戳的中位数间隔估算刷新率。误差方向是保守的：加载期抖动只会让
-     * 间隔变长（刷新率被低估 → 更倾向留在 rAF），不会把刷新率估高。
+     * Estimate the refresh rate from the median interval of consecutive rAF timestamps.
+     * The error is conservative: load-time jank only lengthens intervals (refresh rate
+     * underestimated -> more likely to stay on rAF), it never overestimates it.
      */
     function measureDisplayRefreshRate(onDone) {
         if (typeof requestAnimationFrame !== 'function') return;
         if (state.sampling) {
-            // 采样进行中又来一次请求（连续跨屏）：不能丢——当前这轮采到的可能是旧显示器
-            // 的时间戳，结束后紧接着再测一轮；排队请求的回调留到那一轮结束再调。
+            // Another request while sampling (back-to-back display changes): must not be
+            // dropped -- the in-flight sample may hold timestamps from the previous display,
+            // so run one more round right after it settles; queued callbacks fire after that round.
             state.resamplePending = true;
             if (typeof onDone === 'function') state.pendingCallbacks.push(onDone);
             return;
@@ -81,8 +85,9 @@
             if (settled) return;
             settled = true;
             state.sampling = false;
-            // 测出就更新；测不出（超时/rAF 被挂起）则作废旧值——跨屏后旧显示器的刷新率
-            // 不能继续拿来决定驱动方式，回到「未知 → 保守走 rAF」。
+            // Measured -> update; unmeasurable (timeout / rAF suspended) -> invalidate the old
+            // value: after a display change the previous display's refresh rate must not keep
+            // deciding the driving mode, fall back to "unknown -> conservative rAF".
             state.refreshHz = hz > 0 ? hz : null;
             if (typeof onDone === 'function') {
                 try { onDone(state.refreshHz); } catch (_) {}
@@ -114,9 +119,11 @@
     }
 
     /**
-     * 当前是否有渲染后端在定时器驱动；是则返回其 tick 帧率，否则 null（rAF 驱动）。
-     * 供页面里其它每帧循环（麦克风音量监测、口型同步）对齐：渲染已经不排 rAF 了，
-     * 这些循环再排 rAF 会把 Blink 主帧顶回显示器刷新率，收益归零。
+     * Whether a renderer backend is currently timer-driven; if so returns its tick rate,
+     * otherwise null (rAF-driven). Lets the page's other per-frame loops (mic level monitor,
+     * lip-sync, ...) follow along: once rendering no longer schedules rAF, any of these loops
+     * scheduling rAF on their own would push Blink's main frame back to the display refresh
+     * rate and cancel the gain.
      */
     function currentTimerTickFps() {
         if (!isElectronPet()) return null;
@@ -134,8 +141,8 @@
     }
 
     /**
-     * 排一帧：渲染后端在定时器驱动时走 setTimeout（周期同渲染 tick），否则 rAF。
-     * 返回取消函数。
+     * Schedule one frame: setTimeout (same period as the render tick) while a backend is
+     * timer-driven, otherwise rAF. Returns a cancel function.
      */
     function requestPacedFrame(callback) {
         const fps = currentTimerTickFps();
@@ -173,7 +180,8 @@
         } else {
             window.addEventListener('load', () => scheduleMeasure(REFRESH_SAMPLE_START_DELAY_MS), { once: true });
         }
-        // 跨屏 / 显示器热插拔后刷新率可能变化：重测（沿用各后端已在监听的同名事件）
+        // Refresh rate may change after moving displays / hotplug: re-measure (same event the
+        // backends already listen to)
         window.addEventListener('electron-display-changed', () => scheduleMeasure(REFRESH_SAMPLE_START_DELAY_MS));
     }
 })();

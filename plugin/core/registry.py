@@ -515,6 +515,25 @@ def register_plugin(
     return resolved_id
 
 
+def _declared_entry_field(
+    declaration: Dict[str, Any], base_meta: Any, field_name: str, fallback: Any
+) -> Any:
+    """Pick a display field: explicit declaration wins, absence inherits.
+
+    Same rule the control fields follow: writing an empty value is a
+    declaration, not a fallback. Only a field the declaration never mentions
+    falls back to the decorator.
+    """
+    # 缺席必须继承装饰器那份：manifest 里只覆盖一个 timeout，旧写法会把 name /
+    # description / input_schema 一起抹成空。参数 schema 抹空之后，面板和 Agent
+    # 会按"这个入口没有参数"发起调用，而子进程仍然拿装饰器的真 schema 校验，调用
+    # 直接被打回（codex）。
+    if field_name in declaration:
+        return deepcopy(declaration[field_name])
+    inherited = getattr(base_meta, field_name, None) if base_meta is not None else None
+    return deepcopy(inherited) if inherited is not None else fallback
+
+
 def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
     """
     在不实例化的情况下扫描类属性，提取 @EventHandler 元数据并填充全局表。
@@ -563,9 +582,9 @@ def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
             entry_meta = EventMeta(
                 event_type="plugin_entry",
                 id=eid,
-                name=declaration.get("name", ""),
-                description=declaration.get("description", ""),
-                input_schema=declaration.get("input_schema", {}),
+                name=_declared_entry_field(declaration, base_meta, "name", ""),
+                description=_declared_entry_field(declaration, base_meta, "description", ""),
+                input_schema=_declared_entry_field(declaration, base_meta, "input_schema", {}),
             )
             # Only explicitly configured fields override the decorator contract.
             controls = entry_contract_fields(base_meta)
@@ -893,24 +912,27 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
                 if not eid or eid in seen:
                     continue
                 seen.add(eid)
-                results.append(
-                    {
-                        "id": eid,
-                        "name": ent.get("name") if isinstance(ent.get("name"), (str, dict)) else str(ent.get("name") or ""),
-                        "description": ent.get("description") if isinstance(ent.get("description"), (str, dict)) else str(ent.get("description") or ""),
-                        "event_key": f"{pid}.{eid}",
-                        "input_schema": _to_dict(ent.get("input_schema") or {}),
-                        "return_message": "",
-                        "event_type": "plugin_entry",
-                        "kind": str(ent.get("kind") or "action"),
-                        "auto_start": bool(ent.get("auto_start", False)),
-                        "timeout": ent.get("timeout"),
-                        "model_validate": bool(ent.get("model_validate", True)),
-                        "llm_result_fields": _to_string_list(ent.get("llm_result_fields")),
-                        "llm_result_schema": _to_dict(ent.get("llm_result_schema") or {}),
-                        "metadata": _to_dict(ent.get("metadata") or {}),
-                    }
-                )
+                config_preview: Dict[str, Any] = {
+                    "id": eid,
+                    "name": ent.get("name") if isinstance(ent.get("name"), (str, dict)) else str(ent.get("name") or ""),
+                    "description": ent.get("description") if isinstance(ent.get("description"), (str, dict)) else str(ent.get("description") or ""),
+                    "event_key": f"{pid}.{eid}",
+                    "input_schema": _to_dict(ent.get("input_schema") or {}),
+                    "return_message": "",
+                    "event_type": "plugin_entry",
+                    "kind": str(ent.get("kind") or "action"),
+                    "auto_start": bool(ent.get("auto_start", False)),
+                    "timeout": ent.get("timeout"),
+                    "model_validate": bool(ent.get("model_validate", True)),
+                    "llm_result_schema": _to_dict(ent.get("llm_result_schema") or {}),
+                    "metadata": _to_dict(ent.get("metadata") or {}),
+                }
+                # 只有真声明了才写这个键。消费端把 list 当成"显式声明"，凭空补一个
+                # [] 会让"只声明 llm_result_schema"的入口在列表侧拿不到派生字段，而
+                # handler 侧照样派生——同一个入口在启动前后给出两种结果。
+                if isinstance(ent.get("llm_result_fields"), list):
+                    config_preview["llm_result_fields"] = _to_string_list(ent.get("llm_result_fields"))
+                results.append(config_preview)
             else:
                 eid = str(ent)
                 if not eid or eid in seen:
@@ -929,7 +951,6 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
                         "auto_start": False,
                         "timeout": None,
                         "model_validate": True,
-                        "llm_result_fields": [],
                         "llm_result_schema": {},
                         "metadata": {},
                     }

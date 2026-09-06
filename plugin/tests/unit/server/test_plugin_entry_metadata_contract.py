@@ -435,3 +435,94 @@ def test_partial_config_merges_decorator_and_matches_static_listing(
     assert source.metadata == original.metadata
     assert conf == original_conf
     assert "mutation" not in preview[0]["metadata"]
+
+
+@pytest.mark.parametrize("alias", [False, True])
+def test_partial_config_inherits_decorator_display_fields(isolated_registry, alias):
+    class Plugin:
+        @plugin_entry(id="probe", name="Decorated", description="Decorated description")
+        async def invoke(self, city: str):
+            pass
+
+    if not alias:
+        Plugin.probe = Plugin.invoke
+        del Plugin.invoke
+    decorated = getattr(Plugin, "invoke" if alias else "probe").__neko_event_meta__
+    assert decorated.input_schema, "the decorator must derive a schema for this test"
+
+    registry.scan_static_metadata("contract", Plugin, {"entries": [{"id": "probe", "timeout": 30}]}, {})
+    meta = state.event_handlers["contract.probe"].meta
+    # A declaration that only overrides a control must not blank the entry:
+    # the child still validates against the decorator schema.
+    assert meta.name == "Decorated"
+    assert meta.description == "Decorated description"
+    assert meta.input_schema == decorated.input_schema
+    assert meta.timeout == 30
+
+    # Writing an empty value is still a declaration.
+    registry.scan_static_metadata(
+        "contract",
+        Plugin,
+        {"entries": [{"id": "probe", "name": "", "input_schema": {}}]},
+        {},
+    )
+    cleared = state.event_handlers["contract.probe"].meta
+    assert cleared.name == ""
+    assert cleared.input_schema == {}
+
+    meta.input_schema["injected"] = True
+    assert "injected" not in decorated.input_schema
+
+
+def test_configured_result_schema_projects_the_same_before_and_after_start(
+    isolated_registry,
+):
+    class Plugin:
+        async def probe(self):
+            pass
+
+    def listed(previews):
+        entries: list = []
+        query_service._append_entries_from_preview(
+            plugin_id="contract",
+            plugin_meta={"entries_preview": previews},
+            entries=entries,
+            seen=set(),
+        )
+        return entries
+
+    def running():
+        entries, _ = query_service._build_entries_from_handlers(
+            plugin_id="contract", handlers_snapshot=dict(state.event_handlers)
+        )
+        return entries
+
+    conf = {
+        "entries": [
+            {
+                "id": "probe",
+                "llm_result_schema": {
+                    "type": "object",
+                    "properties": {"summary": {"type": "string"}},
+                },
+            }
+        ]
+    }
+    registry.scan_static_metadata("contract", Plugin, conf, {})
+    # Declaring only a result schema derives the fields; the listing must not
+    # depend on whether the plugin happens to be running.
+    assert listed(registry._extract_entries_preview("contract", Plugin, conf, {}))[0][
+        "llm_result_fields"
+    ] == ["summary"]
+    assert running()[0]["llm_result_fields"] == ["summary"]
+
+    cleared_conf = copy.deepcopy(conf)
+    cleared_conf["entries"][0]["llm_result_fields"] = []
+    registry.scan_static_metadata("contract", Plugin, cleared_conf, {})
+    assert (
+        listed(registry._extract_entries_preview("contract", Plugin, cleared_conf, {}))[0][
+            "llm_result_fields"
+        ]
+        == []
+    )
+    assert running()[0]["llm_result_fields"] == []

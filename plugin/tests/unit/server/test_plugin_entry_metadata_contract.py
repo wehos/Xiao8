@@ -314,7 +314,7 @@ def test_metadata_controls_remain_explicit_in_isolated_reconstruction(
         assert getattr(installed, name) == value
 
 
-def test_packaging_uses_fixed_worker_and_rejects_old_contract_artifacts(
+def test_packaging_uses_fixed_worker_and_restores_v3_contract_artifacts(
     tmp_path: Path, isolated_registry, monkeypatch
 ):
     from plugin.neko_plugin_cli.core.metadata_probe import derive_plugin_metadata
@@ -355,20 +355,31 @@ def test_packaging_uses_fixed_worker_and_rejects_old_contract_artifacts(
 
     # Old files may match all source fingerprints and still have truncated handlers.
     payload["schema_version"] = 3
-    payload["handlers"]["contract.consult"].pop("timeout")
+    for old_handler in payload["handlers"].values():
+        old_handler.pop("timeout", None)
+        old_handler.pop("llm_result_fields", None)
+        old_handler["metadata"] = None
     meta_path.write_text(json.dumps(payload), encoding="utf-8")
-    assert (
-        _read_packaged_isolated_metadata(
-            plugin_dir / "plugin.toml", "contract", conf=config, pdata=config["plugin"]
-        )
-        is None
+    restored = _read_packaged_isolated_metadata(
+        plugin_dir / "plugin.toml", "contract", conf=config, pdata=config["plugin"]
     )
+    assert restored is not None
+    for old_handler in restored.handlers.values():
+        assert old_handler["timeout"] == 100
+        assert old_handler["llm_result_fields"] == ["summary"]
+        assert old_handler["metadata"] == {"agent_auto": False}
+    metadata_scanner.install_isolated_plugin_metadata("contract", restored)
+    assert state.event_handlers["contract.consult"].meta.timeout == 100
 
-    # Refusing the old format must keep discovery a read-only operation.
+    # Reading the old format must not import the plugin or rewrite the artifact.
     def cannot_import(*args, **kwargs):
         raise AssertionError("metadata reads must not import plugins")
 
     monkeypatch.setattr(
         metadata_scanner, "scan_plugin_metadata_isolated", cannot_import
     )
+    assert packaged_metadata.read_packaged_metadata(plugin_dir) is not None
+    assert json.loads(meta_path.read_text()) == payload
+    payload["schema_version"] = 2
+    meta_path.write_text(json.dumps(payload), encoding="utf-8")
     assert packaged_metadata.read_packaged_metadata(plugin_dir) is None

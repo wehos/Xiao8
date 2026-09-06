@@ -1519,3 +1519,128 @@ def test_an_empty_directory_is_reported_before_packaging(tmp_path: Path) -> None
     assert reported == ["runtime", "runtime/logs"], (
         f"空目录没被完整报出来（装不到用户机器上的正是它们）：{reported}"
     )
+
+
+@pytest.mark.parametrize("configured", [None, {}, {
+    "timeout": None, "llm_result_fields": [], "metadata": {},
+}, {
+    "timeout": 120, "llm_result_fields": ["configured"],
+    "metadata": {"agent_auto": False},
+}])
+@pytest.mark.parametrize("nested", [False, True])
+def test_v3_metadata_preserves_preview_and_restores_runtime_controls(
+    tmp_path, _no_subprocess, configured, nested,
+):
+    from plugin.server.application.plugins import lifecycle_service
+
+    preview = {
+        "id": "go", "timeout": 100, "llm_result_fields": ["summary"],
+        "metadata": {"agent_auto": False}, "model_validate": True,
+    }
+    plugin_dir = _write_plugin(tmp_path, entries=[preview])
+    meta_path = plugin_dir / packaged_metadata.PACKAGED_METADATA_FILENAME
+    raw = json.loads(meta_path.read_text())
+    raw["schema_version"] = 3
+    # Actual v3 shapes: configured controls were never copied; decorator slots
+    # lost timeout/result fields but retained metadata.
+    handler = {
+        "event_type": "plugin_entry", "id": "go", "name": "Go",
+        "enabled": True, "metadata": None if configured is not None else preview["metadata"],
+    }
+    conf = {} if configured is None else {"entries": [{"id": "go", **configured}]}
+    if nested:
+        conf = {"plugin": conf}
+    pdata = conf.get("plugin", {})
+    raw["entries_config_sha256"] = packaged_metadata.entries_config_digest(conf, pdata)
+    raw["handlers"] = {"demo.go": handler, "demo:plugin_entry:go": handler}
+    raw["entry_methods"] = {"go": "go"}
+    meta_path.write_text(json.dumps(raw))
+    before = meta_path.read_bytes()
+
+    packaged = packaged_metadata.read_packaged_metadata(plugin_dir)
+    assert packaged is not None
+    assert packaged.entries == [preview]
+    for _ in range(2):
+        loaded = lifecycle_service._read_packaged_isolated_metadata(
+            plugin_dir / "plugin.toml", "demo", conf=conf, pdata=pdata,
+        )
+        assert loaded is not None
+        for meta in loaded.handlers.values():
+            assert "model_validate" not in meta
+            assert meta["enabled"] is True
+            if configured is None:
+                assert meta["timeout"] == 100
+                assert meta["llm_result_fields"] == ["summary"]
+                assert meta["metadata"] == {"agent_auto": False}
+            else:
+                for key, value in configured.items():
+                    assert meta[key] == value
+                if not configured:
+                    assert "timeout" not in meta
+                    assert "llm_result_fields" not in meta
+                    assert meta["metadata"] is None
+    assert meta_path.read_bytes() == before
+    assert _no_subprocess == []
+
+
+def test_v3_existing_empty_controls_are_not_replaced_by_preview(tmp_path):
+    from plugin.server.application.plugins import lifecycle_service
+
+    plugin_dir = _write_plugin(tmp_path, entries=[{
+        "id": "go", "timeout": 100, "llm_result_fields": ["summary"],
+        "metadata": {"agent_auto": False},
+    }])
+    meta_path = plugin_dir / packaged_metadata.PACKAGED_METADATA_FILENAME
+    raw = json.loads(meta_path.read_text())
+    raw["schema_version"] = 3
+    raw["handlers"] = {"demo.go": {
+        "event_type": "plugin_entry", "id": "go", "timeout": None,
+        "llm_result_fields": [], "metadata": {},
+    }}
+    meta_path.write_text(json.dumps(raw))
+    loaded = lifecycle_service._read_packaged_isolated_metadata(
+        plugin_dir / "plugin.toml", "demo",
+    )
+    assert loaded is not None
+    assert loaded.handlers["demo.go"] == raw["handlers"]["demo.go"]
+    # The compatibility path must not bypass the effective-config digest gate.
+    assert lifecycle_service._read_packaged_isolated_metadata(
+        plugin_dir / "plugin.toml", "demo", conf={"entries": []},
+    ) is None
+
+
+@pytest.mark.parametrize("reason", ["environment", "owner", "source", "tables", "preview", "alias", "other_controls"])
+def test_v3_compatibility_retains_validation_and_ambiguous_fallback(tmp_path, reason):
+    from plugin.server.application.plugins import lifecycle_service
+
+    plugin_dir = _write_plugin(tmp_path, entries=[{
+        "id": "go", "timeout": 100, "llm_result_fields": ["summary"],
+        "metadata": {"agent_auto": False},
+    }])
+    meta_path = plugin_dir / packaged_metadata.PACKAGED_METADATA_FILENAME
+    raw = json.loads(meta_path.read_text())
+    raw["schema_version"] = 3
+    raw["handlers"] = {"demo.go": {"event_type": "plugin_entry", "id": "go"}}
+    conf = {}
+    if reason == "environment":
+        raw["build_env"] = {}
+    elif reason == "owner":
+        raw["handlers"] = {"other.go": raw["handlers"]["demo.go"]}
+    elif reason == "source":
+        (plugin_dir / "main.py").write_text("VALUE = 12345\n")
+    elif reason == "tables":
+        raw.pop("handlers")
+    elif reason == "preview":
+        raw["entries"] = []
+    elif reason == "other_controls":
+        conf = {"entries": [{"id": "go", "enabled": False}]}
+        raw["handlers"]["demo.go"]["enabled"] = True
+        raw["entries_config_sha256"] = packaged_metadata.entries_config_digest(conf, {})
+    elif reason == "alias":
+        conf = {"entries": [{"id": "go", "timeout": 1}]}
+        raw["entries_config_sha256"] = packaged_metadata.entries_config_digest(conf, {})
+        raw["entry_methods"] = {"go": "invoke"}
+    meta_path.write_text(json.dumps(raw))
+    assert lifecycle_service._read_packaged_isolated_metadata(
+        plugin_dir / "plugin.toml", "demo", conf=conf,
+    ) is None

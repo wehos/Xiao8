@@ -58,8 +58,8 @@ PACKAGED_METADATA_FILENAME = "plugin.meta.json"
 # 接受，增删源文件时那道确定性的判据整个静默失效（coderabbit）。旧包因此回落到
 # manifest 声明的 entries，重新打包即可恢复。
 # 4: handlers retain the complete entry contract, including slotted SDK fields.
-# v3 artifacts may contain correct previews but incomplete handlers; rescan on
-# explicit start or rebuild the package, never import during discovery.
+# v3 previews remain readable; the start path restores their truncated handlers
+# using the preview and the matching effective entries configuration.
 PACKAGED_METADATA_SCHEMA_VERSION = 4
 
 # 解析之前先封顶。这份文件来自第三方包，而 json.loads 会把整份内容读进内存再建对象；
@@ -143,6 +143,7 @@ class PackagedPluginMetadata:
     source_sha256: str = ""
     # 打包机和这台机器是不是同一套 (os, python, arch)。
     built_in_this_environment: bool = False
+    schema_version: int = PACKAGED_METADATA_SCHEMA_VERSION
 
 
 def _stamp_metadata_verified(meta_path: Path, newest_source_ns: int) -> None:
@@ -560,7 +561,7 @@ def read_packaged_metadata(plugin_dir: Path) -> PackagedPluginMetadata | None:
         return None
 
     schema_version = raw.get("schema_version")
-    if schema_version != PACKAGED_METADATA_SCHEMA_VERSION:
+    if schema_version not in (3, PACKAGED_METADATA_SCHEMA_VERSION):
         logger.warning(
             "packaged plugin metadata schema mismatch, falling back to manifest: "
             "path={}, found={}, expected={}",
@@ -691,6 +692,7 @@ def read_packaged_metadata(plugin_dir: Path) -> PackagedPluginMetadata | None:
         _stamp_metadata_verified(meta_path, newest_source_ns)
 
     return PackagedPluginMetadata(
+        schema_version=schema_version,
         built_in_this_environment=_environment_matches(raw.get("build_env")),
         entries=_coerce_entries(raw.get("entries")),
         entries_config_sha256=str(raw.get("entries_config_sha256") or ""),

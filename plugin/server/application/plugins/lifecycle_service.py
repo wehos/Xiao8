@@ -10,6 +10,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
     import tomli as tomllib  # type: ignore[no-redef]
 from collections.abc import Mapping
+from copy import deepcopy
 from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,12 +19,14 @@ from typing import Any, Protocol, runtime_checkable
 from fastapi import HTTPException
 
 from plugin._types.exceptions import PluginError, PluginLifecycleError
+from plugin._types.entry_metadata import entry_contract_fields
 from plugin.core.host import PluginProcessHost
 from plugin.core.registry import (
     _collect_plugin_python_requirements,
     _collect_plugin_python_requirement_paths,
     _check_plugin_dependency,
     _find_missing_python_requirements,
+    _effective_entries,
     _parse_plugin_dependencies,
     _resolve_plugin_id_conflict,
 )
@@ -59,7 +62,10 @@ from plugin.server.application.plugins.metadata_scanner import (
     install_isolated_plugin_metadata,
     scan_plugin_metadata_isolated,
 )
-from plugin.server.infrastructure.packaged_metadata import read_packaged_metadata
+from plugin.server.infrastructure.packaged_metadata import (
+    PackagedPluginMetadata,
+    read_packaged_metadata,
+)
 from plugin.server.application.install_source import (
     InstallSourceError,
     get_install_source_manager,
@@ -131,6 +137,59 @@ def _resolve_python_requirements(
 
 
 _MIN_CLAMPED_STOP_TIMEOUT = 1.0
+_V3_RECOVERABLE_ENTRY_FIELDS = ("timeout", "llm_result_fields", "metadata")
+
+
+def _restore_v3_packaged_handlers(
+    packaged: PackagedPluginMetadata, conf: object, pdata: object,
+) -> dict[str, dict[str, object]] | None:
+    """Restore old controls only after the effective-config digest matches.
+
+    v3 dropped even explicitly cleared controls from configured entries. Their
+    decorator-first previews cannot recover that intent; use the configuration
+    instead. Decorator-only handlers can fill absent keys from their previews,
+    while existing values (including empty ones) remain authoritative.
+    Recovery is limited to timeout, result fields and metadata, not a general
+    schema migration. Other configured controls requiring changes need a scan.
+    """
+    configured: dict[str, dict[str, object]] = {}
+    for entry in _effective_entries(
+        dict(conf) if isinstance(conf, Mapping) else {},
+        dict(pdata) if isinstance(pdata, Mapping) else {},
+    ):
+        entry_id = entry.get("id") if isinstance(entry, dict) else str(entry)
+        if entry_id:
+            configured[str(entry_id)] = entry if isinstance(entry, dict) else {}
+    previews = {str(entry.get("id")): entry for entry in packaged.entries}
+    handlers = deepcopy(packaged.handlers)
+    for meta in handlers.values():
+        if meta.get("event_type", "plugin_entry") != "plugin_entry":
+            continue
+        entry_id = str(meta.get("id", ""))
+        if entry_id in configured:
+            # A configured id is resolved as a class attribute. An aliased
+            # decorator may have caused that declaration to be skipped; the
+            # artifact cannot tell us whether that attribute actually exists.
+            if packaged.entry_methods.get(entry_id, entry_id) != entry_id:
+                return None
+            controls = entry_contract_fields(configured[entry_id])
+            if any(
+                key not in _V3_RECOVERABLE_ENTRY_FIELDS
+                and (key not in meta or meta[key] != value)
+                for key, value in controls.items()
+            ):
+                return None
+            for key in _V3_RECOVERABLE_ENTRY_FIELDS:
+                if key in controls:
+                    meta[key] = deepcopy(controls[key])
+        else:
+            preview = previews.get(entry_id, {})
+            for key in _V3_RECOVERABLE_ENTRY_FIELDS:
+                if key not in meta and key in preview:
+                    meta[key] = deepcopy(preview[key])
+            if any(key not in meta for key in _V3_RECOVERABLE_ENTRY_FIELDS):
+                return None
+    return handlers
 
 
 def _read_packaged_isolated_metadata(
@@ -161,8 +220,8 @@ def _read_packaged_isolated_metadata(
     Treating empty as "no metadata" sent exactly those plugins back through the worker —
     one import for the scan, one for the host, so any module-level side effect
     (writing state, sending a notification, launching a helper) happened twice
-    (codex). The version gate rejects older artifacts whose handler contracts
-    may be incomplete; rebuilding or an explicit start derives current metadata.
+    (codex). v3 handler controls are restored in memory after the same source,
+    configuration, environment and ownership checks as current artifacts.
 
     Returns ``None`` when there is no usable metadata at all.
     """
@@ -196,9 +255,19 @@ def _read_packaged_isolated_metadata(
             plugin_id,
         )
         return None
+    handlers = (
+        _restore_v3_packaged_handlers(packaged, conf, pdata)
+        if packaged.schema_version == 3 else dict(packaged.handlers)
+    )
+    if handlers is None:
+        logger.info(
+            "v3 packaged controls cannot be restored unambiguously; rescanning: plugin_id={}",
+            plugin_id,
+        )
+        return None
     return IsolatedPluginMetadata(
         entries_preview=list(packaged.entries),
-        handlers=dict(packaged.handlers),
+        handlers=handlers,
         entry_methods=dict(packaged.entry_methods),
     )
 

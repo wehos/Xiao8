@@ -98,13 +98,19 @@ function createSandbox({ pet, targetFrameRate }) {
             batch.forEach((e) => e.fn(frameClock));
         }
     };
+    // 推进 mock 定时器的同时推进沙盒时钟，让 performance.now() 依赖的保持期判定
+    // （_hasRenderActivity 的 900ms 窗口）也随时间失效
+    const tick = (ms) => {
+        frameClock += ms;
+        sb.tick(ms);
+    };
     const measureRefresh = (hz) => {
         // frame-pacing：load 后延迟 1500ms 才开始采样，采 24 帧
-        mock.timers.tick(1500);
+        tick(1500);
         pumpFrames(30, hz);
     };
     const load = (src, name) => vm.runInContext(src, sandbox, { filename: name });
-    return { sandbox, window, PIXI, pumpFrames, measureRefresh, load, rafQueue, listeners };
+    return { sandbox, window, PIXI, pumpFrames, measureRefresh, tick, load, rafQueue, listeners };
 }
 
 function withMockTimers(fn) {
@@ -162,8 +168,8 @@ test('frame-pacing：重测超时要作废旧刷新率，回到保守 rAF', with
     // 跨屏事件触发重测，但 rAF 一帧都不来 → 3s 超时
     sb.window.dispatchEvent({ type: 'electron-display-changed' });
     // mock timers 不会在同一次 tick 里跑 tick 期间新排的定时器：先到采样起点，再跨过超时
-    mock.timers.tick(1500);
-    mock.timers.tick(3000);
+    sb.tick(1500);
+    sb.tick(3000);
     assert.equal(sb.window.nekoFramePacing.getDisplayRefreshHz(), null, '超时后旧值作废');
     assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), null, '未知刷新率 → rAF');
     // 再来一次重测成功 → 恢复
@@ -194,7 +200,7 @@ test('Live2D 非 Pet：行为不变——活动态 rAF + maxFPS，只碰 app.tic
     assert.equal(app.ticker.maxFPS, 45);
     assert.equal(shared.maxFPS, 999, '非 Pet 不接管 shared');
     assert.equal(system.maxFPS, 999, '非 Pet 不接管 system');
-    mock.timers.tick(1000); // 衰减
+    sb.tick(1000); // 衰减
     assert.equal(mgr._idleTickMode, true, '无活动衰减到空闲低频 tick');
     assert.equal(mgr._idleTickFps, 30);
     assert.equal(app.ticker.started, false);
@@ -217,12 +223,12 @@ test('Live2D Pet + 配置低于刷新率：活动态也走定时器驱动，衰�
     assert.equal(system.maxFPS, 0);
 
     const before = { app: app.ticker.updates, shared: shared.updates, system: system.updates };
-    mock.timers.tick(22 * 5);
+    sb.tick(22 * 5);
     assert.ok(app.ticker.updates - before.app >= 4, 'app ticker 按 45fps 手动 update');
     assert.ok(shared.updates - before.shared >= 4, 'shared ticker 一起被手动 update');
     assert.ok(system.updates - before.system >= 4, 'system ticker 一起被手动 update');
 
-    mock.timers.tick(1000); // 衰减
+    sb.tick(1000); // 衰减
     assert.equal(mgr._idleTickMode, true);
     assert.equal(mgr._idleTickFps, 30, '衰减到地板 30');
     assert.equal(app.ticker.startCalls, 0, '整个过程从未回到 rAF 模式');
@@ -245,7 +251,7 @@ test('Live2D Pet + 配置 = 刷新率：rAF 模式接管 shared/system 的 maxFP
     assert.equal(shared.maxFPS, 60, 'Pet 下 shared 也被限到配置帧率');
     assert.equal(system.maxFPS, 60);
 
-    mock.timers.tick(1000); // 衰减 → 空闲定时器
+    sb.tick(1000); // 衰减 → 空闲定时器
     assert.equal(mgr._idleTickMode, true);
     assert.equal(mgr._idleTickFps, 30);
     assert.equal(app.ticker.maxFPS, 0);
@@ -283,7 +289,7 @@ test('Live2D：外部 pauseRendering 时不接管；ticker.start() 让位后 gov
     app.ticker.start(); // 外部「确保渲染」路径
     assert.equal(mgr._idleTickMode, false, '外部 start() 让位给 rAF');
     mgr._startIdleFpsGovernor();
-    mock.timers.tick(1500);
+    sb.tick(1500);
     assert.equal(mgr._idleTickMode, true, 'governor 自愈回定时器模式');
     mgr._stopIdleFpsGovernor();
 }));
@@ -313,9 +319,9 @@ test('VRM Pet + 配置低于刷新率：活动态定时器驱动，衰减只换�
     assert.equal(mgr._idleTickFps, 45);
     assert.equal(mgr._isLowTickRate(), false, '活动态 45fps 定时器驱动不算低频：medium 隔帧物理照常');
     assert.equal(mgr._animationFrameId, null, 'rAF 链已停');
-    mock.timers.tick(22 * 5);
+    sb.tick(22 * 5);
     assert.ok(mgr.renders >= 4, '按 45fps 定时渲染');
-    mock.timers.tick(1000);
+    sb.tick(1000);
     assert.equal(mgr._idleTickMode, true);
     assert.equal(mgr._idleTickFps, 30);
     assert.equal(mgr._isLowTickRate(), true, '30fps 地板才绕过隔帧物理');
@@ -330,7 +336,7 @@ test('VRM Pet + 配置低于刷新率：活动态定时器驱动，衰减只换�
 test('VRM 非 Pet：行为不变——活动态回 rAF', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: 45 });
     const mgr = setupVRM(sb);
-    mock.timers.tick(0);
+    sb.tick(0);
     mgr._enterIdleTickMode();
     assert.equal(mgr._idleTickMode, true);
     mgr._boostInteractiveFPS();
@@ -389,6 +395,23 @@ test('MMD rAF 路径：不限帧后切回有限帧率，节流状态不能被 Na
     assert.ok(Number.isFinite(core.lastFrameTime));
 }));
 
+test('MMD：交互升帧的 900ms 保持期到期后活动判定失效', withMockTimers(() => {
+    const sb = createSandbox({ pet: false, targetFrameRate: 45 });
+    const { core, manager } = setupMMD(sb);
+    sb.tick(1000); // 让 performance.now() 离开 0，时间戳判定才不会被当成未设置
+    manager._lastInteractionBoostTs = sb.sandbox.performance.now();
+    assert.equal(core._hasRenderActivity(), true);
+    sb.tick(899);
+    assert.equal(core._hasRenderActivity(), true, '保持期内仍算活动');
+    sb.tick(2);
+    assert.equal(core._hasRenderActivity(), false, '过了 900ms 保持期失效');
+    // 光标跟随时间戳同一套窗口
+    manager.cursorFollow = { enabled: true, _lastPointerMoveTs: sb.sandbox.performance.now(), _targetYaw: 0, _currentYaw: 0, _targetPitch: 0, _currentPitch: 0 };
+    assert.equal(core._hasRenderActivity(), true);
+    sb.tick(901);
+    assert.equal(core._hasRenderActivity(), false);
+}));
+
 test('MMD Pet + 配置低于刷新率：活动态定时器驱动，衰减只换周期', withMockTimers(() => {
     const sb = createSandbox({ pet: true, targetFrameRate: 45 });
     sb.measureRefresh(60);
@@ -397,9 +420,9 @@ test('MMD Pet + 配置低于刷新率：活动态定时器驱动，衰减只换�
     assert.equal(core._idleTickMode, true);
     assert.equal(core._idleTickFps, 45);
     assert.equal(manager._animationFrameId, null);
-    mock.timers.tick(22 * 5);
+    sb.tick(22 * 5);
     assert.ok(core.renders >= 4);
-    mock.timers.tick(1000);
+    sb.tick(1000);
     assert.equal(core._idleTickMode, true);
     assert.equal(core._idleTickFps, 30);
     assert.equal(sb.rafQueue.length, 0, '从未重新排 rAF');

@@ -251,6 +251,22 @@ test('frame-pacing：非 Pet 页面 currentTimerTickFps 恒为 null', () => {
     assert.equal(sb.window.nekoFramePacing.currentTimerTickFps(), null);
 });
 
+test('契约：VRM / MMD 浮动按钮循环在定时器模式下到点直接 update，不再转一次性 rAF 多等一个 vsync', () => {
+    for (const [file, fpsExpr] of [
+        ['static/vrm/vrm-ui-buttons.js', 'this\\._idleTickFps'],
+        ['static/mmd/mmd-ui-buttons.js', 'this\\.core\\._idleTickFps'],
+    ]) {
+        const src = read(file);
+        const start = src.indexOf('const scheduleNext = () => {');
+        const end = src.indexOf('const update = () => {', start);
+        assert.ok(start > 0 && end > start, file + ' scheduleNext 定位失败');
+        const body = src.slice(start, end);
+        assert.match(body, new RegExp('const tickFps = Number\\(' + fpsExpr + '\\) > 0 \\? Number\\(' + fpsExpr + '\\) : 30;'), file + ' 周期跟随渲染 tick');
+        assert.match(body, /this\._uiLoopIdleTimeout = setTimeout\(\(\) => \{[\s\S]*?update\(\);\s*\}, Math\.max\(4, Math\.round\(1000 \/ tickFps\)\)\);/, file + ' 定时器到点直接 update');
+        assert.equal((body.match(/requestAnimationFrame\(update\)/g) || []).length, 1, file + ' 只有 rAF 模式那一处排 rAF');
+    }
+});
+
 test('契约：反应气泡跟随循环通过 frame-pacing 排帧', () => {
     const src = read('static/avatar/avatar-reaction-bubble.js');
     assert.match(src, /function scheduleFollowFrame\(tick\)[\s\S]*?state\.followPacedCancel = pacing\.requestPacedFrame\(tick\);/);

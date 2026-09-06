@@ -384,7 +384,8 @@ def main(argv: list[str] | None = None) -> int:
             f"{len(result.staged_files)} files; excluded {len(result.excluded_paths)} paths."
         )
         for entry in result.skipped_entries:
-            print(f"[WARNING] Not bundled, absent from the Git index: {entry}")
+            # ``entry`` already carries the reason it was left out.
+            print(f"[WARNING] Not bundled: {entry}")
         print(f"Plugin stage: {result.stage_dir}")
         print(f"Generated launcher: {result.generated_launcher}")
         return 0

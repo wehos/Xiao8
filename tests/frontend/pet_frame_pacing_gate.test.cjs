@@ -276,6 +276,26 @@ test('契约：麦克风音量监测与口型同步循环通过 frame-pacing 排
     assert.doesNotMatch(lipSyncBody, /S\.animationFrameId = requestAnimationFrame\(animate\)/, 'startLipSync 内不允许直接排 rAF');
 });
 
+test('frame-pacing：采样进行中再来一次重测请求不丢，当前轮结束后紧接着再测', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 45 });
+    sb.measureRefresh(60);
+    assert.equal(sb.window.nekoFramePacing.getDisplayRefreshHz(), 60);
+    // 第一次跨屏：采样开始但一帧没推（慢采样中）
+    sb.window.dispatchEvent({ type: 'electron-display-changed' });
+    sb.tick(1500);
+    assert.equal(sb.rafQueue.length, 1, '采样已开始');
+    // 第二次跨屏在采样中到达
+    sb.window.dispatchEvent({ type: 'electron-display-changed' });
+    sb.tick(1500);
+    // 当前轮在 120Hz 屏上采完
+    sb.pumpFrames(25, 120);
+    assert.equal(sb.window.nekoFramePacing.getDisplayRefreshHz(), 120, '当前轮结果先落地');
+    assert.equal(sb.rafQueue.length, 1, '排队的第二轮紧接着开始，而不是被丢掉');
+    sb.pumpFrames(25, 144);
+    assert.equal(sb.window.nekoFramePacing.getDisplayRefreshHz(), 144, '第二轮结果覆盖');
+    assert.equal(sb.rafQueue.length, 0, '没有第三轮');
+}));
+
 test('frame-pacing：144Hz 屏上 60fps 配置也切定时器驱动', withMockTimers(() => {
     const sb = createSandbox({ pet: true, targetFrameRate: 60 });
     sb.measureRefresh(144);

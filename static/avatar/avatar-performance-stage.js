@@ -407,7 +407,7 @@
                     return;
                 }
 
-                const tween = { rafId: 0, done: false };
+                const tween = { cancelFrame: null, done: false };
                 const tweenKey = sessionId + ':' + now() + ':' + Math.random();
                 this.tweens.set(tweenKey, tween);
                 const startedAt = now();
@@ -828,7 +828,7 @@
             const periodMs = Math.max(1200, Number(normalized.periodMs || 5200));
             const phase = Number.isFinite(Number(normalized.phase)) ? Number(normalized.phase) : 0;
             const startedAt = now();
-            const tween = { rafId: 0, done: false };
+            const tween = { cancelFrame: null, done: false };
             const tweenKey = sessionId + ':preset:idleFloat:' + startedAt + ':' + Math.random();
             this.tweens.set(tweenKey, tween);
 
@@ -994,7 +994,7 @@
             const periodMs = Math.max(1600, Number(normalized.periodMs || 4200));
             const phase = Number.isFinite(Number(normalized.phase)) ? Number(normalized.phase) : 0;
             const startedAt = now();
-            const tween = { rafId: 0, done: false };
+            const tween = { cancelFrame: null, done: false };
             const tweenKey = sessionId + ':preset:breathe:' + startedAt + ':' + Math.random();
             this.tweens.set(tweenKey, tween);
 

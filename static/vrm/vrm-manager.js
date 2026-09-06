@@ -963,10 +963,11 @@ class VRMManager {
         return Number.isFinite(fps) && fps > 0 ? fps : null;
     }
 
-    // 分量更新：只有弹簧骨物理吃「当前帧 + 上一跳过帧」的累计步长，LookAt / 表情仍按
-    // 当前帧 delta 推进——three-vrm 的 VRM.update(t) 会把 t 一并喂给 lookAt，直接传累计
-    // 步长会让视线在一帧里多走一倍。顺序与 VRM.update 一致：humanoid → 约束 → 弹簧骨 →
-    // lookAt → 表情。没有分量 API（旧版 three-vrm）时退回整体 update。
+    // 分量更新：只有弹簧骨物理吃「当前帧 + 上一跳过帧」的累计步长，LookAt / 表情 / 材质
+    // 仍按当前帧 delta 推进——three-vrm 的 VRM.update(t) 会把 t 一并喂给 lookAt 和 MToon
+    // 材质，直接传累计步长会让视线/材质动画在一帧里多走一倍。顺序与 VRM.update 一致：
+    // humanoid → 约束 → 弹簧骨 → lookAt → 表情 → 材质。没有分量 API（旧版 three-vrm）时
+    // 退回整体 update。
     _updateVrmWithPhysicsStep(vrm, delta, physicsStep) {
         const springBones = vrm.springBoneManager;
         if (springBones && typeof springBones.update === 'function') {
@@ -975,6 +976,11 @@ class VRMManager {
             springBones.update(physicsStep);
             if (vrm.lookAt) vrm.lookAt.update(delta);
             if (vrm.expressionManager) vrm.expressionManager.update(delta);
+            if (Array.isArray(vrm.materials)) {
+                vrm.materials.forEach((material) => {
+                    if (material && typeof material.update === 'function') material.update(delta);
+                });
+            }
             return;
         }
         vrm.update(physicsStep);

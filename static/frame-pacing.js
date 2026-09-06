@@ -25,7 +25,7 @@
     // rAF（vsync 对齐更平滑，定时器也省不出东西），在 120/144Hz 屏上才切定时器。
     const TIMER_DRIVE_REFRESH_RATIO = 0.9;
 
-    const state = { refreshHz: null, sampling: false, resamplePending: false };
+    const state = { refreshHz: null, sampling: false, resamplePending: false, pendingCallbacks: [] };
     let startTimer = null;
 
     function isElectronPet() {
@@ -65,8 +65,9 @@
         if (typeof requestAnimationFrame !== 'function') return;
         if (state.sampling) {
             // 采样进行中又来一次请求（连续跨屏）：不能丢——当前这轮采到的可能是旧显示器
-            // 的时间戳，结束后紧接着再测一轮。
+            // 的时间戳，结束后紧接着再测一轮；排队请求的回调留到那一轮结束再调。
             state.resamplePending = true;
+            if (typeof onDone === 'function') state.pendingCallbacks.push(onDone);
             return;
         }
         state.sampling = true;
@@ -84,7 +85,10 @@
             }
             if (state.resamplePending) {
                 state.resamplePending = false;
-                measureDisplayRefreshRate();
+                const queued = state.pendingCallbacks.splice(0);
+                measureDisplayRefreshRate(queued.length === 0 ? undefined : (hz) => {
+                    queued.forEach((cb) => { try { cb(hz); } catch (_) {} });
+                });
             }
         };
         const timeout = setTimeout(() => finish(null), REFRESH_SAMPLE_TIMEOUT_MS);

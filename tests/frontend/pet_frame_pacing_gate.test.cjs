@@ -296,6 +296,24 @@ test('frame-pacing：采样进行中再来一次重测请求不丢，当前轮�
     assert.equal(sb.rafQueue.length, 0, '没有第三轮');
 }));
 
+test('frame-pacing：采样中排队的 measureDisplayRefreshRate(onDone) 回调在最后一轮结束后拿到最终结果', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 45 });
+    const pacing = sb.window.nekoFramePacing;
+    const firstResults = [];
+    const queuedResults = [];
+    pacing.measureDisplayRefreshRate((hz) => firstResults.push(hz));
+    assert.equal(sb.rafQueue.length, 1, '第一轮采样开始');
+    pacing.measureDisplayRefreshRate((hz) => queuedResults.push(hz));
+    pacing.measureDisplayRefreshRate((hz) => queuedResults.push(hz * 10));
+    assert.equal(queuedResults.length, 0, '排队请求的回调不会被提前调用');
+    sb.pumpFrames(25, 60);
+    assert.deepEqual(firstResults, [60], '首轮回调拿到首轮结果');
+    assert.deepEqual(queuedResults, [], '排队回调要等最后一轮');
+    sb.pumpFrames(25, 120);
+    assert.deepEqual(queuedResults, [120, 1200], '排队回调都拿到最终轮结果');
+    assert.equal(sb.rafQueue.length, 0);
+}));
+
 test('frame-pacing：144Hz 屏上 60fps 配置也切定时器驱动', withMockTimers(() => {
     const sb = createSandbox({ pet: true, targetFrameRate: 60 });
     sb.measureRefresh(144);
@@ -593,13 +611,14 @@ function loadVrmPhysicsStep() {
     return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', helperSrc + src.slice(start, end));
 }
 function makeVrmPhysicsCtx({ componentApi = true } = {}) {
-    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, lookAtTime: [], currentModel: null };
+    const ctx = { enablePhysics: true, _isLowTickRate: () => false, simulated: 0, lookAtTime: [], materialTime: [], currentModel: null };
     ctx.newModel = () => {
         const vrm = {
-            update: (d) => { ctx.simulated += d; ctx.lookAtTime.push(d); },
+            update: (d) => { ctx.simulated += d; ctx.lookAtTime.push(d); ctx.materialTime.push(d); },
             lookAt: { update: (d) => { ctx.lookAtTime.push(d); } },
             expressionManager: { update() {} },
             humanoid: { update() {} },
+            materials: [{ update: (d) => { ctx.materialTime.push(d); } }, {}],
         };
         if (componentApi) vrm.springBoneManager = { update: (d) => { ctx.simulated += d; } };
         ctx.currentModel = { vrm };
@@ -608,7 +627,7 @@ function makeVrmPhysicsCtx({ componentApi = true } = {}) {
     return ctx;
 }
 
-test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt 每 tick 只推进当前 delta', () => {
+test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt / MToon 材质每 tick 只推进当前 delta', () => {
     const run = loadVrmPhysicsStep();
     const ctx = makeVrmPhysicsCtx();
     const frames = [0.0167, 0.0167, 0.0333, 0.0167, 0.0167];
@@ -616,6 +635,8 @@ test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt 每 tick 只推进
     for (const d of frames) { elapsed += d; run.call(ctx, d, { renderQuality: 'medium' }, 0.05); }
     assert.ok(Math.abs(ctx.simulated - elapsed) < 1e-9, '弹簧骨物理时间守恒');
     assert.deepEqual(ctx.lookAtTime, frames, 'LookAt 每帧只拿当前 delta，不吃累计');
+    // 跳过帧不更新材质（与旧行为一致），更新帧材质拿当前 delta 而不是累计步长
+    assert.deepEqual(ctx.materialTime, [0.0167, 0.0333, 0.0167], '材质只在物理更新帧按当前 delta 推进');
     // 旧版 three-vrm（无 springBoneManager.update）退回整体 update
     const legacy = makeVrmPhysicsCtx({ componentApi: false });
     for (const d of [0.0167, 0.0167]) run.call(legacy, d, { renderQuality: 'medium' }, 0.05);

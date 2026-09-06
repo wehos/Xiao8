@@ -314,8 +314,9 @@ def test_metadata_controls_remain_explicit_in_isolated_reconstruction(
         assert getattr(installed, name) == value
 
 
+@pytest.mark.parametrize("partial", [False, True])
 def test_packaging_uses_fixed_worker_and_restores_v3_contract_artifacts(
-    tmp_path: Path, isolated_registry, monkeypatch
+    tmp_path: Path, isolated_registry, monkeypatch, partial
 ):
     from plugin.neko_plugin_cli.core.metadata_probe import derive_plugin_metadata
     from plugin.server.application.plugins.lifecycle_service import (
@@ -328,17 +329,22 @@ def test_packaging_uses_fixed_worker_and_restores_v3_contract_artifacts(
     (plugin_dir / "plugin.toml").write_text(
         '[plugin]\nid="contract"\nname="Contract"\nversion="1.0.0"\ntype="plugin"\n'
         'entry="plugin.plugins.contract:ContractPlugin"\n'
-        '[[entries]]\nid="consult"\ntimeout=100\nllm_result_fields=["summary"]\nmetadata={agent_auto=false}\n',
+        '[[entries]]\nid="consult"\nname="Configured"\n'
+        + ('' if partial else 'timeout=100\nllm_result_fields=["summary"]\nmetadata={agent_auto=false}\n'),
         encoding="utf-8",
     )
     (plugin_dir / "__init__.py").write_text(
         "from plugin.sdk.plugin import NekoPluginBase, neko_plugin, plugin_entry\n"
         "@neko_plugin\nclass ContractPlugin(NekoPluginBase):\n"
-        '    @plugin_entry(id="consult", timeout=5, llm_result_fields=["old"])\n'
+        '    @plugin_entry(id="consult", timeout=100, llm_result_fields=["summary"], metadata={"agent_auto":False})\n'
         '    async def consult(self): return {"summary":"New evidence"}\n',
         encoding="utf-8",
     )
     payload = derive_plugin_metadata(plugin_dir)
+    preview = next(entry for entry in payload["entries"] if entry["id"] == "consult")
+    assert preview["timeout"] == 100
+    assert preview["llm_result_fields"] == ["summary"]
+    assert preview["metadata"] == {"agent_auto": False}
     handler = payload["handlers"]["contract.consult"]
     assert handler["timeout"] == 100
     assert handler["llm_result_fields"] == ["summary"]
@@ -383,3 +389,49 @@ def test_packaging_uses_fixed_worker_and_restores_v3_contract_artifacts(
     payload["schema_version"] = 2
     meta_path.write_text(json.dumps(payload), encoding="utf-8")
     assert packaged_metadata.read_packaged_metadata(plugin_dir) is None
+
+
+@pytest.mark.parametrize("controls", [{}, {
+    "timeout": 20, "llm_result_fields": ["answer"], "metadata": {"agent_auto": True},
+}, {"timeout": None, "llm_result_fields": [], "metadata": {}}])
+@pytest.mark.parametrize("alias", [False, True])
+def test_partial_config_merges_decorator_and_matches_static_listing(
+    isolated_registry, controls, alias,
+):
+    class Plugin:
+        @plugin_entry(id="probe", name="Decorated", description="Description",
+                      timeout=100, llm_result_fields=["summary"],
+                      metadata={"agent_auto": False})
+        async def invoke(self):
+            pass
+
+    if not alias:
+        Plugin.probe = Plugin.invoke
+        del Plugin.invoke
+    configured = {"id": "probe", "name": "Configured", **controls}
+    conf = {"entries": [configured]}
+    original_conf = copy.deepcopy(conf)
+    source = getattr(Plugin, "invoke" if alias else "probe").__neko_event_meta__
+    original = copy.deepcopy(source)
+    preview = registry._extract_entries_preview("contract", Plugin, conf, {})
+    registry.scan_static_metadata("contract", Plugin, conf, {})
+    meta = state.event_handlers["contract.probe"].meta
+    expected = {"timeout": 100, "llm_result_fields": ["summary"],
+                "metadata": {"agent_auto": False}, **controls}
+    for key, value in expected.items():
+        assert getattr(meta, key) == value
+        assert preview[0][key] == value
+    assert meta.name == "Configured"
+    before = []
+    query_service._append_entries_from_preview(
+        plugin_id="contract", plugin_meta={"entries_preview": preview}, entries=before, seen=set(),
+    )
+    after, _ = query_service._build_entries_from_handlers(
+        plugin_id="contract", handlers_snapshot=dict(state.event_handlers),
+    )
+    for key in expected:
+        assert before[0][key] == after[0][key]
+    meta.metadata["mutation"] = True
+    assert source.metadata == original.metadata
+    assert conf == original_conf
+    assert "mutation" not in preview[0]["metadata"]

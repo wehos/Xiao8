@@ -521,6 +521,7 @@ def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
     """
     # 使用模块级 logger
     handlers_updated = False
+    decorated_entries: dict[str, EventHandler] = {}
     for name, member in inspect.getmembers(cls):
         event_meta = getattr(member, EVENT_META_ATTR, None)
         if event_meta is None and hasattr(member, "__wrapped__"):
@@ -538,6 +539,7 @@ def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
                     state.event_handlers[f"{pid}:{etype}:{eid}"] = handler_obj
             handlers_updated = True
             if etype == "plugin_entry":
+                decorated_entries[str(eid)] = handler_obj
                 plugin_entry_method_map[(pid, str(eid))] = name
     entries = _effective_entries(conf, pdata)
     for ent in entries:
@@ -545,8 +547,9 @@ def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
             eid = ent.get("id") if isinstance(ent, dict) else str(ent)
             if not eid:
                 continue
+            decorated = decorated_entries.get(str(eid))
             try:
-                handler_fn = getattr(cls, eid)
+                handler_fn = decorated.handler if decorated is not None else getattr(cls, eid)
             except AttributeError:
                 logger.warning(
                     "Entry id {} for plugin {} has no handler on class {}, skipping",
@@ -555,15 +558,19 @@ def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
                     cls.__name__,
                 )
                 continue
+            declaration = ent if isinstance(ent, dict) else {}
+            base_meta = decorated.meta if decorated is not None else None
             entry_meta = EventMeta(
                 event_type="plugin_entry",
                 id=eid,
-                name=ent.get("name", "") if isinstance(ent, dict) else "",
-                description=ent.get("description", "") if isinstance(ent, dict) else "",
-                input_schema=ent.get("input_schema", {}) if isinstance(ent, dict) else {},
+                name=declaration.get("name", ""),
+                description=declaration.get("description", ""),
+                input_schema=declaration.get("input_schema", {}),
             )
-            # The configured declaration still wins; retain all of its controls.
-            for field_name, value in entry_contract_fields(ent if isinstance(ent, dict) else {}).items():
+            # Only explicitly configured fields override the decorator contract.
+            controls = entry_contract_fields(base_meta)
+            controls.update(entry_contract_fields(declaration))
+            for field_name, value in controls.items():
                 setattr(entry_meta, field_name, deepcopy(value))
             eh = EventHandler(meta=entry_meta, handler=handler_fn)
             with state.acquire_event_handlers_write_lock():
@@ -716,6 +723,22 @@ def _effective_entries(conf: dict, pdata: dict) -> Any:
             value = table["entries"]
             return value if isinstance(value, (list, dict)) else []
     return []
+
+
+def _overlay_entry_controls(
+    previews: list[dict[str, Any]], conf: dict, pdata: dict,
+) -> list[dict[str, Any]]:
+    """Apply explicit control fields to scanned or packaged previews."""
+    results = deepcopy(previews)
+    by_id = {str(entry.get("id")): entry for entry in results}
+    for declaration in _effective_entries(conf, pdata):
+        if not isinstance(declaration, dict):
+            continue
+        preview = by_id.get(str(declaration.get("id")))
+        if preview is None:
+            continue
+        preview.update(deepcopy(entry_contract_fields(declaration)))
+    return results
 
 
 def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> List[Dict[str, Any]]:
@@ -914,7 +937,7 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
         except Exception:
             continue
 
-    return results
+    return _overlay_entry_controls(results, conf, pdata)
 
 
 # ============================================================================

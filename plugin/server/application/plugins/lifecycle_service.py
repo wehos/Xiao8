@@ -27,6 +27,7 @@ from plugin.core.registry import (
     _check_plugin_dependency,
     _find_missing_python_requirements,
     _effective_entries,
+    _overlay_entry_controls,
     _parse_plugin_dependencies,
     _resolve_plugin_id_conflict,
 )
@@ -146,8 +147,9 @@ def _restore_v3_packaged_handlers(
     """Restore old controls only after the effective-config digest matches.
 
     v3 dropped even explicitly cleared controls from configured entries. Their
-    decorator-first previews cannot recover that intent; use the configuration
-    instead. Decorator-only handlers can fill absent keys from their previews,
+    decorator-first previews cannot recover that intent; overlay explicit
+    configuration on the preview, inheriting fields the configuration omits.
+    Decorator-only handlers can fill absent keys from their previews,
     while existing values (including empty ones) remain authoritative.
     Recovery is limited to timeout, result fields and metadata, not a general
     schema migration. Other configured controls requiring changes need a scan.
@@ -182,6 +184,10 @@ def _restore_v3_packaged_handlers(
             for key in _V3_RECOVERABLE_ENTRY_FIELDS:
                 if key in controls:
                     meta[key] = deepcopy(controls[key])
+                elif key in previews.get(entry_id, {}):
+                    meta[key] = deepcopy(previews[entry_id][key])
+                else:
+                    return None
         else:
             preview = previews.get(entry_id, {})
             for key in _V3_RECOVERABLE_ENTRY_FIELDS:
@@ -266,7 +272,11 @@ def _read_packaged_isolated_metadata(
         )
         return None
     return IsolatedPluginMetadata(
-        entries_preview=list(packaged.entries),
+        entries_preview=_overlay_entry_controls(
+            packaged.entries,
+            dict(conf) if isinstance(conf, Mapping) else {},
+            dict(pdata) if isinstance(pdata, Mapping) else {},
+        ),
         handlers=handlers,
         entry_methods=dict(packaged.entry_methods),
     )

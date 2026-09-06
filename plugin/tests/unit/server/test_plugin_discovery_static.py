@@ -1521,7 +1521,7 @@ def test_an_empty_directory_is_reported_before_packaging(tmp_path: Path) -> None
     )
 
 
-@pytest.mark.parametrize("configured", [None, {}, {
+@pytest.mark.parametrize("configured", [None, {}, {"timeout": 20}, {
     "timeout": None, "llm_result_fields": [], "metadata": {},
 }, {
     "timeout": 120, "llm_result_fields": ["configured"],
@@ -1560,25 +1560,26 @@ def test_v3_metadata_preserves_preview_and_restores_runtime_controls(
     packaged = packaged_metadata.read_packaged_metadata(plugin_dir)
     assert packaged is not None
     assert packaged.entries == [preview]
+    from types import SimpleNamespace
+    static_entries = module._packaged_entries_preview(
+        SimpleNamespace(toml_path=plugin_dir / "plugin.toml", conf=conf, pdata=pdata), "demo",
+    )
+    expected = {key: preview[key] for key in ("timeout", "llm_result_fields", "metadata")}
+    expected.update(configured or {})
+    for key, value in expected.items():
+        assert static_entries[0][key] == value
     for _ in range(2):
         loaded = lifecycle_service._read_packaged_isolated_metadata(
             plugin_dir / "plugin.toml", "demo", conf=conf, pdata=pdata,
         )
         assert loaded is not None
+        for key, value in expected.items():
+            assert loaded.entries_preview[0][key] == value
         for meta in loaded.handlers.values():
             assert "model_validate" not in meta
             assert meta["enabled"] is True
-            if configured is None:
-                assert meta["timeout"] == 100
-                assert meta["llm_result_fields"] == ["summary"]
-                assert meta["metadata"] == {"agent_auto": False}
-            else:
-                for key, value in configured.items():
-                    assert meta[key] == value
-                if not configured:
-                    assert "timeout" not in meta
-                    assert "llm_result_fields" not in meta
-                    assert meta["metadata"] is None
+            for key, value in expected.items():
+                assert meta[key] == value
     assert meta_path.read_bytes() == before
     assert _no_subprocess == []
 

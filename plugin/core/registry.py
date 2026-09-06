@@ -744,10 +744,17 @@ def _effective_entries(conf: dict, pdata: dict) -> Any:
     return []
 
 
-def _overlay_entry_controls(
+_ENTRY_DISPLAY_FIELDS = ("name", "description", "input_schema")
+
+
+def _overlay_entry_declaration(
     previews: list[dict[str, Any]], conf: dict, pdata: dict,
 ) -> list[dict[str, Any]]:
-    """Apply explicit control fields to scanned or packaged previews."""
+    """Apply every explicitly declared field to scanned or packaged previews.
+
+    Same presence-based precedence the registration path uses, display fields
+    included: preview and handler must describe one entry the same way.
+    """
     results = deepcopy(previews)
     by_id = {str(entry.get("id")): entry for entry in results}
     for declaration in _effective_entries(conf, pdata):
@@ -757,6 +764,13 @@ def _overlay_entry_controls(
         if preview is None:
             continue
         preview.update(deepcopy(entry_contract_fields(declaration)))
+        # 装饰器声明在前、id 已经进 seen，配置那条 preview 根本不会被生成，所以
+        # 配置显式改写的 name / description / input_schema 到不了列表侧。停着的
+        # 插件按装饰器 schema 报参数、跑起来的按配置那份，客户端会照两套参数构造
+        # 调用（codex）。
+        for field_name in _ENTRY_DISPLAY_FIELDS:
+            if field_name in declaration:
+                preview[field_name] = deepcopy(declaration[field_name])
     return results
 
 
@@ -958,7 +972,7 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
         except Exception:
             continue
 
-    return _overlay_entry_controls(results, conf, pdata)
+    return _overlay_entry_declaration(results, conf, pdata)
 
 
 # ============================================================================

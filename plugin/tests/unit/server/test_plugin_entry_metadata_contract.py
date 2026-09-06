@@ -474,6 +474,34 @@ def test_partial_config_inherits_decorator_display_fields(isolated_registry, ali
     assert "injected" not in decorated.input_schema
 
 
+@pytest.mark.parametrize("alias", [False, True])
+def test_configured_display_fields_reach_the_static_listing(isolated_registry, alias):
+    class Plugin:
+        @plugin_entry(id="probe", name="Decorated", description="Decorated description")
+        async def invoke(self, city: str):
+            pass
+
+    if not alias:
+        Plugin.probe = Plugin.invoke
+        del Plugin.invoke
+    configured_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+    conf = {
+        "entries": [
+            {"id": "probe", "name": "Configured", "input_schema": configured_schema}
+        ]
+    }
+    preview = registry._extract_entries_preview("contract", Plugin, conf, {})
+    registry.scan_static_metadata("contract", Plugin, conf, {})
+    meta = state.event_handlers["contract.probe"].meta
+    # A stopped plugin is listed from the preview and a running one from the
+    # handler; a client must not build calls against two different schemas.
+    assert preview[0]["name"] == meta.name == "Configured"
+    assert preview[0]["input_schema"] == meta.input_schema == configured_schema
+    assert preview[0]["description"] == meta.description == "Decorated description"
+    preview[0]["input_schema"]["properties"]["injected"] = True
+    assert "injected" not in configured_schema["properties"]
+
+
 def test_configured_result_schema_projects_the_same_before_and_after_start(
     isolated_registry,
 ):

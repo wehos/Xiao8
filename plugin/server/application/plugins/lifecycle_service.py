@@ -27,7 +27,7 @@ from plugin.core.registry import (
     _check_plugin_dependency,
     _find_missing_python_requirements,
     _effective_entries,
-    _overlay_entry_controls,
+    _overlay_entry_declaration,
     _parse_plugin_dependencies,
     _resolve_plugin_id_conflict,
 )
@@ -281,7 +281,7 @@ def _read_packaged_isolated_metadata(
         )
         return None
     return IsolatedPluginMetadata(
-        entries_preview=_overlay_entry_controls(
+        entries_preview=_overlay_entry_declaration(
             packaged.entries,
             dict(conf) if isinstance(conf, Mapping) else {},
             dict(pdata) if isinstance(pdata, Mapping) else {},

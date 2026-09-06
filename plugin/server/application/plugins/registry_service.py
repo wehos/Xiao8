@@ -18,7 +18,7 @@ from plugin.core.registry import (
     _build_plugin_meta,
     _check_plugin_dependency,
     _extract_entries_preview,
-    _overlay_entry_controls,
+    _overlay_entry_declaration,
     _extract_plugin_ui_config,
     _find_missing_python_requirements,
     _parse_single_plugin_config,
@@ -613,7 +613,7 @@ def _packaged_entries_preview(
     ):
         return [
             _normalize_entry_input_schema(entry)
-            for entry in _overlay_entry_controls(packaged.entries, ctx.conf, ctx.pdata)
+            for entry in _overlay_entry_declaration(packaged.entries, ctx.conf, ctx.pdata)
         ]
     # 没有打包期元数据时，manifest 里静态声明的 entries 仍是一条完整通路——它只是
     # 拿不到从处理函数签名推出来的那部分 input_schema。这条通路一直都在：禁用的

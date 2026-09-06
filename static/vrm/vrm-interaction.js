@@ -101,7 +101,7 @@ class VRMInteraction {
             duration: 260,
             easingType: 'easeOutBack'
         };
-        this._snapAnimationFrameId = null;
+        this._snapCancelFrame = null;
         this._isSnappingModel = false;
         this._snapResolve = null;
         this._lastPanDragPointerScreen = null;
@@ -365,9 +365,9 @@ class VRMInteraction {
             if (isYuiGuideDragLocked()) return;
 
             // 如果正在回弹动画，优先取消，避免拖拽冲突
-            if (this._snapAnimationFrameId) {
-                cancelAnimationFrame(this._snapAnimationFrameId);
-                this._snapAnimationFrameId = null;
+            if (this._snapCancelFrame) {
+                this._snapCancelFrame();
+                this._snapCancelFrame = null;
                 if (this._snapResolve) {
                     this._snapResolve(false);
                     this._snapResolve = null;
@@ -1018,9 +1018,9 @@ class VRMInteraction {
             return Promise.resolve(false);
         }
 
-        if (this._snapAnimationFrameId) {
-            cancelAnimationFrame(this._snapAnimationFrameId);
-            this._snapAnimationFrameId = null;
+        if (this._snapCancelFrame) {
+            this._snapCancelFrame();
+            this._snapCancelFrame = null;
             if (this._snapResolve) {
                 this._snapResolve(false);
                 this._snapResolve = null;
@@ -1049,17 +1049,17 @@ class VRMInteraction {
                 scene.position.set(newX, newY, newZ);
 
                 if (progress < 1) {
-                    this._snapAnimationFrameId = requestAnimationFrame(animate);
+                    this._snapCancelFrame = this._scheduleSnapFrame(animate);
                 } else {
                     scene.position.copy(targetPosition);
                     this._isSnappingModel = false;
-                    this._snapAnimationFrameId = null;
+                    this._snapCancelFrame = null;
                     this._snapResolve = null;
                     resolve(true);
                 }
             };
 
-            this._snapAnimationFrameId = requestAnimationFrame(animate);
+            this._snapCancelFrame = this._scheduleSnapFrame(animate);
         });
     }
 
@@ -2034,6 +2034,17 @@ class VRMInteraction {
     /**
      * 清理交互资源
      */
+    // 排一帧回弹动画：Electron Pet 里渲染后端切到定时器驱动时走同周期定时器
+    // （frame-pacing.requestPacedFrame），否则 rAF。返回取消函数（存到 _snapCancelFrame）。
+    _scheduleSnapFrame(callback) {
+        const pacing = window.nekoFramePacing;
+        if (pacing && typeof pacing.requestPacedFrame === 'function') {
+            return pacing.requestPacedFrame(callback);
+        }
+        const id = requestAnimationFrame(callback);
+        return () => cancelAnimationFrame(id);
+    }
+
     dispose() {
         this.enableMouseTracking(false);
         this.cleanupDragAndZoom();
@@ -2057,9 +2068,9 @@ class VRMInteraction {
         }
 
         // 清理回弹动画
-        if (this._snapAnimationFrameId) {
-            cancelAnimationFrame(this._snapAnimationFrameId);
-            this._snapAnimationFrameId = null;
+        if (this._snapCancelFrame) {
+            this._snapCancelFrame();
+            this._snapCancelFrame = null;
         }
         if (this._snapResolve) {
             this._snapResolve(false);

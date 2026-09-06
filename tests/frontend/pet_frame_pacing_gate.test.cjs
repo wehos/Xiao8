@@ -288,6 +288,21 @@ test('契约：演出舞台的 tween / 漂浮 / 呼吸 / 姿态时间线循环�
     assert.equal(remaining, 3, `裸 rAF 只剩 scheduleStageFrame 内一处 + check 两处，实际 ${remaining}`);
 });
 
+test('契约：Live2D / VRM / MMD 拖拽回弹（吸附）动画通过 frame-pacing 排帧', () => {
+    const l2d = read('static/live2d/live2d-interaction.js');
+    assert.match(l2d, /function scheduleLive2DSnapFrame\(callback\)[\s\S]*?return pacing\.requestPacedFrame\(callback\);/);
+    const snap = l2d.slice(l2d.indexOf('Live2DManager.prototype._performSnapAnimation = function'), l2d.indexOf('检测并执行自动吸附'));
+    assert.equal((snap.match(/scheduleLive2DSnapFrame\(animate\);/g) || []).length, 2, 'Live2D 首帧与续帧都走 paced');
+    assert.doesNotMatch(snap, /requestAnimationFrame\(animate\)/, 'Live2D 吸附动画不允许裸排 rAF');
+    for (const file of ['static/vrm/vrm-interaction.js', 'static/mmd/mmd-interaction.js']) {
+        const src = read(file);
+        assert.match(src, /_scheduleSnapFrame\(callback\) \{[\s\S]*?return pacing\.requestPacedFrame\(callback\);/, file + ' 有 paced 排帧 helper');
+        assert.equal((src.match(/this\._snapCancelFrame = this\._scheduleSnapFrame\(animate\);/g) || []).length, 2, file + ' 首帧与续帧都走 paced');
+        assert.doesNotMatch(src, /_snapAnimationFrameId/, file + ' 不再持有裸 rAF id');
+        assert.ok((src.match(/this\._snapCancelFrame\(\);/g) || []).length >= 3, file + ' 取消路径用取消函数');
+    }
+});
+
 test('契约：反应气泡跟随循环通过 frame-pacing 排帧', () => {
     const src = read('static/avatar/avatar-reaction-bubble.js');
     assert.match(src, /function scheduleFollowFrame\(tick\)[\s\S]*?state\.followPacedCancel = pacing\.requestPacedFrame\(tick\);/);

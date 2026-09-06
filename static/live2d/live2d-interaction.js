@@ -1673,6 +1673,17 @@ Live2DManager.prototype._checkSnapRequired = async function (model, options = {}
     }
 };
 
+// 排一帧吸附动画：Electron Pet 里渲染后端切到定时器驱动时走同周期定时器
+// （frame-pacing.requestPacedFrame），否则 rAF；裸 rAF 会在动画期间把 Blink 主帧顶回刷新率
+function scheduleLive2DSnapFrame(callback) {
+    const pacing = window.nekoFramePacing;
+    if (pacing && typeof pacing.requestPacedFrame === 'function') {
+        return pacing.requestPacedFrame(callback);
+    }
+    const id = requestAnimationFrame(callback);
+    return () => cancelAnimationFrame(id);
+}
+
 /**
  * 执行平滑吸附动画
  * @param {PIXI.DisplayObject} model - Live2D 模型对象
@@ -1725,7 +1736,7 @@ Live2DManager.prototype._performSnapAnimation = function (model, snapInfo, optio
             model.y = startY + (targetY - startY) * easedProgress;
 
             if (progress < 1) {
-                requestAnimationFrame(animate);
+                scheduleLive2DSnapFrame(animate);
             } else {
                 // 确保最终位置精确
                 model.x = targetX;
@@ -1737,7 +1748,7 @@ Live2DManager.prototype._performSnapAnimation = function (model, snapInfo, optio
         };
 
         console.debug('[Live2D] 开始吸附动画:', { from: { x: startX, y: startY }, to: { x: targetX, y: targetY } });
-        requestAnimationFrame(animate);
+        scheduleLive2DSnapFrame(animate);
     });
 };
 

@@ -610,7 +610,11 @@ function loadVrmPhysicsStep() {
     const canSplitStart = src.indexOf('_canSplitVrmPhysicsUpdate(vrm) {');
     const canSplitEnd = src.indexOf('\n    }\n', canSplitStart) + 7;
     assert.ok(canSplitStart > 0 && canSplitEnd > canSplitStart, '_canSplitVrmPhysicsUpdate 定位失败');
+    const matStart = src.indexOf('_updateVrmMaterials(vrm, delta) {');
+    const matEnd = src.indexOf('\n    }\n', matStart) + 7;
+    assert.ok(matStart > 0 && matEnd > matStart, '_updateVrmMaterials 定位失败');
     const helperSrc = 'this._canSplitVrmPhysicsUpdate = function ' + src.slice(canSplitStart, canSplitEnd) + ';'
+        + 'this._updateVrmMaterials = function ' + src.slice(matStart, matEnd) + ';'
         + 'this._updateVrmWithPhysicsStep = function ' + src.slice(helperStart, helperEnd) + ';';
     return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', helperSrc + src.slice(start, end));
 }
@@ -639,8 +643,8 @@ test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt / MToon 材质每 
     for (const d of frames) { elapsed += d; run.call(ctx, d, { renderQuality: 'medium' }, 0.05); }
     assert.ok(Math.abs(ctx.simulated - elapsed) < 1e-9, '弹簧骨物理时间守恒');
     assert.deepEqual(ctx.lookAtTime, frames, 'LookAt 每帧只拿当前 delta，不吃累计');
-    // 跳过帧不更新材质（与旧行为一致），更新帧材质拿当前 delta 而不是累计步长
-    assert.deepEqual(ctx.materialTime, [0.0167, 0.0333, 0.0167], '材质只在物理更新帧按当前 delta 推进');
+    // MToon 材质 UV 动画按 delta 累积：跳过物理的帧也要推进，每帧拿当前 delta 而不是累计步长
+    assert.deepEqual(ctx.materialTime, frames, '材质每帧按当前 delta 推进，动画不会变成半速');
     // 旧版 three-vrm（无 springBoneManager.update）：不隔帧，每帧整体 update(delta)，
     // 累计步长不会喂给 lookAt/材质
     const legacy = makeVrmPhysicsCtx({ componentApi: false });

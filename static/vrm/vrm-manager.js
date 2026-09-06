@@ -818,6 +818,8 @@ class VRMManager {
                             this._physicsPendingDelta = pendingDelta + delta;
                             if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
                             if (this.currentModel.vrm.expressionManager) this.currentModel.vrm.expressionManager.update(delta);
+                            // 跳过的只是弹簧骨物理；MToon 材质的 UV 动画按 delta 累积，每帧都要推进
+                            this._updateVrmMaterials(this.currentModel.vrm, delta);
                         }
                     } else {
                         this._physicsFrameSkip = 0;
@@ -983,14 +985,18 @@ class VRMManager {
             springBones.update(physicsStep);
             if (vrm.lookAt) vrm.lookAt.update(delta);
             if (vrm.expressionManager) vrm.expressionManager.update(delta);
-            if (Array.isArray(vrm.materials)) {
-                vrm.materials.forEach((material) => {
-                    if (material && typeof material.update === 'function') material.update(delta);
-                });
-            }
+            this._updateVrmMaterials(vrm, delta);
             return;
         }
         vrm.update(physicsStep);
+    }
+
+    // MToon 等材质的逐帧推进（three-vrm VRM.update 的最后一步）；跳过物理的帧也要调
+    _updateVrmMaterials(vrm, delta) {
+        if (!vrm || !Array.isArray(vrm.materials)) return;
+        vrm.materials.forEach((material) => {
+            if (material && typeof material.update === 'function') material.update(delta);
+        });
     }
 
     // 当前定时器 tick 频率是否低到不能再隔帧做物理：隔帧后的步长 2×(1000/fps) 必须

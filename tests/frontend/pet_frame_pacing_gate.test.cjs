@@ -377,8 +377,11 @@ test('MMD：目标帧率接到设置里的帧率滑块，0 = 不限帧', withMoc
     assert.equal(core.frameTime, 1000 / 24);
     assert.equal(core._resolveIdleFps(), 24);
     delete sb.window.targetFrameRate;
-    core._refreshTargetFps();
-    assert.ok([30, 45, 60].includes(core.targetFPS), '没有该配置时退回 performanceMode 档位');
+    for (const [mode, expected] of [['low', 30], ['medium', 45], ['high', 60]]) {
+        core.performanceMode = mode;
+        core._refreshTargetFps();
+        assert.equal(core.targetFPS, expected, `没有该配置时退回 performanceMode=${mode} 的档位`);
+    }
 }));
 
 test('MMD rAF 路径：不限帧后切回有限帧率，节流状态不能被 NaN 污染', withMockTimers(() => {
@@ -405,12 +408,14 @@ test('MMD Pet 没有 window.targetFrameRate 时，总闸按 MMD 自己的 perfor
     delete sb.window.targetFrameRate;
     sb.measureRefresh(144);
     const { core } = setupMMD(sb);
-    const fallback = core._resolveConfiguredTargetFps();
-    assert.ok([30, 45, 60].includes(fallback));
     assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), 60, '总闸自己的缺省是 60');
-    assert.equal(core._resolveActiveTimerTickFps(), fallback, 'MMD 把自己解析的帧率交给总闸');
-    core._boostInteractiveFPS();
-    assert.equal(core._idleTickFps, fallback, '活动态定时器周期 = MMD 回退值');
+    for (const [mode, expected] of [['low', 30], ['medium', 45], ['high', 60]]) {
+        core.performanceMode = mode;
+        assert.equal(core._resolveConfiguredTargetFps(), expected);
+        assert.equal(core._resolveActiveTimerTickFps(), expected, `MMD 把自己解析的 ${mode} 档帧率交给总闸`);
+        core._boostInteractiveFPS();
+        assert.equal(core._idleTickFps, expected, `活动态定时器周期 = ${mode} 档回退值`);
+    }
 }));
 
 test('MMD：交互升帧的 900ms 保持期到期后活动判定失效', withMockTimers(() => {

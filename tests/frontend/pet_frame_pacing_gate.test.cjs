@@ -102,7 +102,7 @@ function createSandbox({ pet, targetFrameRate }) {
     // （_hasRenderActivity 的 900ms 窗口）也随时间失效
     const tick = (ms) => {
         frameClock += ms;
-        sb.tick(ms);
+        mock.timers.tick(ms);
     };
     const measureRefresh = (hz) => {
         // frame-pacing：load 后延迟 1500ms 才开始采样，采 24 帧

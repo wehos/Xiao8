@@ -90,7 +90,7 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
-function createHarness() {
+function createHarness(options = {}) {
   const callbacks = {};
   const mouseThrough = [];
   const timers = new Map();
@@ -137,7 +137,7 @@ function createHarness() {
   };
 
   const api = {
-    supportsStatusPointerTracking: true,
+    supportsStatusPointerTracking: options.supportsStatusPointerTracking !== false,
     getCursorPoint() { return cursorProvider(); },
     setMouseThrough(ignore) { mouseThrough.push(ignore); },
     onShowStatusToast(callback) { callbacks.status = callback; },
@@ -188,6 +188,11 @@ function createHarness() {
     },
     hasTimer(delay) {
       return Array.from(timers.values()).some((timer) => timer.delay === delay);
+    },
+    // 自动消失计时器是唯一延迟大于 1s 的：show=10ms、轮询=50ms、cleanup=400ms。
+    // 按区间而不是精确值判定，因为暂停/恢复会把剩余时长按实际经过时间扣掉。
+    hasAutoHideTimer() {
+      return Array.from(timers.values()).some((timer) => timer.delay > 1000);
     },
     getProminentButton() {
       const overlay = document.getElementById('prominent-notice-overlay');
@@ -269,4 +274,108 @@ test('page teardown force-restores desktop passthrough', () => {
   assert.deepEqual(harness.mouseThrough, [false]);
   harness.dispatchBeforeUnload();
   assert.deepEqual(harness.mouseThrough, [false, true]);
+});
+
+// 窗口从穿透态起步，且渲染进程在穿透期间收不到任何鼠标事件。harness 的
+// matches() 恒为 false 正是这个语义：DOM :hover 从不置起、mouseenter 从不派发。
+// 于是「hover 保留」必须由轮询自己驱动，不能等 DOM 事件。
+test('poll-driven hover pin pauses auto-hide without any DOM mouseenter', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 }); // 光标本就压在提示矩形上，全程不移动
+
+  harness.emitStatus();
+  assert.equal(harness.hasAutoHideTimer(), true, '前置条件：显示时应排定自动消失');
+
+  harness.runTimer(10);
+  await flushPromises();
+
+  assert.deepEqual(harness.mouseThrough, [true, false]);
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    false,
+    '轮询判定光标在提示上时必须暂停自动消失，而不是等一个永远不会来的 mouseenter',
+  );
+});
+
+test('poll-driven hover release resumes auto-hide', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.setCursor({ x: 20, y: 20 }); // 光标移出矩形
+  harness.runTimer(50);
+  await flushPromises();
+
+  assert.deepEqual(harness.mouseThrough, [true, false, true]);
+  assert.equal(harness.hasAutoHideTimer(), true, '光标离开后必须恢复自动消失');
+});
+
+test('a real DOM mouseenter does not double-count the poll-driven pause', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  // 光标随后真的动了一下，DOM 事件补到：处理器幂等，不得重复记账或复活计时器。
+  harness.statusToast.dispatch('mouseenter', {});
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.statusToast.dispatch('mouseleave', {});
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    false,
+    '轮询仍判定光标在提示内时，DOM mouseleave 不得抢先恢复自动消失',
+  );
+});
+
+// Niri 小窗与非 Electron 环境走 supportsStatusPointerTracking === false，
+// 此时轮询不启动，hover 判定必须退回纯 DOM 语义。
+test('with pointer tracking unsupported the DOM hover path still governs', async () => {
+  const harness = createHarness({ supportsStatusPointerTracking: false });
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus();
+  harness.runTimer(10);
+  await flushPromises();
+
+  assert.deepEqual(harness.mouseThrough, [true], '不支持时应全程穿透，不发起轮询');
+  assert.equal(harness.hasTimer(50), false);
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    true,
+    '没有轮询权威时，光标位置不该凭空暂停自动消失',
+  );
+
+  harness.statusToast.dispatch('mouseenter', {});
+  assert.equal(harness.hasAutoHideTimer(), false, 'DOM hover 仍应能暂停');
+});
+
+// 连发场景：光标全程停在矩形上不动。第二条提示必须重新 pin —— 若 inside 标志位
+// 跨提示残留，边沿判定会认为「没变化」而跳过 _enter，第二条照旧 3s 后消失。
+test('a second toast re-pins with the cursor parked in place', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  harness.emitStatus('first');
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasAutoHideTimer(), false);
+
+  harness.emitStatus('second');
+  assert.equal(harness.hasAutoHideTimer(), true, '新提示会重新排定自动消失');
+  harness.runTimer(10);
+  await flushPromises();
+
+  assert.equal(
+    harness.hasAutoHideTimer(),
+    false,
+    '第二条提示同样必须被 pin：inside 标志位不得跨提示残留',
+  );
 });

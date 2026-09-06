@@ -779,10 +779,11 @@ class VRMManager {
                 // low: 仅 lookAt + expressions；medium: 隔帧物理；high: 每帧物理
                 const quality = window.renderQuality || 'medium';
                 if (this.enablePhysics && quality !== 'low') {
-                    // 空闲低频模式下绕过 medium 的隔帧物理：30fps 地板上再隔帧会让
-                    // 弹簧骨物理退化到 15Hz/66.7ms 步长，超出 50ms 防爆 clamp 的设计
-                    // 意图且发丝/裙摆可见抖动；30Hz 全帧物理成本 ≈ medium@60 不变
-                    if (quality === 'medium' && !this._idleTickMode) {
+                    // 30fps 地板上绕过 medium 的隔帧物理：再隔帧会让弹簧骨物理退化到
+                    // 15Hz/66.7ms 步长，超出 50ms 防爆 clamp 的设计意图且发丝/裙摆可见抖动；
+                    // 30Hz 全帧物理成本 ≈ medium@60 不变。判据是 tick 频率而不是「是否定时器
+                    // 驱动」：活动态定时器驱动（45/60fps）仍按 medium 隔帧，物理成本不翻倍。
+                    if (quality === 'medium' && !this._isLowTickRate()) {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
                             this.currentModel.vrm.update(delta * 2);
@@ -923,6 +924,14 @@ class VRMManager {
         if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
         const fps = Number(pacing.activeTimerTickFps());
         return Number.isFinite(fps) && fps > 0 ? fps : null;
+    }
+
+    // 当前是否以「地板级」低频 tick 在跑（≤ VRM_IDLE_FPS）。与 _idleTickMode 区分：
+    // 活动态定时器驱动也置 _idleTickMode，但频率是配置帧率，不算低频。
+    _isLowTickRate() {
+        if (!this._idleTickMode) return false;
+        const fps = Number(this._idleTickFps);
+        return !(fps > VRM_IDLE_FPS);
     }
 
     _enterIdleTickMode(fps) {

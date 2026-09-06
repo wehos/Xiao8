@@ -548,11 +548,13 @@ VRMManager.prototype._startUIUpdateLoop = function() {
         if (this._uiUpdateLoopId === null || this._uiUpdateLoopId === undefined) return;
         if (this._idleTickMode) {
             if (this._uiLoopIdleTimeout) clearTimeout(this._uiLoopIdleTimeout);
+            // 周期跟随渲染 tick 频率：活动态定时器驱动（配置帧率）下按钮跟手，空闲地板下 ~33ms
+            const tickFps = Number(this._idleTickFps) > 0 ? Number(this._idleTickFps) : 30;
             this._uiLoopIdleTimeout = setTimeout(() => {
                 this._uiLoopIdleTimeout = null;
                 if (this._uiUpdateLoopId === null || this._uiUpdateLoopId === undefined) return;
                 this._uiUpdateLoopId = requestAnimationFrame(update);
-            }, 33);
+            }, Math.max(4, Math.round(1000 / tickFps)));
             return;
         }
         this._uiUpdateLoopId = requestAnimationFrame(update);

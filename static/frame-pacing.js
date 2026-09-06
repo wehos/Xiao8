@@ -67,7 +67,9 @@
             if (settled) return;
             settled = true;
             state.sampling = false;
-            if (hz > 0) state.refreshHz = hz;
+            // 测出就更新；测不出（超时/rAF 被挂起）则作废旧值——跨屏后旧显示器的刷新率
+            // 不能继续拿来决定驱动方式，回到「未知 → 保守走 rAF」。
+            state.refreshHz = hz > 0 ? hz : null;
             if (typeof onDone === 'function') {
                 try { onDone(state.refreshHz); } catch (_) {}
             }

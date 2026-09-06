@@ -155,6 +155,24 @@ test('frame-pacing：Pet 窗口先量出刷新率，配置明显低于刷新率�
     assert.equal(pacing.activeTimerTickFps(), 30);
 }));
 
+test('frame-pacing：重测超时要作废旧刷新率，回到保守 rAF', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 45 });
+    sb.measureRefresh(60);
+    assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), 45);
+    // 跨屏事件触发重测，但 rAF 一帧都不来 → 3s 超时
+    sb.window.dispatchEvent({ type: 'electron-display-changed' });
+    // mock timers 不会在同一次 tick 里跑 tick 期间新排的定时器：先到采样起点，再跨过超时
+    mock.timers.tick(1500);
+    mock.timers.tick(3000);
+    assert.equal(sb.window.nekoFramePacing.getDisplayRefreshHz(), null, '超时后旧值作废');
+    assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), null, '未知刷新率 → rAF');
+    // 再来一次重测成功 → 恢复
+    sb.window.dispatchEvent({ type: 'electron-display-changed' });
+    sb.measureRefresh(120);
+    assert.equal(sb.window.nekoFramePacing.getDisplayRefreshHz(), 120);
+    assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), 45);
+}));
+
 test('frame-pacing：144Hz 屏上 60fps 配置也切定时器驱动', withMockTimers(() => {
     const sb = createSandbox({ pet: true, targetFrameRate: 60 });
     sb.measureRefresh(144);
@@ -293,12 +311,14 @@ test('VRM Pet + 配置低于刷新率：活动态定时器驱动，衰减只换�
     mgr._boostInteractiveFPS();
     assert.equal(mgr._idleTickMode, true);
     assert.equal(mgr._idleTickFps, 45);
+    assert.equal(mgr._isLowTickRate(), false, '活动态 45fps 定时器驱动不算低频：medium 隔帧物理照常');
     assert.equal(mgr._animationFrameId, null, 'rAF 链已停');
     mock.timers.tick(22 * 5);
     assert.ok(mgr.renders >= 4, '按 45fps 定时渲染');
     mock.timers.tick(1000);
     assert.equal(mgr._idleTickMode, true);
     assert.equal(mgr._idleTickFps, 30);
+    assert.equal(mgr._isLowTickRate(), true, '30fps 地板才绕过隔帧物理');
     assert.equal(sb.rafQueue.length, 0, '从未重新排 rAF');
     // 设置变更事件驱动换周期
     sb.window.targetFrameRate = 24;

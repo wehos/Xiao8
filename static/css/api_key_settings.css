@@ -76,6 +76,18 @@ flex-direction: column;
 overflow: hidden;
 }
 
+.plugin-model-settings-link {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+}
+
+.plugin-model-settings-link a {
+    color: var(--text-blue);
+    font-weight: 600;
+    text-underline-offset: 4px;
+}
+
 body .container-header {
 background: linear-gradient(to right, #4BD4FD, #17A7FF);
 padding: 18px 24px;

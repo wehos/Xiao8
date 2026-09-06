@@ -1059,6 +1059,7 @@
     },
     "api": {
         "settings": "API Key 設置",
+        "pluginApiSettings": "Plugin API 設定 ↗",
         "settingsTitle": "API Key 設置 - Project Lanlan",
         "quickStart": "快速開始",
         "freeVersion": "免費版（推薦新手）",

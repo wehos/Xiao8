@@ -1,7 +1,12 @@
+import { modelApiMessages } from '../model-api'
+import { modelBindingsMessages } from '../model-bindings'
+
 /**
  * Русский языковой пакет
  */
 export default {
+  modelApi: modelApiMessages['ru'],
+  modelBindings: modelBindingsMessages['ru'],
   common: {
     loading: 'Загрузка...',
     refresh: 'Обновить',

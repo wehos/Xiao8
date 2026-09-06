@@ -1059,6 +1059,7 @@
     },
     "api": {
         "settings": "API 키 설정",
+        "pluginApiSettings": "Plugin API 설정 ↗",
         "settingsTitle": "API 키 설정 - 프로젝트 Lanlan",
         "quickStart": "빠른 시작",
         "freeVersion": "무료 버전(초보자에게 권장)",

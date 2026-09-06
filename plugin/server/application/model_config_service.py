@@ -10,7 +10,13 @@ from pydantic import TypeAdapter, ValidationError
 
 from plugin.config.schema import PluginModelRequirementSchema, PluginModelUsageId
 from plugin.server.domain.errors import ServerDomainError
-from plugin.server.domain.model_config import SECRET_MASK, ModelSlot, PluginModelsConfig, is_secret_mask
+from plugin.server.domain.model_config import (
+    SECRET_MASK,
+    ModelSlot,
+    PluginModelsConfig,
+    is_secret_mask,
+    secret_preview,
+)
 from plugin.server.infrastructure.config_paths import get_plugin_manifest_path
 from plugin.server.infrastructure.model_config_store import ModelConfigStore
 from utils.http.url import same_endpoint
@@ -68,6 +74,7 @@ class ModelConfigService:
         result.update(
             id=slot_id,
             api_key=SECRET_MASK if slot.api_key else "",
+            api_key_preview=secret_preview(slot.api_key),
             bound_by=[
                 {"plugin_id": plugin_id, "usage_id": usage_id}
                 for plugin_id, bindings in sorted(config.bindings.items())

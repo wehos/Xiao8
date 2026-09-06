@@ -162,6 +162,7 @@
 
         <el-tab-pane :label="$t('plugins.config')" name="config">
           <div data-yui-guide-id="plugin-detail-config">
+            <PluginModelBindings :plugin-id="pluginId" />
             <PluginConfigEditor :plugin-id="pluginId" />
           </div>
         </el-tab-pane>
@@ -189,6 +190,7 @@ import PluginActions from '@/components/plugin/PluginActions.vue'
 import EntryList from '@/components/plugin/EntryList.vue'
 import MetricsCard from '@/components/metrics/MetricsCard.vue'
 import PluginConfigEditor from '@/components/plugin/PluginConfigEditor.vue'
+import PluginModelBindings from '@/components/plugin/PluginModelBindings.vue'
 import LogViewer from '@/components/logs/LogViewer.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import HostedSurfaceFrame from '@/components/plugin/HostedSurfaceFrame.vue'

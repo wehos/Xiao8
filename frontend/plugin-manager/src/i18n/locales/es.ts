@@ -1,7 +1,12 @@
+import { modelApiMessages } from '../model-api'
+import { modelBindingsMessages } from '../model-bindings'
+
 /**
  * Paquete de idioma español
  */
 export default {
+  modelApi: modelApiMessages['es'],
+  modelBindings: modelBindingsMessages['es'],
   common: {
     loading: 'Cargando...',
     refresh: 'Actualizar',

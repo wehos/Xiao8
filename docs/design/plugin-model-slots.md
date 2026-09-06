@@ -5,8 +5,33 @@ The host stores plugin-only model settings in the selected runtime root's
 model slots and does not trigger `/api/config/core_api` session reloads.
 
 Configuration, binding management, model adapters, authenticated plugin SDK
-access and execution/accounting policies are implemented. The configuration UI
-follows separately.
+access, execution/accounting policies and the Plugin API configuration UI form
+one independent plugin-model workflow.
+
+## User workflow
+
+Open **Plugin API** from the API settings page or the plugin manager navigation
+(`/model-api` in the manager). Create a named slot, choose its protocol, enter
+the provider's API prefix, model and key, then select the model capabilities.
+Save the slot before testing it. A connection test makes a short model request;
+ordinary save operations only change configuration.
+
+In a plugin's details, its manifest-declared model usages appear as binding
+controls. Select a compatible saved slot for each required usage and optionally
+bind additional usages. Several plugins or usages can share a slot. The slot
+page lists those bindings in reverse and prevents deleting a slot still in use.
+Use **Unbind** beside a listed consumer to remove a binding, including one left
+behind after uninstalling a plugin or removing a usage from its manifest.
+Plugins without declarations retain their existing management workflow.
+
+Changing a slot or binding applies to subsequent calls. Active calls retain
+their resolved configuration snapshot. Plugin-model settings do not close a
+Main conversation, reload its roles, or change Agent inference configuration.
+
+The same page exposes recent request statuses and token usage. Its totals cover
+retained local history and distinguish reported, partial and unknown usage;
+they are not a complete provider billing report. For a runnable developer
+example, see [text, image and streaming calls](../examples/model_api_example/README.md).
 
 ## Manifest declarations
 
@@ -30,7 +55,7 @@ The version-1 document contains `slots` keyed by host-generated stable IDs and
 A slot contains `name`, `protocol` (`openai_chat` or `anthropic_messages`),
 `base_url`, `model`, `api_key`, `capabilities`, `defaults`, `timeout_seconds`, and
 an optional `fallback_slot_id`. Defaults currently accept `temperature` and
-`max_output_tokens`. These fields describe future execution; saving does not
+`max_output_tokens`. These fields configure subsequent execution; saving does not
 make a model request or prove provider capabilities.
 
 All endpoints are served by the plugin HTTP app under `/api/model-config` and
@@ -40,12 +65,16 @@ use its existing management access policy.
 | --- | --- | --- |
 | GET / POST | `/slots` | List / create slots |
 | GET / PATCH / DELETE | `/slots/{slot_id}` | Read / edit / delete a slot |
+| POST | `/slots/{slot_id}/test` | Test the saved slot with a short text request |
 | GET | `/plugins/{plugin_id}/bindings` | Declarations, bindings and readiness |
 | PUT | `/plugins/{plugin_id}/bindings/{usage_id}` | Bind with `{"slot_id":"..."}` |
 | DELETE | `/plugins/{plugin_id}/bindings/{usage_id}` | Remove a binding |
 
 Slot responses include `id` and `bound_by` (plugin/usage references). Nonempty
-keys are replaced with `__NEKO_SECRET_MASKED__`; a PATCH with that sentinel or
+keys are replaced with `__NEKO_SECRET_MASKED__`; `api_key_preview` contains only
+the first six and last four characters separated by `......`. Keys of ten or
+fewer characters are fully masked. The UI displays this preview, and copying
+returns masked text only. A PATCH with a display preview, that sentinel or
 an omitted key preserves the stored value. An explicit empty string clears it.
 Changing the endpoint or protocol of a credentialed slot requires an explicit
 key update, including an empty string for an unauthenticated endpoint. URLs
@@ -63,6 +92,30 @@ Malformed or unsupported stored documents are reported without overwriting
 them. Whole-root migrations carry the file; legacy imports keep an existing
 target file intact instead of merging credentials and endpoints. These local
 credentials are not added to character cloud-save exports.
+
+### Saved-slot connection tests
+
+`POST /api/model-config/slots/{slot_id}/test` uses the same management access
+dependency as the settings routes. It reads only the saved slot; request-body
+fields cannot override its endpoint, model or credential. The request contains
+`Reply with OK.` and `max_completion_tokens: 16` (mapped to Anthropic's
+`max_tokens`). Its total timeout is the shorter of the slot timeout and 15
+seconds, and fallback is disabled so another
+model cannot disguise this slot's failure. This tests text connectivity, not
+every selected capability or exact wording of the returned text.
+
+Tests use the application model executor, sharing admission limits, cancellation,
+safe errors and token accounting with plugin requests. Browser disconnects
+cancel the probe and release upstream resources. Successful responses contain
+`slot_id`, `status: "success"`, `duration_ms`, `usage_status`, and normalized
+`usage` (or `null` if unavailable); provider response text is not returned.
+Failures use the management API's safe `detail.code`/`detail.message` format.
+
+Local history identifies these explicit user actions as
+`plugin_id: "@host:model_probe"`, `usage_id: "connection_test"`. The reserved
+identity cannot match a valid installed plugin ID and requires no plugin
+registry entry or binding. Tests are included in slot usage and ordinary token
+totals, while remaining distinguishable from actual plugin calls.
 
 ## Internal Chat Completions execution
 

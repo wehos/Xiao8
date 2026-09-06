@@ -7,10 +7,16 @@ from contextlib import contextmanager
 import pytest
 
 from plugin.config.schema import PluginModelRequirementSchema
-from plugin.server.application.model_config_service import ModelConfigService, load_model_requirements
+from plugin.server.application.model_config_service import (
+    ModelConfigService,
+    load_model_requirements,
+)
 from plugin.server.domain.errors import ServerDomainError
 from plugin.server.domain.model_config import SECRET_MASK, ModelSlot
-from plugin.server.infrastructure.model_config_store import CONFIG_FILENAME, ModelConfigStore
+from plugin.server.infrastructure.model_config_store import (
+    CONFIG_FILENAME,
+    ModelConfigStore,
+)
 from utils.file_utils import atomic_write_json
 
 
@@ -298,3 +304,28 @@ def test_store_with_real_config_manager_and_write_transaction(tmp_path, monkeypa
     assert error.value.code == "MODEL_SLOT_NOT_FOUND"
     fresh.delete_slot(slot_id)
     assert fresh.list_slots()["slots"] == []
+
+
+@pytest.mark.parametrize("key,preview", [
+    ("sk-abcdef-secret-middle-1234", "sk-abc......1234"),
+    ("1234567890", "******"),
+    ("short", "******"),
+    ("", ""),
+])
+def test_slot_returns_only_masked_preview(config_env, key, preview):
+    _, service, _ = config_env
+    created = service.create_slot(slot_payload(api_key=key))
+    assert created["api_key_preview"] == preview
+    assert created["api_key"] == (SECRET_MASK if key else "")
+    assert service.get_slot(created["id"])["api_key_preview"] == preview
+    assert service.list_slots()["slots"][0]["api_key_preview"] == preview
+    if key:
+        service.update_slot(created["id"], {"api_key": preview, "name": "Renamed"})
+        assert service.store.read().slots[created["id"]].api_key == key
+    assert "api_key_preview" not in service.store.read().slots[created["id"]].model_dump()
+
+
+def test_display_preview_cannot_be_created_as_a_real_key(config_env):
+    _, service, _ = config_env
+    with pytest.raises(ServerDomainError):
+        service.create_slot(slot_payload(api_key="sk-abc......1234"))

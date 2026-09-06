@@ -1059,6 +1059,7 @@
     },
     "api": {
         "settings": "Configurações de chave de API",
+        "pluginApiSettings": "Configurações de Plugin API ↗",
         "settingsTitle": "Configurações de chave de API - Projeto Lanlan",
         "quickStart": "Início rápido",
         "freeVersion": "Versão gratuita (recomendada para iniciantes)",

@@ -4,7 +4,14 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 from plugin.config.schema import ModelCapability, PluginModelUsageId
 
@@ -14,8 +21,15 @@ PluginId = Annotated[StrictStr, Field(min_length=1, max_length=128, pattern=r"^[
 
 
 def is_secret_mask(value: str) -> bool:
-    """Accept the host sentinel and all-star/bullet display masks as no-op edits."""
-    return value == SECRET_MASK or (len(value) >= 3 and set(value) in ({"*"}, {"•"}))
+    """Recognize non-secret sentinels and display previews as no-op edits."""
+    return value == SECRET_MASK or (len(value) == 16 and value[6:12] == "......") or (len(value) >= 3 and set(value) in ({"*"}, {"•"}))
+
+
+def secret_preview(value: str) -> str:
+    """Never reveal a complete short credential or overlapping visible parts."""
+    if not value:
+        return ""
+    return value[:6] + "......" + value[-4:] if len(value) > 10 else "******"
 
 
 class ModelDefaults(BaseModel):

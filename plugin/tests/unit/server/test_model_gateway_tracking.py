@@ -68,15 +68,15 @@ def installed_hooks(monkeypatch):
     return SimpleNamespace(calls=calls, result=result, record=record)
 
 
-def completion_resource(base_url):
-    return SimpleNamespace(_client=SimpleNamespace(base_url=httpx.URL(base_url)))
+def completion_resource(provider_base_url):
+    return SimpleNamespace(_client=SimpleNamespace(base_url=httpx.URL(provider_base_url)))
 
 
-@pytest.mark.parametrize("base_url", _GATEWAY_URLS)
+@pytest.mark.parametrize("provider_base_url", _GATEWAY_URLS)
 @pytest.mark.parametrize("streaming", [False, True])
-def test_sync_gateway_call_bypasses_tracking_and_stream_option_injection(installed_hooks, base_url, streaming):
+def test_sync_gateway_call_bypasses_tracking_and_stream_option_injection(installed_hooks, provider_base_url, streaming):
     state = installed_hooks
-    response = Completions.create(completion_resource(base_url), model="analysis", stream=streaming)
+    response = Completions.create(completion_resource(provider_base_url), model="analysis", stream=streaming)
     assert response is state.result.value
     if streaming:
         assert len(list(response)) == 1
@@ -84,11 +84,11 @@ def test_sync_gateway_call_bypasses_tracking_and_stream_option_injection(install
     state.record.assert_not_called()
 
 
-@pytest.mark.parametrize("base_url", _GATEWAY_URLS)
+@pytest.mark.parametrize("provider_base_url", _GATEWAY_URLS)
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_async_gateway_call_bypasses_tracking_and_stream_option_injection(installed_hooks, base_url, streaming):
+async def test_async_gateway_call_bypasses_tracking_and_stream_option_injection(installed_hooks, provider_base_url, streaming):
     state = installed_hooks
-    response = await AsyncCompletions.create(completion_resource(base_url), model="analysis", stream=streaming)
+    response = await AsyncCompletions.create(completion_resource(provider_base_url), model="analysis", stream=streaming)
     assert response is state.result.value
     if streaming:
         assert len([part async for part in response]) == 1
@@ -118,11 +118,11 @@ async def test_async_gateway_failure_is_not_recorded_or_retried(installed_hooks,
     state.record.assert_not_called()
 
 
-@pytest.mark.parametrize("base_url", _PROVIDER_URLS)
+@pytest.mark.parametrize("provider_base_url", _PROVIDER_URLS)
 @pytest.mark.parametrize("streaming", [False, True])
-def test_sync_other_provider_calls_keep_existing_tracking(installed_hooks, base_url, streaming):
+def test_sync_other_provider_calls_keep_existing_tracking(installed_hooks, provider_base_url, streaming):
     state = installed_hooks
-    response = Completions.create(completion_resource(base_url), model="test-model", stream=streaming)
+    response = Completions.create(completion_resource(provider_base_url), model="test-model", stream=streaming)
     if streaming:
         list(response)
         assert state.calls[0][1]["stream_options"] == {"include_usage": True}
@@ -131,11 +131,11 @@ def test_sync_other_provider_calls_keep_existing_tracking(installed_hooks, base_
     )
 
 
-@pytest.mark.parametrize("base_url", _PROVIDER_URLS)
+@pytest.mark.parametrize("provider_base_url", _PROVIDER_URLS)
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_async_other_provider_calls_keep_existing_tracking(installed_hooks, base_url, streaming):
+async def test_async_other_provider_calls_keep_existing_tracking(installed_hooks, provider_base_url, streaming):
     state = installed_hooks
-    response = await AsyncCompletions.create(completion_resource(base_url), model="test-model", stream=streaming)
+    response = await AsyncCompletions.create(completion_resource(provider_base_url), model="test-model", stream=streaming)
     if streaming:
         _ = [part async for part in response]
         assert state.calls[0][1]["stream_options"] == {"include_usage": True}
@@ -184,6 +184,6 @@ def test_hook_installation_remains_idempotent(installed_hooks):
     installed_hooks.record.assert_called_once()
 
 
-@pytest.mark.parametrize("base_url", ["", "http://[invalid/api/models/v1", "http://remote.test/api/models/v1"])
-def test_invalid_or_remote_gateway_urls_do_not_disable_tracking(base_url):
-    assert not hooks._is_plugin_model_gateway(base_url)
+@pytest.mark.parametrize("provider_base_url", ["", "http://[invalid/api/models/v1", "http://remote.test/api/models/v1"])
+def test_invalid_or_remote_gateway_urls_do_not_disable_tracking(provider_base_url):
+    assert not hooks._is_plugin_model_gateway(provider_base_url)

@@ -485,3 +485,47 @@ test('a hung cursor IPC falls back to passthrough via the watchdog', async () =>
   );
   assert.equal(harness.hasAutoHideTimer(), true, '同时要恢复自动消失');
 });
+
+// 看门狗是全局单槽的。旧世代的光标 Promise 可能在新一轮已经武装好看门狗之后才
+// settle —— 若它抢先清掉，新请求悬挂时就再无兜底，透明全屏窗口会持续拦截桌面输入。
+test('a stale-generation cursor result must not clear the new watchdog', async () => {
+  const harness = createHarness();
+  harness.setCursor({ x: 150, y: 60 });
+
+  const first = createDeferred();
+  let call = 0;
+  harness.setCursorProvider(() => {
+    call += 1;
+    // 第一拍交出我们手动控制的 Promise，之后的拍永不 settle（模拟悬挂）。
+    return call === 1 ? first.promise : new Promise(() => {});
+  });
+
+  harness.emitStatus('first');
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasWatchdogTimer(), true, '第一拍已挂看门狗');
+
+  // 新提示到来 → stopStatusPointerTracking 提升世代 → 新一拍挂上新的看门狗。
+  harness.emitStatus('second');
+  harness.runTimer(10);
+  await flushPromises();
+  assert.equal(harness.hasWatchdogTimer(), true, '新世代已挂上自己的看门狗');
+
+  // 旧世代的 Promise 现在才落地。
+  first.resolve({ x: 150, y: 60 });
+  await flushPromises();
+
+  assert.equal(
+    harness.hasWatchdogTimer(),
+    true,
+    '旧世代的回调不得清掉新世代的看门狗',
+  );
+
+  harness.runTimer(1000);
+  await flushPromises();
+  assert.equal(
+    harness.mouseThrough[harness.mouseThrough.length - 1],
+    true,
+    '新请求悬挂时看门狗仍须把窗口拉回穿透态',
+  );
+});

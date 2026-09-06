@@ -196,19 +196,21 @@
             armStatusPointerWatchdog(generation);
 
             Promise.resolve(cursorPointPromise).then(function(point) {
+                // 世代检查必须在清看门狗**之前**：旧世代的 Promise 可能在新一轮已经
+                // 武装好看门狗之后才 settle，抢先清掉就等于把新请求的兜底摘了 ——
+                // 新请求若随后悬挂，窗口会无限期停在可命中态拦截桌面输入。
+                if (generation !== statusPointerPollGeneration) return;
                 clearStatusPointerWatchdog();
-                if (generation !== statusPointerPollGeneration
-                    || prominentNoticeInteractive
-                    || !isStatusToastVisible()) return;
+                if (prominentNoticeInteractive || !isStatusToastVisible()) return;
                 var inside = isCursorInsideStatusToast(point);
                 setToastMouseThrough(!inside);
                 applyStatusPointerHover(inside);
             }).catch(function() {
-                // 光标 IPC 异常时立即回到穿透态，不能让透明全屏窗口留在桌面上拦截输入。
+                // 同上：先认世代，再动共享的看门狗。
+                if (generation !== statusPointerPollGeneration) return;
                 clearStatusPointerWatchdog();
-                if (generation === statusPointerPollGeneration) {
-                    stopStatusPointerTracking(false);
-                }
+                // 光标 IPC 异常时立即回到穿透态，不能让透明全屏窗口留在桌面上拦截输入。
+                stopStatusPointerTracking(false);
             }).then(function() {
                 if (generation !== statusPointerPollGeneration
                     || prominentNoticeInteractive

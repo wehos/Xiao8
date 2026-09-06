@@ -1535,6 +1535,7 @@ def test_v3_metadata_preserves_preview_and_restores_runtime_controls(
 
     preview = {
         "id": "go", "timeout": 100, "llm_result_fields": ["summary"],
+        "llm_result_schema": {"type": "object", "properties": {"summary": {}}},
         "metadata": {"agent_auto": False}, "model_validate": True,
     }
     plugin_dir = _write_plugin(tmp_path, entries=[preview])
@@ -1564,7 +1565,10 @@ def test_v3_metadata_preserves_preview_and_restores_runtime_controls(
     static_entries = module._packaged_entries_preview(
         SimpleNamespace(toml_path=plugin_dir / "plugin.toml", conf=conf, pdata=pdata), "demo",
     )
-    expected = {key: preview[key] for key in ("timeout", "llm_result_fields", "metadata")}
+    expected = {
+        key: preview[key]
+        for key in ("timeout", "llm_result_fields", "llm_result_schema", "metadata")
+    }
     expected.update(configured or {})
     for key, value in expected.items():
         assert static_entries[0][key] == value

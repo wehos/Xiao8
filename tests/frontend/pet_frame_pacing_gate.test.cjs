@@ -521,6 +521,29 @@ function setupMMD(sb) {
     return { core, manager };
 }
 
+test('负数 targetFrameRate 一律归一为 60：Live2D / VRM / MMD 地板都不会算成负数', withMockTimers(() => {
+    const sb = createSandbox({ pet: false, targetFrameRate: -1 });
+    const { mgr } = setupLive2D(sb);
+    assert.equal(mgr._resolveConfiguredTargetFps(), 60);
+    assert.equal(mgr._resolveIdleFps(), 30);
+    const sb2 = createSandbox({ pet: false, targetFrameRate: -1 });
+    const vrm = setupVRM(sb2);
+    assert.equal(vrm._resolveConfiguredTargetFps(), 60);
+    assert.equal(vrm._resolveIdleFps(), 30);
+    vrm._enterIdleTickMode();
+    assert.equal(vrm._idleTickFps, 30, '空闲周期不会被负数配置拖到 1fps');
+    const sb3 = createSandbox({ pet: false, targetFrameRate: -1 });
+    const { core } = setupMMD(sb3);
+    assert.ok([30, 45, 60].includes(core._resolveConfiguredTargetFps()), 'MMD 负数配置退回档位值');
+    assert.equal(core._resolveIdleFps(), Math.min(30, core._resolveConfiguredTargetFps()));
+}));
+
+test('契约：VRM medium 隔帧物理还要按实际 delta 兜底（2×delta ≤ 50ms 才隔帧）', () => {
+    const src = read('static/vrm/vrm-manager.js');
+    assert.match(src, /const VRM_PHYSICS_MAX_STEP_S = 0\.05;/);
+    assert.match(src, /if \(quality === 'medium' && !this\._isLowTickRate\(\) && delta \* 2 <= VRM_PHYSICS_MAX_STEP_S\) \{/);
+});
+
 test('MMD：目标帧率接到设置里的帧率滑块，0 = 不限帧', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: 45 });
     const { core } = setupMMD(sb);

@@ -11,6 +11,8 @@ const VRM_INTERACTIVE_FPS_HOLD_MS = 900;
 const VRM_IDLE_FPS_GOVERNOR_INTERVAL_MS = 300;
 // medium 画质隔帧物理允许的最低 tick 频率：2×(1000/40) = 50ms，正好是物理 delta 的防爆 clamp
 const VRM_PHYSICS_FRAME_SKIP_MIN_FPS = 40;
+// 隔帧物理允许的最大步长（秒）：与 renderFrame 里 delta 的 50ms 防爆 clamp 一致
+const VRM_PHYSICS_MAX_STEP_S = 0.05;
 
 const COMPRESSED_BUNDLED_VRMA_NAMES = new Set([
     'liked',
@@ -785,7 +787,9 @@ class VRMManager {
                     // 15Hz/66.7ms 步长，超出 50ms 防爆 clamp 的设计意图且发丝/裙摆可见抖动；
                     // 30Hz 全帧物理成本 ≈ medium@60 不变。判据是 tick 频率而不是「是否定时器
                     // 驱动」：活动态定时器驱动（45/60fps）仍按 medium 隔帧，物理成本不翻倍。
-                    if (quality === 'medium' && !this._isLowTickRate()) {
+                    // 再按实际 delta 兜底：rAF 路径被配置限到 30~39fps、或定时器抖动时，
+                    // 隔帧后的步长 2×delta 超过 50ms clamp 也走全量物理
+                    if (quality === 'medium' && !this._isLowTickRate() && delta * 2 <= VRM_PHYSICS_MAX_STEP_S) {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
                             this.currentModel.vrm.update(delta * 2);
@@ -913,9 +917,14 @@ class VRMManager {
 
     // ═══════ 空闲低频 tick 模式（对齐 live2d-core.js / mmd-core.js 的同名机制）═══════
 
-    _resolveIdleFps() {
+    // 用户配置的目标帧率；负数/非法值一律按 60，0 = 不限帧
+    _resolveConfiguredTargetFps() {
         const raw = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
-        const configured = Number.isFinite(raw) ? raw : 60;
+        return Number.isFinite(raw) && raw >= 0 ? raw : 60;
+    }
+
+    _resolveIdleFps() {
+        const configured = this._resolveConfiguredTargetFps();
         return configured === 0 ? VRM_IDLE_FPS : Math.min(VRM_IDLE_FPS, configured);
     }
 
@@ -924,9 +933,7 @@ class VRMManager {
     _resolveActiveTimerTickFps() {
         const pacing = window.nekoFramePacing;
         if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
-        const raw = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
-        const configured = Number.isFinite(raw) ? raw : 60;
-        const fps = Number(pacing.activeTimerTickFps(configured));
+        const fps = Number(pacing.activeTimerTickFps(this._resolveConfiguredTargetFps()));
         return Number.isFinite(fps) && fps > 0 ? fps : null;
     }
 

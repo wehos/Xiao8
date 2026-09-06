@@ -775,7 +775,8 @@ class Live2DManager {
     // 用户配置的目标帧率（活动时的上限），默认 60；0 表示不限帧（跟随 VSync）。
     _resolveConfiguredTargetFps() {
         const configured = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
-        return Number.isFinite(configured) ? configured : 60;
+        // 负数/非法值一律按 60（否则地板会变成负数、定时器周期算出秒级）
+        return Number.isFinite(configured) && configured >= 0 ? configured : 60;
     }
 
     // 静止地板帧率：不超过用户配置；配置为 0（不限帧）时仍压到地板省 CPU。

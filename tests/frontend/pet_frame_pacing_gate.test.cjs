@@ -532,6 +532,15 @@ test('负数 targetFrameRate 一律归一为 60：Live2D / VRM / MMD 地板都�
     assert.equal(vrm._resolveIdleFps(), 30);
     vrm._enterIdleTickMode();
     assert.equal(vrm._idleTickFps, 30, '空闲周期不会被负数配置拖到 1fps');
+    // rAF 路径也走同一解析，不再直接读 window.targetFrameRate
+    const vrmSrc = read('static/vrm/vrm-manager.js');
+    const loopBody = vrmSrc.slice(vrmSrc.indexOf('startAnimateLoop() {'), vrmSrc.indexOf('_resolveActiveTimerTickFps() {'));
+    assert.match(loopBody, /const targetFps = this\._resolveConfiguredTargetFps\(\);/);
+    assert.doesNotMatch(loopBody, /typeof window\.targetFrameRate === 'number' \? window\.targetFrameRate : 60/, 'rAF 路径不允许绕过归一化直接读配置');
+    sb2.window.targetFrameRate = Infinity;
+    assert.equal(vrm._resolveConfiguredTargetFps(), 60, 'Infinity 也归一为 60');
+    sb2.window.targetFrameRate = NaN;
+    assert.equal(vrm._resolveConfiguredTargetFps(), 60, 'NaN 归一为 60');
     const sb3 = createSandbox({ pet: false, targetFrameRate: -1 });
     const { core } = setupMMD(sb3);
     assert.ok([30, 45, 60].includes(core._resolveConfiguredTargetFps()), 'MMD 负数配置退回档位值');

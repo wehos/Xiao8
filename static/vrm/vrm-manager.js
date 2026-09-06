@@ -908,7 +908,8 @@ class VRMManager {
             // VMC 启用时使用累计目标时间，避免 144Hz 等非整数倍刷新率
             // 下发送速率退化；关闭时保留原渲染节流行为，隔离功能影响。
             const now = performance.now();
-            const targetFps = typeof window.targetFrameRate === 'number' ? window.targetFrameRate : 60;
+            // 与定时器路径同一套解析：负数/NaN/Infinity 一律按 60，0 = 不限帧
+            const targetFps = this._resolveConfiguredTargetFps();
             if (targetFps > 0) {
                 const frameInterval = 1000 / targetFps;
                 if (window.__NEKO_VMC_ACTIVE__ === true) {

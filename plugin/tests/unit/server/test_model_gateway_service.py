@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from plugin.server.application.model_gateway_service import ModelGatewayService
 from plugin.server.domain.model_config import ModelSlot
 from plugin.server.model_gateway.errors import ModelGatewayError
+from plugin.server.model_gateway.observation import AttemptObservation
 from plugin.server.model_gateway import transport as transport_module
 
 SECRET = "upstream-test-secret"
@@ -189,7 +190,7 @@ async def test_upstream_usage_requested_but_not_exposed_unless_requested(protoco
     (400, "upstream_request_rejected", 400),
     (500, "upstream_error", 502),
     (504, "upstream_timeout", 504),
-    (307, "upstream_error", 502),
+    (307, "upstream_redirect_rejected", 502),
 ])
 async def test_upstream_failures_are_safe_and_never_retried(status, code, expected_status):
     requests = []
@@ -465,3 +466,265 @@ async def test_sse_bom_multiline_data_and_split_line_endings(separator):
     finally:
         await response.aclose()
     assert decoded == [event]
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_observation_collects_usage_independently_of_public_result(protocol, streaming):
+    observation = AttemptObservation()
+
+    def upstream(request):
+        assert observation.upstream_started
+        if streaming:
+            events = openai_events() if protocol == "openai_chat" else anthropic_events()
+            return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                                  stream=ByteStream(event_bytes(events, done=protocol == "openai_chat")))
+        result = openai_response() if protocol == "openai_chat" else anthropic_response()
+        return httpx.Response(200, json=result)
+
+    gateway, clients = gateway_for(upstream)
+    if streaming:
+        parts = [part async for part in gateway.stream(
+            make_slot(protocol), request_body(stream=True, stream_options={"include_usage": False}), observation=observation)]
+        assert all("usage" not in json.loads(part.decode()[6:]) for part in parts[:-1])
+    else:
+        await gateway.complete(make_slot(protocol), request_body(), observation=observation)
+    assert {key: observation.usage[key] for key in USAGE} == USAGE
+    assert observation.usage_status == "reported"
+    assert clients[0].is_closed
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+async def test_complete_observes_cache_usage_before_response_validation(protocol):
+    observation = AttemptObservation()
+    if protocol == "openai_chat":
+        usage = {**USAGE, "prompt_tokens_details": {"cached_tokens": 4, "audio_tokens": 0, "secret": SECRET},
+                 "completion_tokens_details": {"reasoning_tokens": 2}, "private": SECRET}
+        expected = {**USAGE, "prompt_tokens_details": {"cached_tokens": 4, "audio_tokens": 0},
+                    "completion_tokens_details": {"reasoning_tokens": 2}}
+    else:
+        usage = {"input_tokens": 1, "output_tokens": 3, "cache_read_input_tokens": 4, "cache_creation_input_tokens": 2,
+                 "private": SECRET}
+        expected = {**USAGE, "prompt_tokens_details": {"cached_tokens": 4}}
+    gateway, clients = gateway_for(lambda request: httpx.Response(200, json={"usage": usage, "error": SECRET}))
+    with pytest.raises(ModelGatewayError) as error:
+        await gateway.complete(make_slot(protocol), request_body(), observation=observation)
+    assert error.value.code == "invalid_upstream_response"
+    assert observation.usage == expected
+    assert observation.usage_status == "reported"
+    assert SECRET not in json.dumps(observation.usage)
+    assert SECRET not in str(error.value)
+    assert clients[0].is_closed
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+async def test_http_failure_retains_reported_usage_without_exposing_error_body(protocol, streaming):
+    observation = AttemptObservation()
+    usage = USAGE if protocol == "openai_chat" else {"input_tokens": 7, "output_tokens": 3}
+    gateway, clients = gateway_for(lambda request: httpx.Response(429, json={"usage": usage, "error": SECRET}))
+    with pytest.raises(ModelGatewayError) as error:
+        if streaming:
+            _ = [part async for part in gateway.stream(make_slot(protocol), request_body(stream=True), observation=observation)]
+        else:
+            await gateway.complete(make_slot(protocol), request_body(), observation=observation)
+    assert error.value.code == "upstream_rate_limited"
+    assert error.value.status_code == 429
+    assert observation.usage_status == "reported"
+    assert {key: observation.usage[key] for key in USAGE} == USAGE
+    assert SECRET not in json.dumps(error.value.to_dict())
+    assert clients[0].is_closed
+
+
+@pytest.mark.parametrize("content", [SECRET.encode(), b'{"usage": {"prompt_tokens": -1}}', b"[1, 2, 3]"])
+async def test_error_body_parse_failure_preserves_http_status(content):
+    observation = AttemptObservation()
+    gateway, clients = gateway_for(lambda request: httpx.Response(401, content=content))
+    with pytest.raises(ModelGatewayError) as error:
+        await gateway.complete(make_slot(), request_body(), observation=observation)
+    assert error.value.code == "upstream_authentication_failed"
+    assert observation.usage is None and observation.usage_status == "unknown"
+    assert observation.upstream_started
+    assert clients[0].is_closed
+
+
+async def test_error_body_usage_read_is_bounded(monkeypatch):
+    from plugin.server.application import model_gateway_service as service_module
+
+    monkeypatch.setattr(service_module, "MAX_ERROR_USAGE_BYTES", 32)
+    stream = ByteStream(json.dumps({"secret": SECRET, "usage": USAGE}).encode())
+    observation = AttemptObservation()
+    gateway, clients = gateway_for(lambda request: httpx.Response(500, stream=stream))
+    with pytest.raises(ModelGatewayError) as error:
+        await gateway.complete(make_slot(), request_body(), observation=observation)
+    assert error.value.code == "upstream_error"
+    assert observation.usage is None
+    assert stream.closed and clients[0].is_closed
+
+
+async def test_error_body_read_failure_preserves_original_http_error():
+    class FailedBody(ByteStream):
+        async def __aiter__(self):
+            yield b'{"usage":'
+            raise httpx.ReadTimeout(SECRET)
+
+    stream = FailedBody(b"")
+    observation = AttemptObservation()
+    gateway, clients = gateway_for(lambda request: httpx.Response(429, stream=stream))
+    with pytest.raises(ModelGatewayError) as error:
+        await gateway.complete(make_slot(), request_body(), observation=observation)
+    assert error.value.code == "upstream_rate_limited"
+    assert observation.usage is None
+    assert stream.closed and clients[0].is_closed
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+async def test_interrupted_stream_retains_latest_cumulative_usage(protocol):
+    events = openai_events() if protocol == "openai_chat" else anthropic_events()[:-1]
+    if protocol == "openai_chat":
+        events[0]["usage"] = {"prompt_tokens": 7, "completion_tokens": 0, "total_tokens": 7}
+    observation = AttemptObservation()
+    stream = ByteStream(event_bytes(events))
+    gateway, clients = gateway_for(lambda request: httpx.Response(
+        200, headers={"content-type": "text/event-stream"}, stream=stream))
+    with pytest.raises(ModelGatewayError):
+        _ = [part async for part in gateway.stream(make_slot(protocol), request_body(stream=True), observation=observation)]
+    assert {key: observation.usage[key] for key in USAGE} == USAGE
+    assert observation.usage_status == "partial"
+    assert stream.closed and clients[0].is_closed
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+@pytest.mark.parametrize("invalid", [True, -1, "3", None])
+async def test_malformed_stream_usage_preserves_last_valid_snapshot(protocol, invalid):
+    if protocol == "openai_chat":
+        events = openai_events()
+        events[0]["usage"] = {"prompt_tokens": 7, "completion_tokens": 0, "total_tokens": 7}
+        events[-1]["usage"] = {**USAGE, "completion_tokens": invalid}
+    else:
+        events = anthropic_events()
+        events[-2]["usage"]["output_tokens"] = invalid
+    observation = AttemptObservation()
+    gateway, _ = gateway_for(lambda request: httpx.Response(
+        200, headers={"content-type": "text/event-stream"}, stream=ByteStream(event_bytes(events, done=protocol == "openai_chat"))))
+    with pytest.raises(ModelGatewayError):
+        _ = [part async for part in gateway.stream(make_slot(protocol), request_body(stream=True), observation=observation)]
+    assert observation.usage["prompt_tokens"] == 7
+    assert observation.usage["completion_tokens"] == 0
+    assert observation.usage["total_tokens"] == 7
+    assert observation.usage_status == "partial"
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+async def test_stream_close_and_cancellation_preserve_partial_usage(protocol, cancel):
+    waiting = asyncio.Event()
+    events = openai_events() if protocol == "openai_chat" else anthropic_events()
+    if protocol == "openai_chat":
+        events[0]["usage"] = {"prompt_tokens": 7, "completion_tokens": 0, "total_tokens": 7}
+
+    class HangingStream(ByteStream):
+        async def __aiter__(self):
+            yield event_bytes(events[:1])
+            waiting.set()
+            await asyncio.Event().wait()
+
+    stream = HangingStream(b"")
+    observation = AttemptObservation()
+    gateway, clients = gateway_for(lambda request: httpx.Response(
+        200, headers={"content-type": "text/event-stream"}, stream=stream))
+    iterator = gateway.stream(make_slot(protocol), request_body(stream=True), observation=observation)
+    await anext(iterator)
+    assert observation.usage_status == "partial"
+    if cancel:
+        task = asyncio.create_task(anext(iterator))
+        await asyncio.wait_for(waiting.wait(), timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        await iterator.aclose()
+    assert observation.usage["prompt_tokens"] == 7
+    assert observation.usage_status == "partial"
+    assert stream.closed and clients[0].is_closed
+
+
+async def test_anthropic_message_stop_is_reported_even_if_consumer_closes_on_final_chunk():
+    observation = AttemptObservation()
+    stream = ByteStream(event_bytes(anthropic_events()))
+    gateway, _ = gateway_for(lambda request: httpx.Response(
+        200, headers={"content-type": "text/event-stream"}, stream=stream))
+    iterator = gateway.stream(make_slot("anthropic_messages"), request_body(stream=True), observation=observation)
+    async for part in iterator:
+        chunk = json.loads(part.decode()[6:])
+        if chunk["choices"][0]["finish_reason"] == "stop":
+            break
+    await iterator.aclose()
+    assert observation.usage_status == "reported"
+    assert observation.usage["total_tokens"] == 10
+    assert stream.closed
+
+
+async def test_preparation_error_never_marks_attempt_started():
+    observation = AttemptObservation()
+    gateway, clients = gateway_for(lambda request: pytest.fail("must not send invalid request"))
+    with pytest.raises(ModelGatewayError):
+        await gateway.complete(make_slot(), request_body(api_key=SECRET), observation=observation)
+    assert not observation.upstream_started
+    assert observation.usage is None and observation.usage_status == "unknown"
+    assert clients == []
+
+
+async def test_connection_failure_marks_started_without_inventing_usage():
+    def upstream(request):
+        raise httpx.ConnectError(SECRET)
+
+    observation = AttemptObservation()
+    gateway, _ = gateway_for(upstream)
+    with pytest.raises(ModelGatewayError) as error:
+        await gateway.complete(make_slot(), request_body(), observation=observation)
+    assert error.value.code == "upstream_connection_error"
+    assert observation.upstream_started
+    assert observation.usage is None and observation.usage_status == "unknown"
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "anthropic_messages"])
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_success_without_usage_remains_unknown(protocol, streaming):
+    if streaming:
+        if protocol == "openai_chat":
+            events = openai_events()[:-1]
+        else:
+            events = anthropic_events()
+            events[0]["message"].pop("usage")
+            events[-2].pop("usage")
+        response = httpx.Response(200, headers={"content-type": "text/event-stream"},
+                                  stream=ByteStream(event_bytes(events, done=protocol == "openai_chat")))
+    else:
+        result = openai_response() if protocol == "openai_chat" else anthropic_response()
+        result.pop("usage")
+        response = httpx.Response(200, json=result)
+    observation = AttemptObservation()
+    gateway, _ = gateway_for(lambda request: response)
+    if streaming:
+        _ = [part async for part in gateway.stream(make_slot(protocol), request_body(stream=True), observation=observation)]
+    else:
+        await gateway.complete(make_slot(protocol), request_body(), observation=observation)
+    assert observation.upstream_started
+    assert observation.usage is None and observation.usage_status == "unknown"
+
+
+def test_observation_detaches_counters_and_rejects_malformed_replacements():
+    observation = AttemptObservation()
+    usage = {**USAGE, "prompt_tokens_details": {"cached_tokens": 4}}
+    observation.observe(usage)
+    usage["prompt_tokens_details"]["cached_tokens"] = 99
+    assert observation.usage["prompt_tokens_details"]["cached_tokens"] == 4
+    for replacement in (
+        None, [], {}, {**USAGE, "prompt_tokens": True}, {**USAGE, "total_tokens": -1},
+        {**USAGE, "completion_tokens_details": {"reasoning_tokens": SECRET}},
+        {**USAGE, "prompt_tokens_details": []},
+    ):
+        observation.observe(replacement, reported=True)
+        assert observation.usage == {**USAGE, "prompt_tokens_details": {"cached_tokens": 4}}
+        assert observation.usage_status == "partial"

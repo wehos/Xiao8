@@ -20,6 +20,7 @@ from plugin.server.routes.llm_tools import router as llm_tools_router
 from plugin.server.routes.market_bridge import router as market_bridge_router
 from plugin.server.routes.model_config import router as model_config_router
 from plugin.server.routes.model_gateway import router as model_gateway_router
+from plugin.server.routes.model_usage import router as model_usage_router
 
 __all__ = [
     'health_router',
@@ -30,6 +31,7 @@ __all__ = [
     'config_router',
     'model_config_router',
     'model_gateway_router',
+    'model_usage_router',
     'documents_router',
     'logs_router',
     'media_router',

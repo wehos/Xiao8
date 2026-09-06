@@ -4,9 +4,9 @@ The host stores plugin-only model settings in the selected runtime root's
 `config/plugin_models.json`. This configuration is independent of Main/Agent
 model slots and does not trigger `/api/config/core_api` session reloads.
 
-Configuration, binding management, model adapters and authenticated plugin SDK
-access are implemented. The overall deadline, fallback/accounting policies and
-configuration UI follow separately.
+Configuration, binding management, model adapters, authenticated plugin SDK
+access and execution/accounting policies are implemented. The configuration UI
+follows separately.
 
 ## Manifest declarations
 
@@ -104,14 +104,12 @@ may include or omit the final `/v1`. Credentials are placed only in the relevant
 upstream authentication header; redirects are never followed. Vendor error
 bodies are replaced with safe OpenAI-shaped errors.
 
-Each attempt owns and closes its HTTP client. There are no automatic retries,
-fallback, usage persistence or accounting hooks yet. The HTTP inactivity timeout
-uses the slot setting; the overall deadline, bounded scheduling and accounting
-are a separate planned increment. Upstream streaming usage is requested for
-OpenAI, but forwarded to the caller only when `include_usage=true`. Missing usage
-remains unknown. Requests and responses are bounded to 16 MiB and SSE events to
-1 MiB, including unterminated lines. These are transport limits, not token-budget
-estimates.
+Each low-level attempt owns and closes its HTTP client without SDK retries.
+The HTTP route wraps attempts in the execution policy described below. Upstream
+streaming usage is requested for OpenAI, but forwarded to the caller only when
+`include_usage=true`; internal observation is independent of that presentation.
+Requests and responses are bounded to 16 MiB and SSE events to 1 MiB, including
+unterminated lines. These are transport limits, not token-budget estimates.
 
 ## Plugin SDK and instance access
 
@@ -165,3 +163,72 @@ failures before the first stream event retain their HTTP error status; failures
 after headers produce an SDK-readable SSE error without a success terminator.
 Disconnect and revocation release upstream resources, including during stream
 prefetch and response handoff. Supplier errors never echo raw error bodies.
+
+## Deadline, concurrency and fallback
+
+After authentication, body parsing and binding resolution, one monotonic
+deadline is established from the primary slot's `timeout_seconds`. Queueing,
+request preparation, provider I/O, generation, backpressure and fallback share
+that budget. HTTP response sends use the same deadline, so a connected client
+that stops reading cannot hold a send indefinitely. Only a final error frame
+gets a bounded 100 ms flush window beyond that deadline; model work, fallback
+and ordinary content sends never use it. Resource cleanup and local accounting
+are protected finalization work; they do not start further model requests. If
+an error cannot be flushed in time, the SDK sees a closed response stream rather
+than a success terminator.
+
+The default executor admits four active requests and sixteen waiting requests.
+Overflow returns `model_gateway_busy` (429); a deadline expiring in the queue
+returns `gateway_timeout` (504) without starting an upstream attempt. The limiter
+belongs to the plugin HTTP application's loop, not Main or Agent inference.
+
+Streaming uses one producer task and a one-item queue. The task owns its timeout
+and provider iterator across route prefetch and ASGI response tasks. It reports
+completion/errors independently of queue capacity, and emits `[DONE]` only after
+successful completion and accounting. Consumer cancellation and service shutdown
+cancel that producer and await its cleanup.
+
+A request can try its configured fallback slot once, only for connection,
+upstream timeout, rate-limit or server failures. It never retries the primary
+automatically. Authentication, invalid input, redirects and malformed responses
+do not trigger fallback. Both slot configurations are captured together. The
+fallback must cover the primary capabilities and must pass protocol/request
+validation again. No fallback occurs after the first chunk has been yielded to
+the HTTP response path; unobserved primary chunks are discarded before switching.
+
+## Local usage history
+
+`GET /api/model-config/usage` returns recent request records and a summary. It
+accepts optional `plugin_id`, `slot_id`, and `limit` (1–1000, default 100). The
+summary covers the entire retained matching window, not just the displayed
+page. It explicitly reports `window: "recent_retained"`; it is not an unlimited
+per-plugin billing history.
+
+`config/plugin_model_usage.json` retains at most 1000 logical requests. Each has
+one server-generated request ID and up to two attempt IDs, with plugin/usage/
+slot identity, configured protocol/model, timestamps, duration, execution status
+and safe error codes. Attempt counts distinguish actual send attempts from
+validation and queue failures. Bodies, URLs, headers, keys, instance tokens and
+arbitrary provider fields are never included. Execution success is not an
+acknowledgement that the plugin consumed every response byte.
+
+Usage has three states:
+
+- `reported`: a complete nonstreaming usage report or a completed stream.
+- `partial`: the last valid cumulative snapshot from an incomplete stream.
+- `unknown`: no usable counters were received; values remain absent, not zero.
+
+Snapshots replace previous snapshots rather than being summed per chunk. The
+local summary adds known counters and separately reports completeness counts.
+Only `reported` usage from started upstream attempts is sent to the existing
+`TokenTracker`, under generic `plugin_model` / `plugin_gateway` labels. Request,
+plugin and slot identifiers remain local. Failed attempts with complete usage
+are counted too. Bounded request-ID deduplication prevents repeated finalizers
+from incrementing totals again.
+
+The OpenAI SDK statistics hook bypasses only the exact local `/api/models/v1`
+endpoint. This also handles forked plugin processes inheriting Agent's hook;
+ordinary Main/Agent and external provider requests keep their existing tracking.
+A standalone gateway starts a periodic tracker saver only if none is active and
+stops only the task it owns. Usage persistence failure is logged without changing
+the model result; corrupted history is preserved instead of overwritten.

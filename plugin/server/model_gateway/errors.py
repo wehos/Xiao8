@@ -23,6 +23,8 @@ class ModelGatewayError(Exception):
 
 def upstream_error(status_code: int) -> ModelGatewayError:
     """Do not forward vendor error bodies: they may echo headers or prompts."""
+    if 300 <= status_code < 400:
+        return ModelGatewayError("upstream_redirect_rejected", "Model provider redirects are not allowed", 502)
     if status_code in (401, 403):
         return ModelGatewayError("upstream_authentication_failed", "Model provider rejected the configured credentials", 502)
     if status_code == 429:

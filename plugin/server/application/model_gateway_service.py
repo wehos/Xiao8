@@ -1,8 +1,8 @@
 """Internal model execution against one already-resolved plugin slot.
 
-There is deliberately no HTTP route here. The authenticated plugin gateway will
-resolve a binding before invoking this service. Total deadlines, fallback and
-accounting are added around this single-attempt boundary in a later increment.
+The authenticated gateway resolves a binding before invoking this service.
+Execution policy owns total deadlines, fallback and accounting around this
+single-attempt boundary; observations only retain the latest upstream counters.
 """
 from __future__ import annotations
 
@@ -17,11 +17,13 @@ import httpx
 from plugin.server.domain.model_config import ModelSlot
 from plugin.server.model_gateway import anthropic, openai
 from plugin.server.model_gateway.errors import ModelGatewayError, upstream_error
+from plugin.server.model_gateway.observation import AttemptObservation
 from plugin.server.model_gateway.request import prepare_chat_request
 from plugin.server.model_gateway.transport import decode_object, encode_sse, iter_sse_data, read_json_response
 from utils.http_client import ensure_user_agent
 
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
+MAX_ERROR_USAGE_BYTES = 64 * 1024
 
 
 def _endpoint(slot: ModelSlot) -> str:
@@ -50,6 +52,34 @@ def _headers(slot: ModelSlot) -> dict[str, str]:
 def _check_status(response: httpx.Response) -> None:
     if not response.is_success:
         raise upstream_error(response.status_code)
+
+
+async def _observe_error_usage(response: httpx.Response, slot: ModelSlot, observation: AttemptObservation) -> None:
+    """Best-effort diagnostics must not replace the original HTTP status error."""
+    try:
+        # Error bodies are optional diagnostics: bound both their bytes and the
+        # wait, while preserving cancellation from the enclosing request policy.
+        with anyio.move_on_after(1):
+            data = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(data) + len(chunk) > MAX_ERROR_USAGE_BYTES:
+                    return
+                data.extend(chunk)
+            body = decode_object(bytes(data))
+            observation.observe(body.get("usage"), protocol=slot.protocol, reported=True)
+    except (httpx.HTTPError, ModelGatewayError, ValueError):
+        pass
+
+
+def _observe_stream_usage(converter, observation: AttemptObservation | None, *, reported: bool = False) -> None:
+    if observation is None:
+        return
+    try:
+        observation.observe(converter.usage, reported=reported)
+    except ModelGatewayError:
+        # Anthropic validates its cumulative usage on access. An invalid update
+        # must not erase the last known counters or hide the original failure.
+        pass
 
 
 def _prepare(slot: ModelSlot, body: object, *, streaming: bool) -> tuple[str, bytes, dict, bool]:
@@ -88,12 +118,16 @@ class ModelGatewayService:
         return httpx.AsyncClient(timeout=slot.timeout_seconds, follow_redirects=False)
 
     @asynccontextmanager
-    async def _request(self, slot: ModelSlot, payload: bytes, headers: dict):
+    async def _request(self, slot: ModelSlot, payload: bytes, headers: dict, observation: AttemptObservation | None = None):
         client = self._client_factory(slot)
         response = None
         try:
             request = client.build_request("POST", _endpoint(slot), content=payload, headers=headers)
+            if observation is not None:
+                observation.upstream_started = True
             response = await client.send(request, stream=True, follow_redirects=False)
+            if not response.is_success and observation is not None:
+                await _observe_error_usage(response, slot, observation)
             _check_status(response)
             yield response
         finally:
@@ -106,12 +140,14 @@ class ModelGatewayService:
                 finally:
                     await client.aclose()
 
-    async def complete(self, slot: ModelSlot, body: object) -> dict:
+    async def complete(self, slot: ModelSlot, body: object, *, observation: AttemptObservation | None = None) -> dict:
         slot = slot.model_copy(deep=True)
         model_alias, payload, headers, _ = await asyncio.to_thread(_prepare, slot, body, streaming=False)
         try:
-            async with self._request(slot, payload, headers) as response:
+            async with self._request(slot, payload, headers, observation) as response:
                 result = await read_json_response(response)
+                if observation is not None:
+                    observation.observe(result.get("usage"), protocol=slot.protocol, reported=True)
             adapter = anthropic if slot.protocol == "anthropic_messages" else openai
             return await asyncio.to_thread(adapter.convert_response, result, model_alias=model_alias)
         except httpx.TimeoutException as exc:
@@ -119,7 +155,7 @@ class ModelGatewayService:
         except httpx.HTTPError as exc:
             raise ModelGatewayError("upstream_connection_error", "Could not complete the model provider request", 502) from exc
 
-    async def stream(self, slot: ModelSlot, body: object) -> AsyncIterator[bytes]:
+    async def stream(self, slot: ModelSlot, body: object, *, observation: AttemptObservation | None = None) -> AsyncIterator[bytes]:
         slot = slot.model_copy(deep=True)
         model_alias, payload, headers, include_usage = await asyncio.to_thread(_prepare, slot, body, streaming=True)
         is_anthropic = slot.protocol == "anthropic_messages"
@@ -128,23 +164,35 @@ class ModelGatewayService:
         else:
             converter = openai.OpenAIStreamConverter(model_alias, include_usage=include_usage)
         saw_done = False
+        completed = False
         try:
-            async with self._request(slot, payload, headers) as response:
+            async with self._request(slot, payload, headers, observation) as response:
                 async for data in iter_sse_data(response):
                     if data.strip() == "[DONE]":
                         if is_anthropic:
                             raise ModelGatewayError("invalid_upstream_response", "Unexpected stream terminator", 502)
                         saw_done = True
                         break
-                    for chunk in converter.feed(decode_object(data)):
+                    try:
+                        chunks = converter.feed(decode_object(data))
+                        # Messages has no separate [DONE] marker: message_stop
+                        # makes usage final before its last chunks are yielded.
+                        completed = bool(is_anthropic and converter.done)
+                    finally:
+                        _observe_stream_usage(converter, observation, reported=completed)
+                    for chunk in chunks:
                         yield encode_sse(chunk)
                     if is_anthropic and converter.done:
                         break
                 converter.finish()
                 if not is_anthropic and not saw_done:
                     raise ModelGatewayError("incomplete_upstream_stream", "Model stream ended without a terminator", 502)
+                completed = True
+                _observe_stream_usage(converter, observation, reported=True)
             yield b"data: [DONE]\n\n"
         except httpx.TimeoutException as exc:
             raise ModelGatewayError("upstream_timeout", "Model provider stream timed out", 504) from exc
         except httpx.HTTPError as exc:
             raise ModelGatewayError("upstream_connection_error", "Model provider stream disconnected", 502) from exc
+        finally:
+            _observe_stream_usage(converter, observation, reported=completed)

@@ -4,26 +4,32 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import replace
 
 from fastapi import APIRouter, Request
 from starlette.requests import ClientDisconnect
 from starlette.responses import JSONResponse, StreamingResponse
 
 from plugin.core.model_gateway_access import ModelGatewayAccessError, model_gateway_access
+from plugin.logging_config import get_logger
 from plugin.server.application.model_config_service import load_model_requirements
 from plugin.server.application.model_gateway_service import MAX_REQUEST_BYTES, ModelGatewayService
 from plugin.server.domain.errors import ServerDomainError
-from plugin.server.domain.model_config import ModelSlot
 from plugin.server.infrastructure.model_config_store import ModelConfigStore
+from plugin.server.infrastructure.model_usage_store import ModelUsageRecorder
 from plugin.server.model_gateway.errors import ModelGatewayError
+from plugin.server.model_gateway.execution import ModelExecutor, ResolvedModelCall
 from plugin.server.model_gateway.transport import encode_sse
 
 router = APIRouter(prefix="/api/models/v1", tags=["plugin-model-gateway"])
 gateway_service = ModelGatewayService()
 config_store = ModelConfigStore()
+logger = get_logger("server.routes.model_gateway")
 _USAGE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _LIVENESS_INTERVAL = 0.25
+_ERROR_FLUSH_SECONDS = 0.1
 
 
 def _error_response(error: ModelGatewayError) -> JSONResponse:
@@ -65,7 +71,7 @@ async def _read_request(request: Request) -> dict:
     return await asyncio.to_thread(_decode_request, b"".join(parts))
 
 
-def _resolve_slot(plugin_id: str, usage_id: object) -> ModelSlot:
+def _resolve_call(plugin_id: str, usage_id: object) -> ResolvedModelCall:
     if not isinstance(usage_id, str) or not _USAGE_ID.fullmatch(usage_id):
         raise ModelGatewayError("invalid_request", "model must be a declared plugin usage name", param="model")
     try:
@@ -80,11 +86,42 @@ def _resolve_slot(plugin_id: str, usage_id: object) -> ModelSlot:
             raise ModelGatewayError("model_usage_not_bound", "Bind a model slot to this plugin usage first", 403, "model")
         if not set(requirement.capabilities).issubset(slot.capabilities):
             raise ModelGatewayError("model_capability_mismatch", "Bound slot no longer meets plugin requirements", 409, "model")
-        return slot.model_copy(deep=True)
+        fallback_id = slot.fallback_slot_id
+        fallback = config.slots.get(fallback_id) if fallback_id else None
+        return ResolvedModelCall(
+            plugin_id=plugin_id, usage_id=usage_id, slot_id=slot_id,
+            slot=slot.model_copy(deep=True), fallback_slot_id=fallback_id,
+            fallback_slot=fallback.model_copy(deep=True) if fallback is not None else None,
+        )
     except ServerDomainError as exc:
         # Translate before crossing asynchronous/context-manager boundaries;
         # the shared domain exception is a frozen dataclass.
         raise ModelGatewayError(exc.code.lower(), exc.message, exc.status_code) from None
+
+
+def _get_executor(request: Request) -> ModelExecutor:
+    # One plugin HTTP application/loop owns the limiter and producer tasks.
+    # The usage reader need not share this object: its source of truth is disk.
+    executor = getattr(request.app.state, "model_executor", None)
+    if executor is None:
+        executor = ModelExecutor(gateway_service, ModelUsageRecorder())
+        request.app.state.model_executor = executor
+    return executor
+
+
+async def close_model_executor(app) -> None:
+    executor = getattr(app.state, "model_executor", None)
+    if executor is not None:
+        try:
+            await executor.aclose()
+        finally:
+            try:
+                await executor.recorder.aclose()
+            except Exception as exc:
+                # Usage persistence must not prevent plugin-service teardown.
+                logger.warning("Model usage cleanup failed: {}", type(exc).__name__)
+            finally:
+                app.state.model_executor = None
 
 
 class _RequestGuard:
@@ -133,11 +170,33 @@ class _RequestGuard:
             model_gateway_access.untrack(self.token, self.task)
 
 
+def _deadline_sender(send, deadline: float | None | Callable[[], float | None]):
+    async def bounded_send(message):
+        # Scope each awaited send to its current task, not across generator
+        # yields. A stalled reader must not keep a completed producer alive.
+        cutoff = deadline() if callable(deadline) else deadline
+        async with asyncio.timeout_at(cutoff):
+            await send(message)
+
+    return bounded_send
+
+
+class _ModelJSONResponse(JSONResponse):
+    def __init__(self, content: dict, deadline: float):
+        super().__init__(content)
+        self.deadline = deadline
+
+    async def __call__(self, scope, receive, send):
+        await super().__call__(scope, receive, _deadline_sender(send, self.deadline))
+
+
 class _ModelStreamResponse(StreamingResponse):
-    def __init__(self, first: bytes, upstream, request: Request, token: str):
+    def __init__(self, first: bytes, upstream, request: Request, token: str, deadline: float | None = None):
         self.upstream = upstream
         self.request = request
         self.token = token
+        self.deadline = deadline
+        self._sending_error = False
 
         async def forward():
             yield first
@@ -146,6 +205,7 @@ class _ModelStreamResponse(StreamingResponse):
                     yield chunk
             except ModelGatewayError as exc:
                 # After headers, report a standard SDK stream error, never DONE.
+                self._sending_error = True
                 yield encode_sse(exc.to_dict())
 
         super().__init__(forward(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
@@ -159,7 +219,16 @@ class _ModelStreamResponse(StreamingResponse):
                 # receive listener. Poll disconnects while upstream is stalled.
                 spec = tuple(map(int, scope.get("asgi", {}).get("spec_version", "2.0").split(".")))
                 guard.watch_disconnect = spec >= (2, 4)
-                await super().__call__(scope, receive, send)
+
+                def send_deadline():
+                    # A timeout error is necessarily produced after its budget
+                    # expires. Give only that control frame a bounded flush
+                    # window; never extend model work or ordinary content sends.
+                    if self._sending_error and self.deadline is not None:
+                        return self.deadline + _ERROR_FLUSH_SECONDS
+                    return self.deadline
+
+                await super().__call__(scope, receive, _deadline_sender(send, send_deadline))
         except ModelGatewayAccessError:
             await _error_response(_access_error())(scope, receive, send)
         finally:
@@ -175,16 +244,18 @@ async def create_chat_completion(request: Request):
         async with _RequestGuard(request, token) as guard:
             body = await _read_request(request)
             guard.watch_disconnect = True
-            slot = await asyncio.to_thread(_resolve_slot, plugin_id, body.get("model"))
+            call = await asyncio.to_thread(_resolve_call, plugin_id, body.get("model"))
+            executor = _get_executor(request)
+            call = replace(call, deadline=asyncio.get_running_loop().time() + call.slot.timeout_seconds)
             if body.get("stream") is True:
-                upstream = gateway_service.stream(slot, body)
+                upstream = executor.stream(call, body)
                 try:
                     first = await anext(upstream)
-                    return _ModelStreamResponse(first, upstream, request, token)
+                    return _ModelStreamResponse(first, upstream, request, token, call.deadline)
                 except BaseException:
                     await upstream.aclose()
                     raise
-            return JSONResponse(await gateway_service.complete(slot, body))
+            return _ModelJSONResponse(await executor.complete(call, body), call.deadline)
     except ModelGatewayAccessError:
         return _error_response(_access_error())
     except ModelGatewayError as exc:

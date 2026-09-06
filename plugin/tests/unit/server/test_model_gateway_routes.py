@@ -1,22 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import threading
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import FastAPI, Request
 from openai import APIError, APIStatusError
+from starlette.requests import ClientDisconnect
 
 from plugin.config.schema import PluginModelRequirementSchema
 from plugin.core.model_gateway_access import ModelGatewayAccessRegistry
 from plugin.sdk.shared.core.context import SdkContext
 from plugin.server.application.model_gateway_service import ModelGatewayService
 from plugin.server.domain.model_config import ModelSlot, PluginModelsConfig
+from plugin.server.model_gateway.execution import ModelExecutor
 from plugin.server.routes import model_gateway as routes
+from plugin.server.routes import model_usage as usage_routes
+from plugin.server.infrastructure.model_usage_store import ModelUsageRecorder, USAGE_FILENAME
+from utils.file_utils import atomic_write_json
 
 PREFIX = "/api/models/v1"
 SLOT_ID = "slot_" + "a" * 32
@@ -102,8 +108,18 @@ def setup_gateway(monkeypatch):
     monkeypatch.setattr(routes, "gateway_service", ModelGatewayService(client_factory))
     app = FastAPI()
     app.include_router(routes.router)
+    records = []
+
+    class Recorder:
+        async def record_request(self, record):
+            records.append(copy.deepcopy(record))
+
+        async def aclose(self):
+            pass
+
+    app.state.model_executor = ModelExecutor(routes.gateway_service, Recorder())
     yield SimpleNamespace(app=app, registry=registry, tokens=tokens, alive=alive,
-                          config=config, calls=calls, clients=clients, upstream=state)
+                          config=config, calls=calls, clients=clients, upstream=state, records=records)
     registry.revoke_all()
 
 
@@ -450,3 +466,311 @@ async def test_guard_exit_handles_disconnect_probe_consuming_cancel(setup_gatewa
         return "finished"
 
     assert await asyncio.wait_for(finish_request(), timeout=2) == "finished"
+
+
+@pytest.fixture
+async def policy_usage(setup_gateway, tmp_path, monkeypatch):
+    from utils import cloudsave_runtime
+
+    class LocalConfig:
+        def get_runtime_config_path(self, name):
+            assert name == USAGE_FILENAME
+            return tmp_path / name
+
+        def save_json_config(self, name, data):
+            atomic_write_json(self.get_runtime_config_path(name), data)
+
+    tracker_calls = []
+    tracker = SimpleNamespace(record=lambda **kwargs: tracker_calls.append(kwargs),
+                              _save_task=SimpleNamespace(done=lambda: False))
+    monkeypatch.setattr(cloudsave_runtime, "cloudsave_writable_transaction", lambda *args, **kwargs: nullcontext())
+    recorder = ModelUsageRecorder(LocalConfig(), tracker_getter=lambda: tracker)
+    executor = ModelExecutor(routes.gateway_service, recorder, max_active=1, max_waiting=1)
+    setup_gateway.app.state.model_executor = executor
+    setup_gateway.app.include_router(usage_routes.router)
+    monkeypatch.setattr(usage_routes, "recorder", recorder)
+    yield SimpleNamespace(recorder=recorder, executor=executor, tracker_calls=tracker_calls,
+                          path=tmp_path / USAGE_FILENAME)
+    await executor.aclose()
+    await recorder.aclose()
+
+
+async def test_successful_http_call_is_persisted_and_counted_once(http_client, setup_gateway, policy_usage):
+    response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
+    assert response.status_code == 200
+    stats = (await http_client.get("/api/model-config/usage")).json()
+    assert stats["summary"]["logical_request_count"] == 1
+    assert stats["summary"]["upstream_attempt_count"] == 1
+    assert stats["summary"]["tokens"]["total_tokens"] == 4
+    record = stats["requests"][0]
+    assert record["plugin_id"] == "alpha" and record["usage_id"] == "analysis"
+    assert record["attempts"][0]["usage_status"] == "reported"
+    await policy_usage.recorder.record_request(record)
+    assert len(policy_usage.tracker_calls) == 1
+    assert policy_usage.tracker_calls[0]["call_type"] == "plugin_model"
+    raw = policy_usage.path.read_text(encoding="utf-8")
+    assert SECRET not in raw and setup_gateway.tokens["alpha"] not in raw
+    assert "messages" not in raw and "https://" not in raw
+
+
+def add_fallback(setup_gateway):
+    fallback_id = "slot_" + "b" * 32
+    setup_gateway.config.slots[fallback_id] = ModelSlot(
+        name="Fallback", protocol="openai_chat", base_url="https://fallback.test/v1", model="fallback-model",
+        api_key="fallback-private-key", capabilities=["text", "image_input", "streaming"], timeout_seconds=5,
+    )
+    setup_gateway.config.slots[SLOT_ID].fallback_slot_id = fallback_id
+    return fallback_id
+
+
+async def test_http_fallback_uses_one_snapshot_and_records_both_attempts(http_client, setup_gateway, policy_usage):
+    fallback_id = add_fallback(setup_gateway)
+    seen = []
+
+    async def upstream(request):
+        seen.append(request)
+        if request.url.host == "upstream.test":
+            # Editing saved settings during this call affects only new calls.
+            setup_gateway.config.slots[fallback_id].api_key = "updated-private-key"
+            return httpx.Response(500, json={"error": {"message": SECRET}, "usage": {
+                "prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3,
+            }})
+        assert request.headers["authorization"] == "Bearer fallback-private-key"
+        assert json.loads(request.content)["model"] == "fallback-model"
+        return httpx.Response(200, json=reply())
+
+    setup_gateway.upstream.handler = upstream
+    response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
+    assert response.status_code == 200 and response.json()["model"] == "analysis"
+    assert len(seen) == 2
+    stats = (await http_client.get("/api/model-config/usage")).json()
+    assert stats["summary"]["logical_request_count"] == 1
+    assert stats["summary"]["upstream_attempt_count"] == 2
+    assert stats["summary"]["tokens"]["total_tokens"] == 7
+    assert [item["status"] for item in stats["requests"][0]["attempts"]] == ["error", "success"]
+    assert len(policy_usage.tracker_calls) == 2
+    fallback_stats = (await http_client.get("/api/model-config/usage", params={"slot_id": fallback_id})).json()
+    assert fallback_stats["summary"]["upstream_attempt_count"] == 1
+    assert fallback_stats["summary"]["tokens"]["total_tokens"] == 4
+
+
+@pytest.mark.parametrize("upstream_status", [400, 401, 307])
+async def test_nonretryable_http_failures_do_not_use_fallback(http_client, setup_gateway, policy_usage, upstream_status):
+    add_fallback(setup_gateway)
+    seen = []
+
+    async def upstream(request):
+        seen.append(request)
+        return httpx.Response(upstream_status, text=SECRET)
+
+    setup_gateway.upstream.handler = upstream
+    response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
+    assert response.status_code in (400, 502)
+    assert len(seen) == 1
+    record = (await policy_usage.recorder.get_usage())["requests"][0]
+    assert len(record["attempts"]) == 1
+    assert record["attempts"][0]["usage"] is None
+    assert not policy_usage.tracker_calls
+
+
+async def test_busy_and_queue_timeout_do_not_start_extra_upstreams(http_client, setup_gateway, policy_usage):
+    started, release = asyncio.Event(), asyncio.Event()
+    seen = []
+
+    async def upstream(request):
+        seen.append(request)
+        started.set()
+        await release.wait()
+        return httpx.Response(200, json=reply())
+
+    setup_gateway.upstream.handler = upstream
+    first = asyncio.create_task(http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body()))
+    second = None
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        setup_gateway.config.slots[SLOT_ID].timeout_seconds = 0.1
+        second = asyncio.create_task(http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body()))
+        async with asyncio.timeout(2):
+            while policy_usage.executor._admitted != 2:
+                await asyncio.sleep(0)
+        busy = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body())
+        assert busy.status_code == 429
+        assert busy.json()["error"]["code"] == "model_gateway_busy"
+        queued = await asyncio.wait_for(second, 2)
+        assert queued.status_code == 504
+        assert queued.json()["error"]["code"] == "gateway_timeout"
+        assert len(seen) == 1
+    finally:
+        release.set()
+        await asyncio.gather(first, *( [second] if second is not None else []), return_exceptions=True)
+    stats = await policy_usage.recorder.get_usage()
+    assert stats["summary"]["logical_request_count"] == 3
+    assert stats["summary"]["upstream_attempt_count"] == 1
+    assert next(row for row in stats["requests"] if row["status"] == "timeout")["attempts"] == []
+
+
+async def test_http_fallback_keeps_primary_total_deadline(http_client, setup_gateway, policy_usage):
+    add_fallback(setup_gateway)
+    setup_gateway.config.slots[SLOT_ID].timeout_seconds = 0.05
+    closed = asyncio.Event()
+
+    async def upstream(request):
+        if request.url.host == "upstream.test":
+            return httpx.Response(500, json={"error": {"message": "retryable"}})
+        try:
+            await asyncio.Event().wait()
+        finally:
+            closed.set()
+
+    setup_gateway.upstream.handler = upstream
+    response = await asyncio.wait_for(http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body()), 2)
+    assert response.status_code == 504 and closed.is_set()
+    record = (await policy_usage.recorder.get_usage())["requests"][0]
+    assert record["status"] == "timeout"
+    assert [attempt["status"] for attempt in record["attempts"]] == ["error", "timeout"]
+
+
+async def test_stream_deadline_preserves_partial_usage_and_sends_error(http_client, setup_gateway, policy_usage):
+    setup_gateway.config.slots[SLOT_ID].protocol = "anthropic_messages"
+    setup_gateway.config.slots[SLOT_ID].timeout_seconds = 0.05
+    closed = asyncio.Event()
+
+    class NativeStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield event({"type": "message_start", "message": {
+                "id": "msg-partial", "role": "assistant", "content": [], "usage": {"input_tokens": 3, "output_tokens": 0},
+            }})
+            await asyncio.Event().wait()
+
+        async def aclose(self):
+            closed.set()
+
+    async def upstream(request):
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=NativeStream())
+
+    setup_gateway.upstream.handler = upstream
+    response = await asyncio.wait_for(http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body(stream=True)), 2)
+    assert response.status_code == 200
+    assert '"code":"gateway_timeout"' in response.text and "[DONE]" not in response.text
+    assert closed.is_set()
+    stats = await policy_usage.recorder.get_usage()
+    assert stats["requests"][0]["status"] == "timeout"
+    assert stats["summary"]["usage_counts"]["partial"] == 1
+    assert stats["summary"]["tokens"]["prompt_tokens"] == 3
+    assert not policy_usage.tracker_calls
+
+
+async def test_usage_hidden_from_stream_is_still_recorded(http_client, setup_gateway, policy_usage):
+    async def upstream(request):
+        assert json.loads(request.content)["stream_options"]["include_usage"] is True
+        usage = {**chunk(), "choices": [], "usage": reply()["usage"]}
+        data = event(chunk("hello")) + event(chunk(finish="stop")) + event(usage) + b"data: [DONE]\n\n"
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=BytesStream(data))
+
+    setup_gateway.upstream.handler = upstream
+    response = await http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body(stream=True))
+    assert response.status_code == 200 and "[DONE]" in response.text
+    assert '"usage"' not in response.text
+    record = (await policy_usage.recorder.get_usage())["requests"][0]
+    assert record["status"] == "success" and record["attempts"][0]["usage_status"] == "reported"
+    assert len(policy_usage.tracker_calls) == 1
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
+async def test_stalled_http_send_uses_the_same_deadline(setup_gateway, monkeypatch, streaming, spec_version):
+    setup_gateway.config.slots[SLOT_ID].timeout_seconds = 0.1
+    monkeypatch.setattr(routes, "_ERROR_FLUSH_SECONDS", 5.0)
+    sending = asyncio.Event()
+
+    async def upstream(request):
+        if not streaming:
+            return httpx.Response(200, json=reply())
+        data = b"".join(event(chunk("chunk")) for _ in range(20))
+        data += event(chunk(finish="stop")) + b"data: [DONE]\n\n"
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=BytesStream(data))
+
+    setup_gateway.upstream.handler = upstream
+    incoming = asyncio.Queue()
+    incoming.put_nowait({"type": "http.request", "body": json.dumps(body(stream=streaming)).encode(), "more_body": False})
+    scope = {
+        "type": "http", "asgi": {"version": "3.0", "spec_version": spec_version},
+        "http_version": "1.1", "method": "POST", "scheme": "http", "path": PREFIX + "/chat/completions",
+        "query_string": b"", "headers": [(b"authorization", ("Bearer " + setup_gateway.tokens["alpha"]).encode()),
+                                           (b"content-type", b"application/json")],
+        "server": ("127.0.0.1", 48916), "client": ("127.0.0.1", 43210),
+    }
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            sending.set()
+            await asyncio.Event().wait()  # Connected peer that never reads.
+
+    task = asyncio.create_task(setup_gateway.app(scope, incoming.get, send))
+    try:
+        await asyncio.wait_for(sending.wait(), 2)
+        done, pending = await asyncio.wait({task}, timeout=1)
+        assert task in done and not pending, "Response send outlived the model deadline"
+        with pytest.raises((TimeoutError, ClientDisconnect, ExceptionGroup)):
+            await task
+        assert setup_gateway.app.state.model_executor._admitted == 0
+        assert len(setup_gateway.records) == 1
+        assert all(client.is_closed for client in setup_gateway.clients)
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_stream_timeout_error_survives_http_middleware(http_client, setup_gateway):
+    @setup_gateway.app.middleware("http")
+    async def pass_through(request, call_next):
+        return await call_next(request)
+
+    setup_gateway.config.slots[SLOT_ID].timeout_seconds = 0.05
+
+    class WaitingStream(BytesStream):
+        async def __aiter__(self):
+            yield event(chunk("partial"))
+            await asyncio.Event().wait()
+
+    async def upstream(request):
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=WaitingStream(b""))
+
+    setup_gateway.upstream.handler = upstream
+    response = await asyncio.wait_for(http_client.post(PREFIX + "/chat/completions", headers=auth(setup_gateway), json=body(stream=True)), 2)
+    assert response.status_code == 200
+    assert '"code":"gateway_timeout"' in response.text
+    assert "[DONE]" not in response.text
+
+
+async def test_final_error_flush_window_is_bounded(setup_gateway):
+    from plugin.server.model_gateway.errors import ModelGatewayError
+
+    async def upstream():
+        yield event(chunk("partial"))
+        raise ModelGatewayError("gateway_timeout", "Request expired", 504)
+
+    iterator = upstream()
+    first = await anext(iterator)
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []})
+    response = routes._ModelStreamResponse(first, iterator, request, setup_gateway.tokens["alpha"],
+                                          asyncio.get_running_loop().time() + 0.02)
+
+    async def receive():
+        await asyncio.Event().wait()
+
+    async def send(message):
+        if b'"error"' in message.get("body", b""):
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(response({"type": "http", "asgi": {"spec_version": "2.3"}}, receive, send))
+    try:
+        done, pending = await asyncio.wait({task}, timeout=0.5)
+        assert task in done and not pending
+        with pytest.raises((TimeoutError, ExceptionGroup)):
+            await task
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

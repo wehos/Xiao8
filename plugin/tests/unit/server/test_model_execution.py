@@ -11,6 +11,9 @@ from plugin.server.model_gateway.errors import ModelGatewayError
 from plugin.server.model_gateway.execution import ModelExecutor, ResolvedModelCall
 from plugin.server.model_gateway.request import prepare_chat_request
 
+
+pytestmark = pytest.mark.plugin_unit
+
 USAGE = {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}
 DONE = b"data: [DONE]\n\n"
 

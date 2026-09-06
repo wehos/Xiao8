@@ -10,13 +10,12 @@ import re
 from typing import NoReturn
 from urllib.parse import urlsplit
 
-from plugin.server.domain.model_config import ModelSlot
+from plugin.server.domain.model_config import MAX_OUTPUT_TOKENS, ModelSlot
 
 from .errors import ModelGatewayError
 
 _NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 _USAGE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-_MAX_OUTPUT_TOKENS = 1_000_000
 _ASSISTANT_HISTORY_FIELDS = {"tool_calls", "refusal", "annotations", "audio", "function_call"}
 _REQUEST_FIELDS = {
     "model", "messages", "stream", "stream_options", "tools", "tool_choice",
@@ -302,7 +301,7 @@ def prepare_chat_request(slot: ModelSlot, body: object) -> dict:
         _invalid("max_completion_tokens", "Specify only one output token budget.")
     for field in ("max_tokens", "max_completion_tokens"):
         if field in source:
-            if type(source[field]) is not int or not 1 <= source[field] <= _MAX_OUTPUT_TOKENS:
+            if type(source[field]) is not int or not 1 <= source[field] <= MAX_OUTPUT_TOKENS:
                 _invalid(field, "Output token budget must be an integer from 1 to 1000000.")
     for field, maximum in (("temperature", 2), ("top_p", 1)):
         if field in source:
@@ -332,7 +331,7 @@ def prepare_chat_request(slot: ModelSlot, body: object) -> dict:
         request["temperature"] = slot.defaults.temperature
     if not {"max_tokens", "max_completion_tokens"} & request.keys():
         budget = slot.defaults.max_output_tokens or 1024
-        if budget > _MAX_OUTPUT_TOKENS:
+        if budget > MAX_OUTPUT_TOKENS:
             _invalid("max_completion_tokens", "Configured output token budget exceeds the supported limit.")
         request["max_completion_tokens"] = budget
     return request

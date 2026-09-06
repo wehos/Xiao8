@@ -27,6 +27,9 @@ from plugin.server.routes import model_gateway as routes
 from plugin.server.routes import model_usage as usage_routes
 from utils.file_utils import atomic_write_json
 
+
+pytestmark = pytest.mark.plugin_unit
+
 PREFIX = "/api/models/v1"
 SLOT_ID = "slot_" + "a" * 32
 SECRET = "only-the-host-knows-this-provider-key"

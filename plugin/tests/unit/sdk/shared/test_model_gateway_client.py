@@ -14,6 +14,9 @@ from plugin.sdk.shared.core.models import PluginModels, _GatewayHttpClient
 from plugin.sdk.shared.models.exceptions import CapabilityUnavailableError
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 def _models() -> PluginModels:
     return PluginModels(
         SimpleNamespace(

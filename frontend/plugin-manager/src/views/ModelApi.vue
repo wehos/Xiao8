@@ -96,7 +96,7 @@
         <el-form-item :label="t('modelApi.capabilities')"><el-checkbox-group v-model="form.capabilities" :disabled="saving"><el-checkbox v-for="capability in capabilities" :key="capability" :value="capability" :disabled="capability === 'text'">{{ t(`modelApi.capability.${capability}`) }}</el-checkbox></el-checkbox-group><p class="field-hint">{{ t('modelApi.capabilitiesHint') }}</p></el-form-item>
         <div class="form-pair">
           <el-form-item :label="t('modelApi.temperature')"><el-input-number v-model="form.temperature" :min="0" :max="form.protocol === 'anthropic_messages' ? 1 : 2" :step="0.1" :precision="2" :disabled="saving" :placeholder="t('modelApi.providerDefault')" /></el-form-item>
-          <el-form-item :label="t('modelApi.maxTokens')"><el-input-number v-model="form.max_output_tokens" :min="1" :precision="0" :disabled="saving" placeholder="1024" /></el-form-item>
+          <el-form-item :label="t('modelApi.maxTokens')"><el-input-number v-model="form.max_output_tokens" :min="1" :max="1000000" :precision="0" :disabled="saving" placeholder="1024" /></el-form-item>
           <el-form-item :label="t('modelApi.timeout')"><el-input-number v-model="form.timeout_seconds" :min="1" :max="300" :disabled="saving" /><p class="field-hint">{{ t('modelApi.timeoutHint') }}</p></el-form-item>
           <el-form-item :label="t('modelApi.fallback')"><el-select v-model="form.fallback_slot_id" clearable :placeholder="t('modelApi.noFallback')" :disabled="saving"><el-option v-for="slot in fallbackSlots" :key="slot.id" :value="slot.id" :label="slot.name" /></el-select><p class="field-hint">{{ t('modelApi.fallbackHint') }}</p></el-form-item>
         </div>

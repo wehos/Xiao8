@@ -10,6 +10,9 @@ from plugin.sdk.shared.core.context import SdkContext
 from plugin.sdk.shared.models.exceptions import CapabilityUnavailableError
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 def _context(tmp_path: Path) -> PluginContext:
     return PluginContext(
         plugin_id="demo",

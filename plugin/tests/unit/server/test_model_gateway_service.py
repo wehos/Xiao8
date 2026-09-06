@@ -16,6 +16,9 @@ from plugin.server.model_gateway.errors import ModelGatewayError
 from plugin.server.model_gateway.observation import AttemptObservation
 from plugin.server.model_gateway import transport as transport_module
 
+
+pytestmark = pytest.mark.plugin_unit
+
 SECRET = "upstream-test-secret"
 USAGE = {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}
 

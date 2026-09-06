@@ -20,6 +20,9 @@ from plugin.server.infrastructure.model_config_store import (
 from utils.file_utils import atomic_write_json
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 class TempConfigManager:
     def __init__(self, root):
         self.config_dir = root / "config"
@@ -329,3 +332,20 @@ def test_display_preview_cannot_be_created_as_a_real_key(config_env):
     _, service, _ = config_env
     with pytest.raises(ServerDomainError):
         service.create_slot(slot_payload(api_key="sk-abc......1234"))
+
+
+def test_output_default_limit_is_validated_before_saving(config_env):
+    from plugin.server.domain.model_config import MAX_OUTPUT_TOKENS
+    from plugin.server.model_gateway.request import prepare_chat_request
+
+    _, service, _ = config_env
+    with pytest.raises(ServerDomainError) as error:
+        service.create_slot(slot_payload(defaults={"max_output_tokens": MAX_OUTPUT_TOKENS + 1}))
+    assert error.value.code == "MODEL_SLOT_INVALID"
+    assert service.list_slots()["slots"] == []
+    created = service.create_slot(slot_payload(defaults={"max_output_tokens": MAX_OUTPUT_TOKENS}))
+    with pytest.raises(ServerDomainError):
+        service.update_slot(created["id"], {"defaults": {"max_output_tokens": MAX_OUTPUT_TOKENS + 1}})
+    slot = service.store.read().slots[created["id"]]
+    prepared = prepare_chat_request(slot, {"model": "analysis", "messages": [{"role": "user", "content": "Hi"}]})
+    assert prepared["max_completion_tokens"] == MAX_OUTPUT_TOKENS

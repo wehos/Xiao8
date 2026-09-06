@@ -16,6 +16,7 @@ from pydantic import (
 from plugin.config.schema import ModelCapability, PluginModelUsageId
 
 SECRET_MASK = "__NEKO_SECRET_MASKED__"
+MAX_OUTPUT_TOKENS = 1_000_000
 SlotId = Annotated[StrictStr, Field(pattern=r"^slot_[0-9a-f]{32}$")]
 PluginId = Annotated[StrictStr, Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")]
 
@@ -36,7 +37,7 @@ class ModelDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     temperature: float | None = Field(default=None, ge=0, le=2)
-    max_output_tokens: int | None = Field(default=None, ge=1)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=MAX_OUTPUT_TOKENS)
 
 
 class ModelSlot(BaseModel):

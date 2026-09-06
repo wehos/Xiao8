@@ -9,6 +9,9 @@ from plugin.server.model_gateway.errors import ModelGatewayError
 from plugin.server.model_gateway.openai import OpenAIStreamConverter, convert_response
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 USAGE = {
     "prompt_tokens": 7,
     "completion_tokens": 3,

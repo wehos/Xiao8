@@ -51,11 +51,21 @@ def _is_plugin_model_gateway(base_url: str) -> bool:
     local gateway endpoint so its SDK request is not counted a second time.
     """
     try:
+        from config.network import resolve_user_plugin_base
+
         url = urlsplit(base_url)
+        gateway = urlsplit(resolve_user_plugin_base())
+        default_ports = {"http": 80, "https": 443}
         return (
             url.scheme in {"http", "https"}
+            and url.scheme == gateway.scheme
             and url.hostname in {"127.0.0.1", "localhost", "::1"}
-            and url.path.rstrip("/") == "/api/models/v1"
+            and url.hostname == gateway.hostname
+            and (url.port if url.port is not None else default_ports[url.scheme])
+            == (gateway.port if gateway.port is not None else default_ports[gateway.scheme])
+            and url.path.rstrip("/") == gateway.path.rstrip("/") + "/api/models/v1"
+            and url.username is None and url.password is None
+            and not url.query and not url.fragment
         )
     except ValueError:
         return False

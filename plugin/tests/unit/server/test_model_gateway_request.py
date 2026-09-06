@@ -11,6 +11,9 @@ from plugin.server.model_gateway.errors import ModelGatewayError
 from plugin.server.model_gateway.request import prepare_chat_request
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 @pytest.fixture
 def slot() -> ModelSlot:
     return ModelSlot(

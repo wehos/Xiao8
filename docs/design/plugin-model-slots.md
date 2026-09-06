@@ -55,8 +55,9 @@ The version-1 document contains `slots` keyed by host-generated stable IDs and
 A slot contains `name`, `protocol` (`openai_chat` or `anthropic_messages`),
 `base_url`, `model`, `api_key`, `capabilities`, `defaults`, `timeout_seconds`, and
 an optional `fallback_slot_id`. Defaults currently accept `temperature` and
-`max_output_tokens`. These fields configure subsequent execution; saving does not
-make a model request or prove provider capabilities.
+`max_output_tokens` (1–1,000,000, matching the request limit). These fields
+configure subsequent execution; saving does not make a model request or prove
+provider capabilities.
 
 All endpoints are served by the plugin HTTP app under `/api/model-config` and
 use its existing management access policy.
@@ -281,9 +282,11 @@ plugin and slot identifiers remain local. Failed attempts with complete usage
 are counted too. Bounded request-ID deduplication prevents repeated finalizers
 from incrementing totals again.
 
-The OpenAI SDK statistics hook bypasses only the exact local `/api/models/v1`
-endpoint. This also handles forked plugin processes inheriting Agent's hook;
-ordinary Main/Agent and external provider requests keep their existing tracking.
+The OpenAI SDK statistics hook bypasses only the configured local gateway
+origin (scheme, hostname and effective port) and `/api/models/v1` path. Other
+loopback services retain ordinary tracking. This also handles forked plugin
+processes inheriting Agent's hook; ordinary Main/Agent and external provider
+requests keep their existing tracking.
 A standalone gateway starts a periodic tracker saver only if none is active and
 stops only the task it owns. Usage persistence failure is logged without changing
 the model result; corrupted history is preserved instead of overwritten.

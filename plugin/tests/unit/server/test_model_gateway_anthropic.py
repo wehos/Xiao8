@@ -13,6 +13,9 @@ from plugin.server.model_gateway.anthropic import (
 from plugin.server.model_gateway.errors import ModelGatewayError
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 def _request(**kwargs):
     return {
         "model": "claude-configured",

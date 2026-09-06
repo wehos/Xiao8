@@ -11,13 +11,19 @@ from openai.resources.chat.completions import AsyncCompletions, Completions
 from utils.token_tracker import hooks
 
 
+pytestmark = pytest.mark.plugin_unit
+
+
 _GATEWAY_URLS = (
     "http://127.0.0.1:48916/api/models/v1/",
-    "http://localhost:51234/api/models/v1",
-    "https://LOCALHOST:61234/api/models/v1/",
-    "http://[::1]:57234/api/models/v1/",
+    "http://127.0.0.1:48916/api/models/v1",
 )
 _PROVIDER_URLS = (
+    "http://localhost:48916/api/models/v1",
+    "http://[::1]:48916/api/models/v1",
+    "http://127.0.0.1:9000/api/models/v1",
+    "https://127.0.0.1:48916/api/models/v1",
+    "http://127.0.0.1:48916/api/models/v1?other=1",
     "https://api.openai.com/v1/",
     "https://provider.test/api/models/v1/",
     "http://127.0.0.1:48916/v1/",
@@ -26,6 +32,13 @@ _PROVIDER_URLS = (
     "https://127.0.0.1.provider.test/api/models/v1/",
     "ftp://localhost/api/models/v1/",
 )
+
+
+@pytest.fixture(autouse=True)
+def configured_gateway(monkeypatch):
+    from config import network
+    monkeypatch.delenv("NEKO_USER_PLUGIN_SERVER_PORT", raising=False)
+    monkeypatch.setattr(network, "USER_PLUGIN_BASE", "http://127.0.0.1:48916")
 
 
 def usage_response():
@@ -187,3 +200,21 @@ def test_hook_installation_remains_idempotent(installed_hooks):
 @pytest.mark.parametrize("provider_base_url", ["", "http://[invalid/api/models/v1", "http://remote.test/api/models/v1"])
 def test_invalid_or_remote_gateway_urls_do_not_disable_tracking(provider_base_url):
     assert not hooks._is_plugin_model_gateway(provider_base_url)
+
+
+def test_bypass_follows_launcher_selected_port(monkeypatch):
+    monkeypatch.setenv("NEKO_USER_PLUGIN_SERVER_PORT", "51234")
+    assert hooks._is_plugin_model_gateway("http://127.0.0.1:51234/api/models/v1")
+    assert not hooks._is_plugin_model_gateway("http://localhost:51234/api/models/v1/")
+    assert not hooks._is_plugin_model_gateway("http://127.0.0.1:48916/api/models/v1")
+    assert not hooks._is_plugin_model_gateway("https://localhost:51234/api/models/v1")
+
+
+def test_bypass_matches_configured_scheme_and_effective_port(monkeypatch):
+    from config import network
+    monkeypatch.setattr(network, "USER_PLUGIN_BASE", "https://localhost")
+    assert hooks._is_plugin_model_gateway("https://LOCALHOST:443/api/models/v1")
+    assert not hooks._is_plugin_model_gateway("https://127.0.0.1:443/api/models/v1")
+    assert not hooks._is_plugin_model_gateway("http://localhost:443/api/models/v1")
+    assert not hooks._is_plugin_model_gateway("https://localhost:444/api/models/v1")
+    assert not hooks._is_plugin_model_gateway("https://localhost:0/api/models/v1")

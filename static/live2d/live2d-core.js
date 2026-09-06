@@ -774,7 +774,7 @@ class Live2DManager {
     _resolveActiveTimerTickFps() {
         const pacing = window.nekoFramePacing;
         if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
-        const fps = Number(pacing.activeTimerTickFps());
+        const fps = Number(pacing.activeTimerTickFps(this._resolveConfiguredTargetFps()));
         return Number.isFinite(fps) && fps > 0 ? fps : null;
     }
 

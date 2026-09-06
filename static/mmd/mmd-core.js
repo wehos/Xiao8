@@ -985,7 +985,9 @@ class MMDCore {
     _resolveActiveTimerTickFps() {
         const pacing = window.nekoFramePacing;
         if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
-        const fps = Number(pacing.activeTimerTickFps());
+        // 传入本后端解析出的目标帧率：没有 window.targetFrameRate 时 MMD 按 performanceMode
+        // 回退 30/45/60，总闸不能自己按 60 算
+        const fps = Number(pacing.activeTimerTickFps(this._resolveConfiguredTargetFps()));
         return Number.isFinite(fps) && fps > 0 ? fps : null;
     }
 

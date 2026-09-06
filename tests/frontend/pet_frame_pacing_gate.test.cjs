@@ -400,6 +400,19 @@ test('MMD rAF 路径：不限帧后切回有限帧率，节流状态不能被 Na
     assert.ok(Number.isFinite(core.lastFrameTime));
 }));
 
+test('MMD Pet 没有 window.targetFrameRate 时，总闸按 MMD 自己的 performanceMode 回退值走，不按 60', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: undefined });
+    delete sb.window.targetFrameRate;
+    sb.measureRefresh(144);
+    const { core } = setupMMD(sb);
+    const fallback = core._resolveConfiguredTargetFps();
+    assert.ok([30, 45, 60].includes(fallback));
+    assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), 60, '总闸自己的缺省是 60');
+    assert.equal(core._resolveActiveTimerTickFps(), fallback, 'MMD 把自己解析的帧率交给总闸');
+    core._boostInteractiveFPS();
+    assert.equal(core._idleTickFps, fallback, '活动态定时器周期 = MMD 回退值');
+}));
+
 test('MMD：交互升帧的 900ms 保持期到期后活动判定失效', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: 45 });
     const { core, manager } = setupMMD(sb);

@@ -45,10 +45,13 @@
     /**
      * 活动态应使用的定时器驱动帧率；返回 null 表示留在 rAF 驱动。
      * 只有 Pet 窗口 + 配置帧率 > 0 + 已测出刷新率 + 配置明显低于刷新率时才给出数值。
+     * 调用方可传入自己解析出的目标帧率（如 MMD 在没有 window.targetFrameRate 时按
+     * performanceMode 回退），保证总闸与后端对「目标帧率」的理解一致。
      */
-    function activeTimerTickFps() {
+    function activeTimerTickFps(fpsOverride) {
         if (!isElectronPet()) return null;
-        const fps = configuredTargetFps();
+        const override = Number(fpsOverride);
+        const fps = Number.isFinite(override) && override >= 0 ? override : configuredTargetFps();
         if (!(fps > 0)) return null;
         if (!(state.refreshHz > 0)) return null;
         return fps < state.refreshHz * TIMER_DRIVE_REFRESH_RATIO ? fps : null;

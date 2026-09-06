@@ -691,6 +691,23 @@ def _build_plugin_meta(
     return meta
 
 
+def _set_declared_result_fields(
+    preview: Dict[str, Any], declared: Any, to_string_list: Callable[[Any], List[str]]
+) -> None:
+    """Write llm_result_fields only when the source actually declared a list.
+
+    Absence and an explicit empty list mean different things downstream: the
+    consumer derives the fields from llm_result_schema when the key is missing
+    and takes a list as the final answer.
+    """
+    # 把"没声明"规范化成 []，消费端就会把它当成显式声明而不再按 schema 推导，而
+    # handler 侧照样推——同一个入口在启动前后报出两套结果字段。SDK 反推走的是
+    # schema 的 required，一个字段全带默认值的结果模型 required 为空、fields 被
+    # 塌成 None，schema 却有 properties，这条路真会走到（coderabbit）。
+    if isinstance(declared, list):
+        preview["llm_result_fields"] = to_string_list(declared)
+
+
 def _router_entry_preview(
     pid: str,
     eid: str,
@@ -719,10 +736,10 @@ def _router_entry_preview(
         "auto_start": bool(getattr(event_meta, "auto_start", False)),
         "timeout": getattr(event_meta, "timeout", None),
         "model_validate": bool(getattr(event_meta, "model_validate", True)),
-        "llm_result_fields": _to_string_list(getattr(event_meta, "llm_result_fields", None)),
         "llm_result_schema": _to_dict(getattr(event_meta, "llm_result_schema", {}) or {}),
         "metadata": _to_dict(getattr(event_meta, "metadata", {}) or {}),
     }
+    _set_declared_result_fields(preview, getattr(event_meta, "llm_result_fields", None), _to_string_list)
     meta_dict = getattr(event_meta, "metadata", None)
     if isinstance(meta_dict, dict) and "llm_result_fields" in meta_dict:
         preview["llm_result_fields"] = meta_dict["llm_result_fields"]
@@ -849,10 +866,12 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
                     "auto_start": bool(getattr(event_meta, "auto_start", False)),
                     "timeout": getattr(event_meta, "timeout", None),
                     "model_validate": bool(getattr(event_meta, "model_validate", True)),
-                    "llm_result_fields": _to_string_list(getattr(event_meta, "llm_result_fields", None)),
                     "llm_result_schema": _to_dict(getattr(event_meta, "llm_result_schema", {}) or {}),
                     "metadata": _to_dict(getattr(event_meta, "metadata", {}) or {}),
                 }
+            _set_declared_result_fields(
+                entry_preview, getattr(event_meta, "llm_result_fields", None), _to_string_list
+            )
             meta_dict = getattr(event_meta, "metadata", None)
             if isinstance(meta_dict, dict) and "llm_result_fields" in meta_dict:
                 entry_preview["llm_result_fields"] = meta_dict["llm_result_fields"]
@@ -941,11 +960,9 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
                     "llm_result_schema": _to_dict(ent.get("llm_result_schema") or {}),
                     "metadata": _to_dict(ent.get("metadata") or {}),
                 }
-                # 只有真声明了才写这个键。消费端把 list 当成"显式声明"，凭空补一个
-                # [] 会让"只声明 llm_result_schema"的入口在列表侧拿不到派生字段，而
-                # handler 侧照样派生——同一个入口在启动前后给出两种结果。
-                if isinstance(ent.get("llm_result_fields"), list):
-                    config_preview["llm_result_fields"] = _to_string_list(ent.get("llm_result_fields"))
+                _set_declared_result_fields(
+                    config_preview, ent.get("llm_result_fields"), _to_string_list
+                )
                 results.append(config_preview)
             else:
                 eid = str(ent)

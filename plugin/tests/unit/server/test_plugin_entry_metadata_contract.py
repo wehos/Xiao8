@@ -502,6 +502,43 @@ def test_configured_display_fields_reach_the_static_listing(isolated_registry, a
     assert "injected" not in configured_schema["properties"]
 
 
+def test_result_model_without_required_fields_projects_the_same_before_and_after_start(
+    isolated_registry,
+):
+    from pydantic import BaseModel
+
+    class AllDefaults(BaseModel):
+        summary: str = ""
+        detail: str = ""
+
+    class Plugin:
+        @plugin_entry(id="probe", name="Probe", llm_result_model=AllDefaults)
+        async def probe(self):
+            pass
+
+    source = Plugin.probe.__neko_event_meta__
+    # The SDK reverse-derives the field list from the schema's `required`, so a
+    # result model whose fields all have defaults keeps its schema and collapses
+    # the field list to None. The preview must not report that as "declared []".
+    assert source.llm_result_fields is None
+    assert list(source.llm_result_schema["properties"]) == ["summary", "detail"]
+
+    preview = registry._extract_entries_preview("contract", Plugin, {}, {})
+    registry.scan_static_metadata("contract", Plugin, {}, {})
+    listed: list = []
+    query_service._append_entries_from_preview(
+        plugin_id="contract",
+        plugin_meta={"entries_preview": preview},
+        entries=listed,
+        seen=set(),
+    )
+    running, _ = query_service._build_entries_from_handlers(
+        plugin_id="contract", handlers_snapshot=dict(state.event_handlers)
+    )
+    assert listed[0]["llm_result_fields"] == running[0]["llm_result_fields"]
+    assert running[0]["llm_result_fields"] == ["summary", "detail"]
+
+
 def test_configured_result_schema_projects_the_same_before_and_after_start(
     isolated_registry,
 ):

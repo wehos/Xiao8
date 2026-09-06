@@ -150,6 +150,20 @@ _V3_BEST_EFFORT_ENTRY_FIELDS = ("llm_result_schema",)
 _V3_RESTORED_ENTRY_FIELDS = _V3_RECOVERABLE_ENTRY_FIELDS + _V3_BEST_EFFORT_ENTRY_FIELDS
 
 
+def _v3_entry_is_restored(meta: dict[str, object]) -> bool:
+    """Whether this handler now carries everything the host reads from it."""
+    for key in _V3_RECOVERABLE_ENTRY_FIELDS:
+        if key in meta:
+            continue
+        # 结果字段缺席但 schema 在，投影侧会按 schema 推，推出来的正是重扫会给的
+        # 那一份——不必为它把整个插件赶去重扫。v3 的 preview 把"没声明"规范化成
+        # 了 []，那份空列表已经在读取时被丢掉（packaged_metadata 里说明了原因）。
+        if key == "llm_result_fields" and meta.get("llm_result_schema"):
+            continue
+        return False
+    return True
+
+
 def _restore_v3_packaged_handlers(
     packaged: PackagedPluginMetadata, conf: object, pdata: object,
 ) -> dict[str, dict[str, object]] | None:
@@ -195,14 +209,14 @@ def _restore_v3_packaged_handlers(
                     meta[key] = deepcopy(controls[key])
                 elif key in previews.get(entry_id, {}):
                     meta[key] = deepcopy(previews[entry_id][key])
-                elif key in _V3_RECOVERABLE_ENTRY_FIELDS:
-                    return None
+            if not _v3_entry_is_restored(meta):
+                return None
         else:
             preview = previews.get(entry_id, {})
             for key in _V3_RESTORED_ENTRY_FIELDS:
                 if key not in meta and key in preview:
                     meta[key] = deepcopy(preview[key])
-            if any(key not in meta for key in _V3_RECOVERABLE_ENTRY_FIELDS):
+            if not _v3_entry_is_restored(meta):
                 return None
     return handlers
 

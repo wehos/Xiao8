@@ -431,6 +431,26 @@ def _coerce_entries(raw: object) -> list[dict[str, object]]:
     return [dict(item) for item in raw if isinstance(item, Mapping)]
 
 
+def _drop_synthesized_result_fields(
+    entries: list[dict[str, object]], schema_version: object
+) -> list[dict[str, object]]:
+    """Drop a v3 preview's empty result-field list when a schema can supply it.
+
+    v3 generators normalized "not declared" into ``[]``, so an empty list there
+    carries no intent. Readers now take a list as the entry's final answer, and
+    an entry that only declares a result schema would lose its projection —
+    while a rescan of the same plugin derives the fields. v4 previews omit the
+    key when it was never declared, so an empty list there is a real choice and
+    must survive.
+    """
+    if schema_version != 3:
+        return entries
+    for entry in entries:
+        if entry.get("llm_result_fields") == [] and entry.get("llm_result_schema"):
+            entry.pop("llm_result_fields", None)
+    return entries
+
+
 def _coerce_handlers(raw: object) -> dict[str, dict[str, object]]:
     if not isinstance(raw, Mapping):
         return {}
@@ -694,7 +714,7 @@ def read_packaged_metadata(plugin_dir: Path) -> PackagedPluginMetadata | None:
     return PackagedPluginMetadata(
         schema_version=schema_version,
         built_in_this_environment=_environment_matches(raw.get("build_env")),
-        entries=_coerce_entries(raw.get("entries")),
+        entries=_drop_synthesized_result_fields(_coerce_entries(raw.get("entries")), schema_version),
         entries_config_sha256=str(raw.get("entries_config_sha256") or ""),
         handlers=_coerce_handlers(raw.get("handlers")),
         entry_methods=_coerce_entry_methods(raw.get("entry_methods")),

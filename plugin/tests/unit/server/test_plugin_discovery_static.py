@@ -27,6 +27,12 @@ from plugin.server.application.plugins import registry_service as module
 from plugin.server.infrastructure import autostart_approvals, packaged_metadata
 from plugin.settings import BUILTIN_PLUGIN_CONFIG_ROOT
 
+# `platform` 第一次问操作系统版本时会 shell 出一个 `ver`，答案之后缓存在它自己的
+# 模块全局里。跑整个文件时这一下发生在某条更早的用例里，`_no_subprocess` 看不到；
+# 单跑任意一条用它的用例时却落进毒化窗口，报成"discovery 起了子进程"。在这里先问
+# 一次，让这些用例单跑和全量跑是同一个结果。
+packaged_metadata.build_environment()
+
 pytestmark = pytest.mark.plugin_unit
 
 
@@ -1649,3 +1655,48 @@ def test_v3_compatibility_retains_validation_and_ambiguous_fallback(tmp_path, re
     assert lifecycle_service._read_packaged_isolated_metadata(
         plugin_dir / "plugin.toml", "demo", conf=conf,
     ) is None
+
+
+@pytest.mark.parametrize("schema_version", [3, 4])
+def test_v3_synthesized_empty_result_fields_do_not_suppress_schema_derivation(
+    tmp_path, _no_subprocess, schema_version,
+):
+    from plugin.server.application.plugins import lifecycle_service, query_service
+
+    result_schema = {"type": "object", "properties": {"summary": {}, "detail": {}}}
+    # v3 生成器把"没声明"规范化成 []，v4 只有真声明才写这个键——所以同一份形状
+    # 在两个版本里意思相反。
+    plugin_dir = _write_plugin(tmp_path, entries=[{
+        "id": "go", "timeout": 100, "metadata": {},
+        "llm_result_fields": [], "llm_result_schema": result_schema,
+    }])
+    meta_path = plugin_dir / packaged_metadata.PACKAGED_METADATA_FILENAME
+    raw = json.loads(meta_path.read_text())
+    raw["schema_version"] = schema_version
+    raw["handlers"] = {"demo.go": {
+        "event_type": "plugin_entry", "id": "go", "name": "Go", "metadata": {},
+    }}
+    raw["entry_methods"] = {"go": "go"}
+    meta_path.write_text(json.dumps(raw))
+
+    loaded = lifecycle_service._read_packaged_isolated_metadata(
+        plugin_dir / "plugin.toml", "demo",
+    )
+    assert loaded is not None
+    entries: list = []
+    query_service._append_entries_from_preview(
+        plugin_id="demo",
+        plugin_meta={"entries_preview": loaded.entries_preview},
+        entries=entries,
+        seen=set(),
+    )
+    if schema_version == 3:
+        # 合成出来的空列表不表达任何意图，丢掉它、按 schema 推——推出来的正是重扫
+        # 会给的那一份。也不该为此把整个插件赶去重扫。
+        assert "llm_result_fields" not in loaded.entries_preview[0]
+        assert entries[0]["llm_result_fields"] == ["summary", "detail"]
+        assert "llm_result_fields" not in loaded.handlers["demo.go"]
+    else:
+        assert loaded.entries_preview[0]["llm_result_fields"] == []
+        assert entries[0]["llm_result_fields"] == []
+    assert _no_subprocess == []

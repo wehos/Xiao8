@@ -1050,6 +1050,9 @@ class Live2DManager {
         // teardown 时必须退出空闲低频 tick 模式：全局 PIXI.Ticker.shared/system 是
         // 我们停的，不恢复的话销毁重建后模型 autoUpdate（挂在 shared 上）会被冻住。
         this._exitIdleTickMode();
+        // 先 ticker.stop()（不拉起全局 ticker）再销毁的路径：上面已不在定时器模式，
+        // 全局 ticker 仍被本 manager 扣着——销毁时必须无条件释放（幂等）。
+        this._releaseGlobalTickers();
     }
 
     /**

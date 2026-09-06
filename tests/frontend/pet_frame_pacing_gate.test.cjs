@@ -366,6 +366,22 @@ test('Live2D：外部 ticker.stop()（切 VRM/MMD、pauseRendering）退出定�
     assert.equal(shared.maxFPS, 30, '恢复时帧率上限也恢复到配置值');
 }));
 
+test('Live2D：stop() 后直接销毁（不经 start）也必须释放全局 ticker，否则重建后模型 autoUpdate 冻住', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 30 });
+    sb.measureRefresh(60);
+    const { mgr, app, shared, system } = setupLive2D(sb);
+    mgr._startIdleFpsGovernor();
+    mgr.boostInteractiveFPS();
+    assert.equal(mgr._idleTickMode, true);
+    app.ticker.stop();
+    assert.equal(shared.started, false);
+    mgr._stopIdleFpsGovernor(); // destroy / 重建路径
+    assert.equal(shared.started, true, '销毁时释放被扣住的 shared');
+    assert.equal(system.started, true, '销毁时释放被扣住的 system');
+    mgr._stopIdleFpsGovernor();
+    assert.equal(shared.startCalls, 1, '释放幂等，不重复 start');
+}));
+
 test('Live2D：光标停在悬停范围内（isFocusing 常驻）不算持续活动，保持期过后可进空闲', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: 60 });
     const { mgr } = setupLive2D(sb);

@@ -789,16 +789,24 @@ class VRMManager {
                     // 驱动」：活动态定时器驱动（45/60fps）仍按 medium 隔帧，物理成本不翻倍。
                     // 再按实际 delta 兜底：rAF 路径被配置限到 30~39fps、或定时器抖动时，
                     // 隔帧后的步长 2×delta 超过 50ms clamp 也走全量物理
+                    // 被跳过那一帧的时间累计在 _physicsPendingDelta 里，下一次物理更新把它一起
+                    // 补上；隔帧/全量两种模式之间切换时不丢时间也不重复计时（全量分支同样
+                    // 冲掉累计值并重置奇偶计数，重新进入隔帧模式从"跳过"一帧开始）。
+                    const pendingDelta = this._physicsPendingDelta || 0;
                     if (quality === 'medium' && !this._isLowTickRate() && delta * 2 <= VRM_PHYSICS_MAX_STEP_S) {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
-                            this.currentModel.vrm.update(delta * 2);
+                            this._physicsPendingDelta = 0;
+                            this.currentModel.vrm.update(delta + pendingDelta);
                         } else {
+                            this._physicsPendingDelta = pendingDelta + delta;
                             if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
                             if (this.currentModel.vrm.expressionManager) this.currentModel.vrm.expressionManager.update(delta);
                         }
                     } else {
-                        this.currentModel.vrm.update(delta);
+                        this._physicsFrameSkip = 0;
+                        this._physicsPendingDelta = 0;
+                        this.currentModel.vrm.update(delta + pendingDelta);
                     }
                 } else {
                     if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);

@@ -538,10 +538,33 @@ test('负数 targetFrameRate 一律归一为 60：Live2D / VRM / MMD 地板都�
     assert.equal(core._resolveIdleFps(), Math.min(30, core._resolveConfiguredTargetFps()));
 }));
 
-test('契约：VRM medium 隔帧物理还要按实际 delta 兜底（2×delta ≤ 50ms 才隔帧）', () => {
+test('契约：VRM medium 隔帧物理按实际 delta 兜底，且模式切换不丢/不重复物理时间', () => {
     const src = read('static/vrm/vrm-manager.js');
     assert.match(src, /const VRM_PHYSICS_MAX_STEP_S = 0\.05;/);
     assert.match(src, /if \(quality === 'medium' && !this\._isLowTickRate\(\) && delta \* 2 <= VRM_PHYSICS_MAX_STEP_S\) \{/);
+    // 跳过帧累计时间，物理更新时补上；全量分支冲掉累计并重置奇偶计数
+    assert.match(src, /this\._physicsPendingDelta = pendingDelta \+ delta;/);
+    assert.match(src, /this\._physicsPendingDelta = 0;\s*this\.currentModel\.vrm\.update\(delta \+ pendingDelta\);/);
+    assert.match(src, /\} else \{\s*this\._physicsFrameSkip = 0;\s*this\._physicsPendingDelta = 0;\s*this\.currentModel\.vrm\.update\(delta \+ pendingDelta\);/);
+    assert.doesNotMatch(src, /vrm\.update\(delta \* 2\)/, '不再盲目用 delta*2，改用实际累计时间');
+});
+
+test('VRM 物理隔帧：隔帧↔全量切换时物理时间总和 = 实际经过时间', () => {
+    // 把源码里的物理分支抠出来单独执行，验证时间守恒
+    const src = read('static/vrm/vrm-manager.js');
+    const start = src.indexOf('const pendingDelta = this._physicsPendingDelta || 0;');
+    const end = src.indexOf('} else {', src.indexOf('this.currentModel.vrm.update(delta + pendingDelta);', src.indexOf('this._physicsFrameSkip = 0;', start)));
+    assert.ok(start > 0 && end > start, '物理分支定位失败');
+    const branch = src.slice(start, end);
+    const VRM_PHYSICS_MAX_STEP_S = 0.05;
+    let simulated = 0;
+    const ctx = { _isLowTickRate: () => false, currentModel: { vrm: { update: (d) => { simulated += d; }, lookAt: { update() {} }, expressionManager: { update() {} } } } };
+    const run = new Function('delta', 'quality', 'VRM_PHYSICS_MAX_STEP_S', branch);
+    // 60fps 隔帧 4 帧 → 切到 30fps 全量 3 帧 → 回 60fps 隔帧 4 帧
+    const frames = [0.0167, 0.0167, 0.0167, 0.0167, 0.0333, 0.0333, 0.0333, 0.0167, 0.0167, 0.0167, 0.0167];
+    let elapsed = 0;
+    for (const d of frames) { elapsed += d; run.call(ctx, d, 'medium', VRM_PHYSICS_MAX_STEP_S); }
+    assert.ok(Math.abs(simulated - elapsed) < 1e-9, `物理累计 ${simulated} 应等于实际 ${elapsed}`);
 });
 
 test('MMD：目标帧率接到设置里的帧率滑块，0 = 不限帧', withMockTimers(() => {

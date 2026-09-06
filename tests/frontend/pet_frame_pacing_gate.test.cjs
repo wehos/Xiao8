@@ -100,9 +100,16 @@ function createSandbox({ pet, targetFrameRate }) {
     };
     // 推进 mock 定时器的同时推进沙盒时钟，让 performance.now() 依赖的保持期判定
     // （_hasRenderActivity 的 900ms 窗口）也随时间失效
+    // 按 1ms 步进，让每个定时器回调看到的 performance.now() 是它自己的到期时刻，
+    // 而不是本次 tick 的终点（跨多个到期点时保持期判定才准确）
     const tick = (ms) => {
-        frameClock += ms;
-        mock.timers.tick(ms);
+        let remaining = Math.max(0, Number(ms) || 0);
+        while (remaining > 0) {
+            const step = Math.min(1, remaining);
+            frameClock += step;
+            mock.timers.tick(step);
+            remaining -= step;
+        }
     };
     const measureRefresh = (hz) => {
         // frame-pacing：load 后延迟 1500ms 才开始采样，采 24 帧

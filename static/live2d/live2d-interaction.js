@@ -2658,6 +2658,10 @@ Live2DManager.prototype.enableMouseTracking = function (model, options = {}) {
         const pointerCoords = getLive2DNiriPetPointerCoordinates(event);
         const pointer = pointerCoords.virtual;
         const localPointer = pointerCoords.local;
+        // 只有坐标真的变了才算「交互活动」去升帧。Electron Pet 的 preload 轮询会在光标
+        // 静止时也周期性派发合成 pointermove，不加这道闸它会把升帧的 hold 窗口无限续命，
+        // 空闲低频 tick 永远进不去。其余悬停/淡化状态逻辑照常执行，不受影响。
+        const pointerMoved = pointer.x !== this._lastMouseX || pointer.y !== this._lastMouseY;
         this._lastMouseX = pointer.x;
         this._lastMouseY = pointer.y;
         this._lastMouseLocalX = localPointer.x;
@@ -2813,7 +2817,7 @@ Live2DManager.prototype.enableMouseTracking = function (model, options = {}) {
             };
 
             if (distance < threshold) {
-                if (typeof this.boostLinuxX11InteractiveFPS === 'function') {
+                if (pointerMoved && typeof this.boostLinuxX11InteractiveFPS === 'function') {
                     this.boostLinuxX11InteractiveFPS();
                 }
                 showButtons();
@@ -2842,7 +2846,7 @@ Live2DManager.prototype.enableMouseTracking = function (model, options = {}) {
                     }
                 }
             } else if (isFullscreenTracking) {
-                if (typeof this.boostLinuxX11InteractiveFPS === 'function') {
+                if (pointerMoved && typeof this.boostLinuxX11InteractiveFPS === 'function') {
                     this.boostLinuxX11InteractiveFPS();
                 }
                 if (canvasEl && !this.isLocked && !(model.interactive && model.dragging)) {

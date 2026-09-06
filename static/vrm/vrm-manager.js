@@ -916,16 +916,39 @@ class VRMManager {
         return configured === 0 ? VRM_IDLE_FPS : Math.min(VRM_IDLE_FPS, configured);
     }
 
-    _enterIdleTickMode() {
-        if (this._idleTickMode) return;
+    // 活动态应改用定时器驱动的帧率（Pet 窗口且配置帧率明显低于显示器刷新率时由
+    // frame-pacing.js 给出）；null = 留在 rAF 驱动。非 Pet 页面没有 nekoFramePacing，恒为 null。
+    _resolveActiveTimerTickFps() {
+        const pacing = window.nekoFramePacing;
+        if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
+        const fps = Number(pacing.activeTimerTickFps());
+        return Number.isFinite(fps) && fps > 0 ? fps : null;
+    }
+
+    _enterIdleTickMode(fps) {
+        const requested = Number(fps);
+        const tickFps = Number.isFinite(requested) && requested > 0 ? requested : this._resolveIdleFps();
+        if (this._idleTickMode) {
+            // 已在定时器模式（空闲地板 ↔ 活动态定时器驱动之间切换）：只换周期，不经过 rAF
+            if (this._idleTickFps === tickFps) return;
+            if (this._idleTickTimer) clearInterval(this._idleTickTimer);
+            this._idleTickTimer = this._startTimerTick(tickFps);
+            return;
+        }
         if (!this.renderer || !this.scene || !this.camera) return;
         // 外部已暂停（pauseRendering 后 rAF 链不存在）：不接管
         if (!this._animationFrameId) return;
         this._idleTickMode = true;
         cancelAnimationFrame(this._animationFrameId);
         this._animationFrameId = null;
-        const intervalMs = Math.max(16, Math.round(1000 / Math.max(1, this._resolveIdleFps())));
-        this._idleTickTimer = setInterval(() => {
+        this._idleTickTimer = this._startTimerTick(tickFps);
+    }
+
+    // 定时器驱动的 tick 循环：空闲地板（30）和活动态定时器驱动（配置帧率）共用，只有周期不同。
+    _startTimerTick(fps) {
+        this._idleTickFps = fps;
+        const intervalMs = Math.max(4, Math.round(1000 / Math.max(1, fps)));
+        return setInterval(() => {
             if (!this._idleTickMode) return;
             if (!this.renderer || !this.scene || !this.camera) { this._exitIdleTickMode(false); return; }
             // 外部代码绕过 startAnimateLoop 拉起了 rAF 链：让位
@@ -946,6 +969,7 @@ class VRMManager {
     _exitIdleTickMode(restartRaf = true) {
         if (!this._idleTickMode) return;
         this._idleTickMode = false;
+        this._idleTickFps = null;
         if (this._idleTickTimer) {
             clearInterval(this._idleTickTimer);
             this._idleTickTimer = null;
@@ -958,9 +982,27 @@ class VRMManager {
         }
     }
 
+    // 帧率设置变更：有活动按新配置重新升帧；空闲定时器模式按新地板换周期。
+    // rAF 驱动路径每帧自己读 window.targetFrameRate，不需要在这里处理。
+    applyTargetFrameRate() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (this._hasRenderActivity()) {
+            this._boostInteractiveFPS();
+        } else if (this._idleTickMode) {
+            this._enterIdleTickMode(this._resolveIdleFps());
+        }
+    }
+
     // 有交互/活动时升回 rAF 满帧，并安排在 durationMs 后无活动则回落空闲低频
     _boostInteractiveFPS(durationMs = VRM_INTERACTIVE_FPS_HOLD_MS) {
-        this._exitIdleTickMode();
+        const timerFps = this._resolveActiveTimerTickFps();
+        if (timerFps != null) {
+            // Pet 窗口且配置帧率低于刷新率：活动态也留在定时器驱动，只把周期换成配置帧率。
+            // 回到 rAF 只会让 Blink 按刷新率跑主帧再跳掉一半，省不出 CPU/GPU。
+            this._enterIdleTickMode(timerFps);
+        } else {
+            this._exitIdleTickMode();
+        }
         if (this._idleFpsRestoreTimer) clearTimeout(this._idleFpsRestoreTimer);
         // 豁免页：只升频、不安排衰减——衰减会在 governor 缺席时把渲染拖回空闲模式
         if (window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__ === true) {
@@ -2118,3 +2160,11 @@ class VRMManager {
 }
 
 window.VRMManager = VRMManager;
+
+// 监听帧率变更事件（与 live2d-core.js 同名事件对齐）
+window.addEventListener('neko-frame-rate-changed', () => {
+    const manager = window.vrmManager;
+    if (manager && typeof manager.applyTargetFrameRate === 'function') {
+        try { manager.applyTargetFrameRate(); } catch (_) {}
+    }
+});

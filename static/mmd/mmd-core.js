@@ -15,8 +15,9 @@ class MMDCore {
     constructor(manager) {
         this.manager = manager;
         this.performanceMode = this.detectPerformanceMode();
-        this.targetFPS = this.performanceMode === 'low' ? 30 : (this.performanceMode === 'medium' ? 45 : 60);
+        this.targetFPS = 60;
         this.frameTime = 1000 / this.targetFPS;
+        this._refreshTargetFps();
         this.lastFrameTime = 0;
 
         // 缓存的模块引用
@@ -957,8 +958,59 @@ class MMDCore {
 
     // ═══════════════════ 空闲低频 tick 模式（对齐 live2d-core.js round-1 模式）═══════════════════
 
-    _enterIdleTickMode() {
-        if (this._idleTickMode) return;
+    // 用户配置的目标帧率（设置里的「帧率」滑块，与 Live2D/VRM 同源）；0 = 不限帧。
+    // 没有该配置（独立预览页等）时退回 performanceMode 的档位值。
+    _resolveConfiguredTargetFps() {
+        const raw = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : NaN;
+        if (Number.isFinite(raw) && raw >= 0) return raw;
+        return this.performanceMode === 'low' ? 30 : (this.performanceMode === 'medium' ? 45 : 60);
+    }
+
+    // 同步 targetFPS/frameTime 到当前配置；rAF 路径每帧调用，配置变更立即生效。
+    _refreshTargetFps() {
+        const fps = this._resolveConfiguredTargetFps();
+        if (fps === this.targetFPS) return;
+        this.targetFPS = fps;
+        this.frameTime = fps > 0 ? 1000 / fps : 0;
+    }
+
+    // 静止地板帧率：不超过用户配置；配置为 0（不限帧）时仍压到地板省 CPU。
+    _resolveIdleFps() {
+        const configured = this._resolveConfiguredTargetFps();
+        return configured === 0 ? MMD_IDLE_FPS : Math.min(MMD_IDLE_FPS, configured);
+    }
+
+    // 活动态应改用定时器驱动的帧率（Pet 窗口且配置帧率明显低于显示器刷新率时由
+    // frame-pacing.js 给出）；null = 留在 rAF 驱动。非 Pet 页面没有 nekoFramePacing，恒为 null。
+    _resolveActiveTimerTickFps() {
+        const pacing = window.nekoFramePacing;
+        if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
+        const fps = Number(pacing.activeTimerTickFps());
+        return Number.isFinite(fps) && fps > 0 ? fps : null;
+    }
+
+    // 帧率设置变更：有活动按新配置重新升帧；空闲定时器模式按新地板换周期。
+    applyTargetFrameRate() {
+        this._refreshTargetFps();
+        const m = this.manager;
+        if (!m || !m._shouldRender || m._isDisposed || !m.renderer) return;
+        if (this._hasRenderActivity()) {
+            this._boostInteractiveFPS();
+        } else if (this._idleTickMode) {
+            this._enterIdleTickMode(this._resolveIdleFps());
+        }
+    }
+
+    _enterIdleTickMode(fps) {
+        const requested = Number(fps);
+        const tickFps = Number.isFinite(requested) && requested > 0 ? requested : this._resolveIdleFps();
+        if (this._idleTickMode) {
+            // 已在定时器模式（空闲地板 ↔ 活动态定时器驱动之间切换）：只换周期，不经过 rAF
+            if (this._idleTickFps === tickFps) return;
+            if (this._idleTickTimer) clearInterval(this._idleTickTimer);
+            this._idleTickTimer = this._startTimerTick(tickFps);
+            return;
+        }
         const manager = this.manager;
         if (!manager || !manager._shouldRender || manager._isDisposed || !manager.renderer) return;
         this._idleTickMode = true;
@@ -966,9 +1018,14 @@ class MMDCore {
             cancelAnimationFrame(manager._animationFrameId);
             manager._animationFrameId = null;
         }
-        const idleFps = Math.min(MMD_IDLE_FPS, this.targetFPS || MMD_IDLE_FPS);
-        const intervalMs = Math.max(16, Math.round(1000 / Math.max(1, idleFps)));
-        this._idleTickTimer = setInterval(() => {
+        this._idleTickTimer = this._startTimerTick(tickFps);
+    }
+
+    // 定时器驱动的 tick 循环：空闲地板（30）和活动态定时器驱动（配置帧率）共用，只有周期不同。
+    _startTimerTick(fps) {
+        this._idleTickFps = fps;
+        const intervalMs = Math.max(4, Math.round(1000 / Math.max(1, fps)));
+        return setInterval(() => {
             if (!this._idleTickMode) return;
             const m = this.manager;
             if (!m || !m._shouldRender || m._isDisposed || !m.renderer) { this._exitIdleTickMode(false); return; }
@@ -990,6 +1047,7 @@ class MMDCore {
     _exitIdleTickMode(restartRaf = true) {
         if (!this._idleTickMode) return;
         this._idleTickMode = false;
+        this._idleTickFps = null;
         if (this._idleTickTimer) {
             clearInterval(this._idleTickTimer);
             this._idleTickTimer = null;
@@ -1003,7 +1061,14 @@ class MMDCore {
 
     // 有交互/活动时升回 rAF 满帧，并安排在 durationMs 后无活动则回落空闲模式
     _boostInteractiveFPS(durationMs = MMD_INTERACTIVE_FPS_HOLD_MS) {
-        this._exitIdleTickMode();
+        const timerFps = this._resolveActiveTimerTickFps();
+        if (timerFps != null) {
+            // Pet 窗口且配置帧率低于刷新率：活动态也留在定时器驱动，只把周期换成配置帧率。
+            // 回到 rAF 只会让 Blink 按刷新率跑主帧再跳掉一半，省不出 CPU/GPU。
+            this._enterIdleTickMode(timerFps);
+        } else {
+            this._exitIdleTickMode();
+        }
         if (this._idleDecayTimer) clearTimeout(this._idleDecayTimer);
         // 豁免页：只升频、不安排衰减——衰减会在 governor 缺席时把渲染拖回空闲模式
         if (window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__ === true) {
@@ -1119,6 +1184,7 @@ class MMDCore {
 
         // 帧率限制（仅 rAF 驱动路径；空闲低频模式下 interval 周期本身就是节流器，
         // 由 interval 直接调用 _renderFrame，不经过这里）
+        this._refreshTargetFps();
         const now = performance.now();
         const elapsed = now - this.lastFrameTime;
         if (elapsed < this.frameTime) return;
@@ -1628,3 +1694,11 @@ class MMDCore {
 }
 
 window.MMDCore = MMDCore;
+
+// 监听帧率变更事件（与 live2d-core.js 同名事件对齐）
+window.addEventListener('neko-frame-rate-changed', () => {
+    const core = window.mmdManager && window.mmdManager.core;
+    if (core && typeof core.applyTargetFrameRate === 'function') {
+        try { core.applyTargetFrameRate(); } catch (_) {}
+    }
+});

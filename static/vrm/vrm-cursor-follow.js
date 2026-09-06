@@ -333,10 +333,13 @@ class CursorFollowController {
                 // macOS / Safari 等环境下，pointermove 后常跟随合成 mousemove，短窗口去重即可。
                 this._ignoreMouseMoveUntil = now + 40;
             }
+            // 坐标没变的重复事件（Electron Pet 的 preload 轮询在光标静止时也会转发）不算
+            // 「光标在动」，否则空闲低频 governor 永远看到活动、降不下帧。
+            const moved = e.clientX !== this._rawMouseX || e.clientY !== this._rawMouseY;
             this._rawMouseX = e.clientX;
             this._rawMouseY = e.clientY;
             this._hasPointerInput = true;
-            this._lastPointerMoveAt = now;
+            if (moved) this._lastPointerMoveAt = now;
         };
 
         // 同时监听 pointermove + mousemove，绑定到 window（非 document）

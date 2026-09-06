@@ -1099,14 +1099,15 @@ class MMDCore {
         try {
             const cf = m.cursorFollow;
             if (cf && cf.enabled) {
-                if (cf._lastPointerMoveTs && (performance.now() - cf._lastPointerMoveTs) < MMD_INTERACTIVE_FPS_HOLD_MS) return true;
+                // 时间戳 0 是合法值（performance.now() 起点），不能用真值判断
+                if (Number.isFinite(cf._lastPointerMoveTs) && (performance.now() - cf._lastPointerMoveTs) < MMD_INTERACTIVE_FPS_HOLD_MS) return true;
                 // 头部朝向还没收敛完：保持满帧到位
                 if (Math.abs((cf._targetYaw || 0) - (cf._currentYaw || 0)) > 0.02 ||
                     Math.abs((cf._targetPitch || 0) - (cf._currentPitch || 0)) > 0.02) return true;
             }
         } catch (_) {}
         try {
-            if (m._lastInteractionBoostTs && (performance.now() - m._lastInteractionBoostTs) < MMD_INTERACTIVE_FPS_HOLD_MS) return true;
+            if (Number.isFinite(m._lastInteractionBoostTs) && (performance.now() - m._lastInteractionBoostTs) < MMD_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         return false;
     }

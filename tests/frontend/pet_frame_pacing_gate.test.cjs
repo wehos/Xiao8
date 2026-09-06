@@ -576,10 +576,37 @@ test('MMD Pet 没有 window.targetFrameRate 时，总闸按 MMD 自己的 perfor
     }
 }));
 
+test('MMD / VRM：时间戳 0 是合法的活动时间戳，不能被当成未设置', withMockTimers(() => {
+    const sb = createSandbox({ pet: false, targetFrameRate: 45 });
+    const { core, manager } = setupMMD(sb);
+    assert.equal(sb.sandbox.performance.now(), 0);
+    assert.equal(core._hasRenderActivity(), false, '未设置时不算活动');
+    manager._lastInteractionBoostTs = 0;
+    assert.equal(core._hasRenderActivity(), true, 'MMD 交互时间戳 0 在保持期内算活动');
+    manager._lastInteractionBoostTs = undefined;
+    manager.cursorFollow = { enabled: true, _lastPointerMoveTs: 0, _targetYaw: 0, _currentYaw: 0, _targetPitch: 0, _currentPitch: 0 };
+    assert.equal(core._hasRenderActivity(), true, 'MMD 光标时间戳 0 在保持期内算活动');
+    sb.tick(901);
+    assert.equal(core._hasRenderActivity(), false);
+
+    const sb2 = createSandbox({ pet: false, targetFrameRate: 45 });
+    const vrm = setupVRM(sb2);
+    assert.equal(vrm._hasRenderActivity(), false);
+    for (const key of ['_lastLookAtPointerMoveAt', '_lastCameraChangeAt', '_lastInteractionBoostTs']) {
+        vrm[key] = 0;
+        assert.equal(vrm._hasRenderActivity(), true, `VRM ${key} = 0 在保持期内算活动`);
+        vrm[key] = undefined;
+    }
+    vrm._cursorFollow = { isEnabled: () => true, _lastPointerMoveAt: 0 };
+    assert.equal(vrm._hasRenderActivity(), true, 'VRM 光标时间戳 0 在保持期内算活动');
+    sb2.tick(901);
+    assert.equal(vrm._hasRenderActivity(), false);
+}));
+
 test('MMD：交互升帧的 900ms 保持期到期后活动判定失效', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: 45 });
     const { core, manager } = setupMMD(sb);
-    sb.tick(1000); // 让 performance.now() 离开 0，时间戳判定才不会被当成未设置
+    sb.tick(1000);
     manager._lastInteractionBoostTs = sb.sandbox.performance.now();
     assert.equal(core._hasRenderActivity(), true);
     sb.tick(899);

@@ -1043,19 +1043,20 @@ class VRMManager {
         try { if (this.interaction && this.interaction.isDragging) return true; } catch (_) {}
         try {
             const cf = this._cursorFollow;
+            // 时间戳 0 是合法值（performance.now() 起点），不能用真值判断
             if (cf && typeof cf.isEnabled === 'function' && cf.isEnabled() &&
-                cf._lastPointerMoveAt && (performance.now() - cf._lastPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
+                Number.isFinite(cf._lastPointerMoveAt) && (performance.now() - cf._lastPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
-            if (this._lastLookAtPointerMoveAt &&
+            if (Number.isFinite(this._lastLookAtPointerMoveAt) &&
                 (performance.now() - this._lastLookAtPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
-            if (this._lastCameraChangeAt &&
+            if (Number.isFinite(this._lastCameraChangeAt) &&
                 (performance.now() - this._lastCameraChangeAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
-            if (this._lastInteractionBoostTs &&
+            if (Number.isFinite(this._lastInteractionBoostTs) &&
                 (performance.now() - this._lastInteractionBoostTs) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {

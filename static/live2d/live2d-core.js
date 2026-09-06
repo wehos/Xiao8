@@ -369,7 +369,8 @@ class Live2DManager {
                 this.isInitialized = true;
                 this._lastPIXIContext = { ...requestedInitContext };
                 if (typeof window.targetFrameRate === 'number' && this.pixi_app.ticker) {
-                    this.pixi_app.ticker.maxFPS = window.targetFrameRate;
+                    // 经归一化再写：已存的负数/非法配置不能直接进 PIXI maxFPS
+                    this.pixi_app.ticker.maxFPS = this._resolveConfiguredTargetFps();
                 }
                 // 包装 ticker.stop/start：外部代码（app-character / live2d-model 等）直接
                 // 操作 ticker 时先退出空闲低频 tick 模式，避免空闲定时器与外部暂停意图打架。
@@ -753,7 +754,8 @@ class Live2DManager {
         // setTargetFPS 是「目标帧率」配置的权威应用点：先同步配置源，确保 governor 的
         // boost/restore 读到的是新值而非旧值（调用方一般已设过 window.targetFrameRate，这里兜底自洽）。
         const resolved = Number(fps);
-        window.targetFrameRate = Number.isFinite(resolved) ? resolved : 60;
+        // 负数/非法值一律按 60：否则豁免分支会把负数直接写进 PIXI maxFPS，被钳到 minFPS=10
+        window.targetFrameRate = Number.isFinite(resolved) && resolved >= 0 ? resolved : 60;
         if (this._idleFpsRestoreTimer) {
             clearTimeout(this._idleFpsRestoreTimer);
             this._idleFpsRestoreTimer = null;
@@ -763,7 +765,7 @@ class Live2DManager {
         if (window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__ === true) {
             // 页面级豁免：直接落配置帧率，不进入空闲地板/低频模式
             this._exitIdleTickMode();
-            this._applyRafMaxFps(window.targetFrameRate);
+            this._applyRafMaxFps(this._resolveConfiguredTargetFps());
         } else if (this._hasRenderActivity()) {
             this.boostInteractiveFPS();
         } else {

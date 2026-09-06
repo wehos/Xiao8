@@ -619,9 +619,16 @@ function setupMMD(sb) {
 
 test('负数 targetFrameRate 一律归一为 60：Live2D / VRM / MMD 地板都不会算成负数', withMockTimers(() => {
     const sb = createSandbox({ pet: false, targetFrameRate: -1 });
-    const { mgr } = setupLive2D(sb);
+    const { mgr, app } = setupLive2D(sb);
     assert.equal(mgr._resolveConfiguredTargetFps(), 60);
     assert.equal(mgr._resolveIdleFps(), 30);
+    // setTargetFPS(-1) 不能把负数写进配置 / PIXI maxFPS（豁免分支直接落 maxFPS，PIXI 会钳到 minFPS=10）
+    sb.window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__ = true;
+    mgr.setTargetFPS(-1);
+    assert.equal(sb.window.targetFrameRate, 60, '负数配置归一为 60 再写入');
+    assert.equal(app.ticker.maxFPS, 60, '豁免分支写进 PIXI 的是归一化后的值');
+    delete sb.window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__;
+    assert.doesNotMatch(LIVE2D_CORE_SRC, /this\.pixi_app\.ticker\.maxFPS = window\.targetFrameRate;/, 'initPIXI 也不允许裸写配置进 maxFPS');
     const sb2 = createSandbox({ pet: false, targetFrameRate: -1 });
     const vrm = setupVRM(sb2);
     assert.equal(vrm._resolveConfiguredTargetFps(), 60);

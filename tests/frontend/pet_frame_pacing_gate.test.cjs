@@ -186,6 +186,64 @@ test('frame-pacing：重测超时要作废旧刷新率，回到保守 rAF', with
     assert.equal(sb.window.nekoFramePacing.activeTimerTickFps(), 45);
 }));
 
+test('frame-pacing：渲染后端定时器驱动时，requestPacedFrame 走定时器而非 rAF', withMockTimers(() => {
+    const sb = createSandbox({ pet: true, targetFrameRate: 30 });
+    const pacing = sb.window.nekoFramePacing;
+    let calls = 0;
+    // 无后端 / 后端在 rAF 模式：走 rAF
+    sb.window.live2dManager = { _idleTickMode: false, _idleTickFps: null };
+    assert.equal(pacing.currentTimerTickFps(), null);
+    pacing.requestPacedFrame(() => { calls++; });
+    assert.equal(sb.rafQueue.length, 1, 'rAF 模式下排 rAF');
+    sb.pumpFrames(1, 60);
+    assert.equal(calls, 1);
+    // 后端定时器驱动 30fps：走 setTimeout(33ms)，不排 rAF
+    sb.window.live2dManager = { _idleTickMode: true, _idleTickFps: 30 };
+    assert.equal(pacing.currentTimerTickFps(), 30);
+    const cancel = pacing.requestPacedFrame(() => { calls++; });
+    assert.equal(sb.rafQueue.length, 0, '定时器驱动下不排 rAF');
+    sb.tick(32);
+    assert.equal(calls, 1, '33ms 前不触发');
+    sb.tick(2);
+    assert.equal(calls, 2, '按 30fps 周期触发');
+    const cancel2 = pacing.requestPacedFrame(() => { calls++; });
+    cancel2();
+    sb.tick(100);
+    assert.equal(calls, 2, '取消函数生效');
+    assert.equal(typeof cancel, 'function');
+}));
+
+test('frame-pacing：非 Pet 页面 currentTimerTickFps 恒为 null', () => {
+    const sb = createSandbox({ pet: false, targetFrameRate: 30 });
+    sb.window.live2dManager = { _idleTickMode: true, _idleTickFps: 30 };
+    assert.equal(sb.window.nekoFramePacing.currentTimerTickFps(), null);
+});
+
+test('契约：麦克风音量监测与口型同步循环通过 frame-pacing 排帧', () => {
+    const capture = read('static/app/app-audio-capture.js');
+    assert.match(capture, /function scheduleMonitorInputVolume\(\)[\s\S]*?pacing\.requestPacedFrame\(monitorInputVolume\)/);
+    const monitorBody = capture.slice(capture.indexOf('function monitorInputVolume()'), capture.indexOf('// ======================== AudioWorklet'));
+    assert.doesNotMatch(monitorBody, /requestAnimationFrame\(monitorInputVolume\)/, 'monitorInputVolume 内不允许直接排 rAF');
+    assert.equal((monitorBody.match(/scheduleMonitorInputVolume\(\);/g) || []).length, 2, 'mute 分支与常规分支都走 paced 排帧');
+    // 麦克风音量可视化：弹窗不可见低频探测、可见时跟随渲染 tick、stop 同时取消两种句柄
+    const volumeStart = capture.indexOf('function updateVolumeDisplay()');
+    const volumeEnd = capture.indexOf('// 立即更新音量显示状态（用于录音状态变化时立即反映）', volumeStart);
+    assert.ok(volumeStart >= 0 && volumeEnd > volumeStart, 'updateVolumeDisplay 区块定位失败');
+    const volumeBody = capture.slice(volumeStart, volumeEnd);
+    assert.doesNotMatch(volumeBody, /S\.micVolumeAnimationId = requestAnimationFrame\(updateVolumeDisplay\);\s*return;/, '弹窗不可见分支不允许按刷新率排 rAF');
+    assert.match(volumeBody, /scheduleMicVolumeFrame\(MIC_VOLUME_HIDDEN_POLL_MS\);/);
+    assert.match(volumeBody, /function scheduleMicVolumeFrame\(delayMs\)[\s\S]*?_micVolumePacedCancel = pacing\.requestPacedFrame\(updateVolumeDisplay\);/);
+    assert.match(volumeBody, /function stopMicVolumeVisualization\(\) \{\s*cancelMicVolumeFrame\(\);/);
+    assert.match(capture, /const MIC_VOLUME_HIDDEN_POLL_MS = 250;/);
+    const playback = read('static/app/app-audio-playback.js');
+    assert.match(playback, /function scheduleLipSyncFrame\(animate\)[\s\S]*?_lipSyncPacedCancel = pacing\.requestPacedFrame\(animate\);/);
+    assert.match(playback, /const pacedByTimer = scheduleLipSyncFrame\(animate\);/);
+    assert.match(playback, /if \(!pacedByTimer && \+\+_lipSyncSkipCounter < LIP_SYNC_EVERY_N_FRAMES\) return;/);
+    assert.match(playback, /function stopLipSync\(model\) \{[\s\S]*?cancelLipSyncFrame\(\);/);
+    const lipSyncBody = playback.slice(playback.indexOf('function startLipSync('), playback.indexOf('function stopLipSync('));
+    assert.doesNotMatch(lipSyncBody, /S\.animationFrameId = requestAnimationFrame\(animate\)/, 'startLipSync 内不允许直接排 rAF');
+});
+
 test('frame-pacing：144Hz 屏上 60fps 配置也切定时器驱动', withMockTimers(() => {
     const sb = createSandbox({ pet: true, targetFrameRate: 60 });
     sb.measureRefresh(144);

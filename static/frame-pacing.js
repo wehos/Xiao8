@@ -95,6 +95,40 @@
         requestAnimationFrame(step);
     }
 
+    /**
+     * 当前是否有渲染后端在定时器驱动；是则返回其 tick 帧率，否则 null（rAF 驱动）。
+     * 供页面里其它每帧循环（麦克风音量监测、口型同步）对齐：渲染已经不排 rAF 了，
+     * 这些循环再排 rAF 会把 Blink 主帧顶回显示器刷新率，收益归零。
+     */
+    function currentTimerTickFps() {
+        if (!isElectronPet()) return null;
+        const candidates = [
+            window.live2dManager,
+            window.vrmManager,
+            window.mmdManager && window.mmdManager.core,
+        ];
+        for (const backend of candidates) {
+            if (!backend || backend._idleTickMode !== true) continue;
+            const fps = Number(backend._idleTickFps);
+            if (fps > 0) return fps;
+        }
+        return null;
+    }
+
+    /**
+     * 排一帧：渲染后端在定时器驱动时走 setTimeout（周期同渲染 tick），否则 rAF。
+     * 返回取消函数。
+     */
+    function requestPacedFrame(callback) {
+        const fps = currentTimerTickFps();
+        if (fps != null) {
+            const id = setTimeout(() => callback(performance.now()), Math.max(4, Math.round(1000 / fps)));
+            return () => clearTimeout(id);
+        }
+        const id = requestAnimationFrame(callback);
+        return () => cancelAnimationFrame(id);
+    }
+
     function scheduleMeasure(delayMs) {
         if (!isElectronPet()) return;
         if (startTimer) clearTimeout(startTimer);
@@ -109,6 +143,8 @@
         configuredTargetFps,
         getDisplayRefreshHz,
         activeTimerTickFps,
+        currentTimerTickFps,
+        requestPacedFrame,
         measureDisplayRefreshRate,
         TIMER_DRIVE_REFRESH_RATIO,
     });

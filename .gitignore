@@ -216,6 +216,7 @@ plugin/plugins/web_radio/
 plugin/plugins/qq_auto_reply/NapCat.Shell/*
 plugin/plugins/writer_power_analysis
 plugin/plugins/sts2_autoplay
+plugin/plugins/qq_auto_reply
 
 # QQ 自动回复 测试数据
 plugin/plugins/qq_auto_reply/static/cache/

@@ -96,6 +96,15 @@ vi.mock('@/components/plugin/PluginConfigEditor.vue', async () => {
   const { defineComponent, h } = await import('vue')
   return { default: defineComponent(() => () => h('div')) }
 })
+vi.mock('@/components/plugin/PluginModelBindings.vue', async () => {
+  const { defineComponent, h } = await import('vue')
+  return { default: defineComponent({
+    props: { pluginId: String },
+    setup(props) {
+      return () => h('div', { 'data-model-bindings-plugin': props.pluginId })
+    },
+  }) }
+})
 vi.mock('@/components/logs/LogViewer.vue', async () => {
   const { defineComponent, h } = await import('vue')
   return { default: defineComponent(() => () => h('div')) }
@@ -194,6 +203,7 @@ describe('PluginDetail surface selection', () => {
     expect(mounted.container.querySelector('[data-surface-id="legacy-main"]')).not.toBeNull()
     expect(mounted.container.querySelector('[data-tab-name="ui"]')).toBeNull()
     expect(mounted.container.querySelector('[data-testid="plugin-actions"]')).not.toBeNull()
+    expect(mounted.container.querySelector('[data-tab-name="config"] [data-model-bindings-plugin="study_companion"]')).not.toBeNull()
     mounted.unmount()
   })
 

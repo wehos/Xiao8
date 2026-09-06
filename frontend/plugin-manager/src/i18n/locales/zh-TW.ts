@@ -1,7 +1,12 @@
+import { modelApiMessages } from '../model-api'
+import { modelBindingsMessages } from '../model-bindings'
+
 /**
  * 繁體中文語言包
  */
 export default {
+  modelApi: modelApiMessages['zh-TW'],
+  modelBindings: modelBindingsMessages['zh-TW'],
   common: {
     loading: '載入中...',
     refresh: '重新整理',

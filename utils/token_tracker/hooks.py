@@ -17,6 +17,7 @@
 import functools
 import logging
 import threading
+from urllib.parse import urlsplit
 
 from utils.token_tracker import TokenTracker
 from ._shared import logger
@@ -41,6 +42,33 @@ def _get_base_url(self_obj) -> str:
         return str(base_url).rstrip('/')
     except Exception:
         return ""
+
+
+def _is_plugin_model_gateway(base_url: str) -> bool:
+    """The local gateway records upstream attempts itself, including failures.
+
+    Forked plugins can inherit this SDK hook from Agent. Bypass only the exact
+    local gateway endpoint so its SDK request is not counted a second time.
+    """
+    try:
+        from config.network import resolve_user_plugin_base
+
+        url = urlsplit(base_url)
+        gateway = urlsplit(resolve_user_plugin_base())
+        default_ports = {"http": 80, "https": 443}
+        return (
+            url.scheme in {"http", "https"}
+            and url.scheme == gateway.scheme
+            and url.hostname in {"127.0.0.1", "localhost", "::1"}
+            and url.hostname == gateway.hostname
+            and (url.port if url.port is not None else default_ports[url.scheme])
+            == (gateway.port if gateway.port is not None else default_ports[gateway.scheme])
+            and url.path.rstrip("/") == gateway.path.rstrip("/") + "/api/models/v1"
+            and url.username is None and url.password is None
+            and not url.query and not url.fragment
+        )
+    except ValueError:
+        return False
 
 def _usage_to_dict(usage) -> dict:
     """Normalize the usage object into a dict so all fields (including provider-custom ones) can be retrieved.
@@ -314,6 +342,8 @@ def install_hooks():
 
     @functools.wraps(_original_create)
     def patched_create(self, *args, **kwargs):
+        if _is_plugin_model_gateway(_get_base_url(self)):
+            return _original_create(self, *args, **kwargs)
         call_type = _current_call_type.get('unknown')
         is_stream = kwargs.get('stream', False)
 
@@ -334,6 +364,8 @@ def install_hooks():
 
     @functools.wraps(_original_async_create)
     async def patched_async_create(self, *args, **kwargs):
+        if _is_plugin_model_gateway(_get_base_url(self)):
+            return await _original_async_create(self, *args, **kwargs)
         call_type = _current_call_type.get('unknown')
         is_stream = kwargs.get('stream', False)
 

@@ -576,7 +576,7 @@ server {
     client_max_body_size 0;
 
     # 代理到用户插件服务 (Plugin Server, 内嵌于 agent_server 进程)
-    location ~ ^/(ui|plugins?|plugin/|available|server/|logs/|metrics|runs|packages|plugin-cli/|market/|health|market-bridge/) {
+    location ~ ^/(api/model-config(?:/|$)|ui|plugins?|plugin/|available|server/|logs/|metrics|runs|packages|plugin-cli/|market/|health|market-bridge/) {
         proxy_pass http://127.0.0.1:48916;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -696,7 +696,7 @@ server {
     client_max_body_size 0;
 
     # 代理到用户插件服务 (Plugin Server, 内嵌于 agent_server 进程)
-    location ~ ^/(ui|plugins?|plugin/|available|server/|logs/|metrics|runs|packages|plugin-cli/|market/|health|market-bridge/) {
+    location ~ ^/(api/model-config(?:/|$)|ui|plugins?|plugin/|available|server/|logs/|metrics|runs|packages|plugin-cli/|market/|health|market-bridge/) {
         proxy_pass http://127.0.0.1:48916;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;

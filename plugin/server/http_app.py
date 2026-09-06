@@ -33,6 +33,9 @@ from plugin.server.routes import (
     media_router,
     messages_router,
     metrics_router,
+    model_config_router,
+    model_gateway_router,
+    model_usage_router,
     plugin_cli_router,
     plugin_ui_router,
     plugins_router,
@@ -221,6 +224,12 @@ async def plugin_server_lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        from plugin.core.model_gateway_access import model_gateway_access
+
+        model_gateway_access.revoke_all()
+        from plugin.server.routes.model_gateway import close_model_executor
+
+        await close_model_executor(app)
         stop_event.set()
         heartbeat_task.cancel()
         try:
@@ -315,6 +324,9 @@ def build_plugin_server_app(
     app.include_router(messages_router)
     app.include_router(metrics_router)
     app.include_router(config_router)
+    app.include_router(model_config_router)
+    app.include_router(model_gateway_router)
+    app.include_router(model_usage_router)
     app.include_router(logs_router)
     app.include_router(media_router)
     app.include_router(frontend_router)

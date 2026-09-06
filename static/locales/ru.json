@@ -1059,6 +1059,7 @@
     },
     "api": {
         "settings": "Настройки API Key",
+        "pluginApiSettings": "Настройки Plugin API ↗",
         "settingsTitle": "Настройки API Key — Project Lanlan",
         "quickStart": "Быстрый старт",
         "freeVersion": "Бесплатная версия (Рекомендуется для начинающих)",

@@ -68,6 +68,8 @@ async def _observe_error_usage(response: httpx.Response, slot: ModelSlot, observ
             body = decode_object(bytes(data))
             observation.observe(body.get("usage"), protocol=slot.protocol, reported=True)
     except (httpx.HTTPError, ModelGatewayError, ValueError):
+        # Missing or unreadable usage diagnostics must preserve the upstream
+        # HTTP status error that the caller will report.
         pass
 
 

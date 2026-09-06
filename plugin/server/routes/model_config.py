@@ -75,6 +75,7 @@ async def _probe_disconnect(request: Request, stopped: asyncio.Event) -> None:
         try:
             await asyncio.wait_for(stopped.wait(), timeout=0.1)
         except TimeoutError:
+            # The polling interval elapsed; check the connection again.
             pass
 
 

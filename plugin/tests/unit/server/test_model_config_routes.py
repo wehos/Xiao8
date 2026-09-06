@@ -147,7 +147,8 @@ async def test_shared_slot_binding_blocks_delete_until_every_plugin_unbinds(mode
         unbound = await model_client.delete(f"{PREFIX}/plugins/{plugin_id}/bindings/analysis")
         assert unbound.status_code == 200
 
-    assert (await model_client.delete(f"{PREFIX}/slots/{slot_id}")).json() == {"success": True}
+    deleted = await model_client.delete(f"{PREFIX}/slots/{slot_id}")
+    assert deleted.json() == {"success": True}
     missing = await model_client.get(f"{PREFIX}/slots/{slot_id}")
     assert missing.status_code == 404
     assert missing.json()["detail"]["code"] == "MODEL_SLOT_NOT_FOUND"
@@ -184,7 +185,8 @@ async def test_invalid_slot_fields_are_rejected_without_echoing_secrets(model_cl
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "MODEL_SLOT_INVALID"
     assert SECRET not in response.text
-    assert (await model_client.get(f"{PREFIX}/slots")).json()["slots"] == []
+    listed = await model_client.get(f"{PREFIX}/slots")
+    assert listed.json()["slots"] == []
 
 
 @pytest.mark.parametrize("payload", [{}, {"slot_id": 12}, {"slot_id": "slot_x", "api_key": SECRET}])
@@ -265,13 +267,18 @@ async def test_config_and_manifest_io_run_outside_http_event_loop(model_client, 
     event_loop_thread = threading.get_ident()
     slot_id = (await create_slot(model_client))["id"]
     for path in ("slots", f"slots/{slot_id}", "plugins/first/bindings"):
-        assert (await model_client.get(f"{PREFIX}/{path}")).status_code == 200
-    assert (await model_client.patch(f"{PREFIX}/slots/{slot_id}", json={"name": "Updated"})).status_code == 200
-    assert (await model_client.put(
+        response = await model_client.get(f"{PREFIX}/{path}")
+        assert response.status_code == 200
+    updated = await model_client.patch(f"{PREFIX}/slots/{slot_id}", json={"name": "Updated"})
+    assert updated.status_code == 200
+    bound = await model_client.put(
         f"{PREFIX}/plugins/first/bindings/analysis", json={"slot_id": slot_id}
-    )).status_code == 200
-    assert (await model_client.delete(f"{PREFIX}/plugins/first/bindings/analysis")).status_code == 200
-    assert (await model_client.delete(f"{PREFIX}/slots/{slot_id}")).status_code == 200
+    )
+    assert bound.status_code == 200
+    unbound = await model_client.delete(f"{PREFIX}/plugins/first/bindings/analysis")
+    assert unbound.status_code == 200
+    deleted = await model_client.delete(f"{PREFIX}/slots/{slot_id}")
+    assert deleted.status_code == 200
     assert cm.io_threads and requirements_threads
     assert event_loop_thread not in cm.io_threads
     assert event_loop_thread not in requirements_threads

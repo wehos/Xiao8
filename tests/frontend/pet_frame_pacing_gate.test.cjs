@@ -262,8 +262,14 @@ test('契约：VRM / MMD 浮动按钮循环在定时器模式下到点直接 upd
         assert.ok(start > 0 && end > start, file + ' scheduleNext 定位失败');
         const body = src.slice(start, end);
         assert.match(body, new RegExp('const tickFps = Number\\(' + fpsExpr + '\\) > 0 \\? Number\\(' + fpsExpr + '\\) : 30;'), file + ' 周期跟随渲染 tick');
-        assert.match(body, /this\._uiLoopIdleTimeout = setTimeout\(\(\) => \{[\s\S]*?update\(\);\s*\}, Math\.max\(4, Math\.round\(1000 \/ tickFps\)\)\);/, file + ' 定时器到点直接 update');
-        assert.equal((body.match(/requestAnimationFrame\(update\)/g) || []).length, 1, file + ' 只有 rAF 模式那一处排 rAF');
+        const cbStart = body.indexOf('this._uiLoopIdleTimeout = setTimeout(() => {');
+        const cbEnd = body.indexOf('}, Math.max(4, Math.round(1000 / tickFps)));', cbStart);
+        assert.ok(cbStart >= 0 && cbEnd > cbStart, file + ' 定时器回调定位失败');
+        const timerCallback = body.slice(cbStart, cbEnd);
+        assert.match(timerCallback, /update\(\);\s*$/, file + ' 定时器到点直接 update');
+        assert.doesNotMatch(timerCallback, /requestAnimationFrame/, file + ' 定时器回调里不允许再排任何 rAF');
+        const outsideTimer = body.slice(0, cbStart) + body.slice(cbEnd);
+        assert.equal((outsideTimer.match(/requestAnimationFrame\(/g) || []).length, 1, file + ' 只有 rAF 模式那一处排 rAF');
     }
 });
 

@@ -924,7 +924,9 @@ class VRMManager {
     _resolveActiveTimerTickFps() {
         const pacing = window.nekoFramePacing;
         if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
-        const fps = Number(pacing.activeTimerTickFps());
+        const raw = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
+        const configured = Number.isFinite(raw) ? raw : 60;
+        const fps = Number(pacing.activeTimerTickFps(configured));
         return Number.isFinite(fps) && fps > 0 ? fps : null;
     }
 

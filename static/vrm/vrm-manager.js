@@ -806,7 +806,10 @@ class VRMManager {
                     const pendingDelta = this._physicsPendingDelta || 0;
                     // 补上累计时间后的步长仍受 50ms 防爆 clamp
                     const physicsStep = Math.min(delta + pendingDelta, VRM_PHYSICS_MAX_STEP_S);
-                    if (quality === 'medium' && !this._isLowTickRate() && delta * 2 <= VRM_PHYSICS_MAX_STEP_S) {
+                    // 隔帧只在能把弹簧骨物理单独更新时启用；旧版 three-vrm 只有整体 vrm.update(t)，
+                    // 累计步长会一并喂给 lookAt/材质，所以旧版一律每帧 update(delta)
+                    const canSplitPhysics = this._canSplitVrmPhysicsUpdate(this.currentModel.vrm);
+                    if (quality === 'medium' && canSplitPhysics && !this._isLowTickRate() && delta * 2 <= VRM_PHYSICS_MAX_STEP_S) {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
                             this._physicsPendingDelta = 0;
@@ -968,9 +971,13 @@ class VRMManager {
     // 材质，直接传累计步长会让视线/材质动画在一帧里多走一倍。顺序与 VRM.update 一致：
     // humanoid → 约束 → 弹簧骨 → lookAt → 表情 → 材质。没有分量 API（旧版 three-vrm）时
     // 退回整体 update。
+    _canSplitVrmPhysicsUpdate(vrm) {
+        return !!(vrm && vrm.springBoneManager && typeof vrm.springBoneManager.update === 'function');
+    }
+
     _updateVrmWithPhysicsStep(vrm, delta, physicsStep) {
-        const springBones = vrm.springBoneManager;
-        if (springBones && typeof springBones.update === 'function') {
+        if (this._canSplitVrmPhysicsUpdate(vrm)) {
+            const springBones = vrm.springBoneManager;
             if (vrm.humanoid && typeof vrm.humanoid.update === 'function') vrm.humanoid.update();
             if (vrm.nodeConstraintManager && typeof vrm.nodeConstraintManager.update === 'function') vrm.nodeConstraintManager.update();
             springBones.update(physicsStep);

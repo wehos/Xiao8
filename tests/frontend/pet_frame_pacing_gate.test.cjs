@@ -588,7 +588,7 @@ test('负数 targetFrameRate 一律归一为 60：Live2D / VRM / MMD 地板都�
 test('契约：VRM medium 隔帧物理按实际 delta 兜底，且模式切换不丢/不重复物理时间', () => {
     const src = read('static/vrm/vrm-manager.js');
     assert.match(src, /const VRM_PHYSICS_MAX_STEP_S = 0\.05;/);
-    assert.match(src, /if \(quality === 'medium' && !this\._isLowTickRate\(\) && delta \* 2 <= VRM_PHYSICS_MAX_STEP_S\) \{/);
+    assert.match(src, /if \(quality === 'medium' && canSplitPhysics && !this\._isLowTickRate\(\) && delta \* 2 <= VRM_PHYSICS_MAX_STEP_S\) \{/);
     // 跳过帧累计时间，物理更新时补上（受 clamp）；全量分支冲掉累计并重置奇偶计数
     assert.match(src, /this\._physicsPendingDelta = pendingDelta \+ delta;/);
     assert.match(src, /const physicsStep = Math\.min\(delta \+ pendingDelta, VRM_PHYSICS_MAX_STEP_S\);/);
@@ -607,7 +607,11 @@ function loadVrmPhysicsStep() {
     const helperStart = src.indexOf('_updateVrmWithPhysicsStep(vrm, delta, physicsStep) {');
     const helperEnd = src.indexOf('\n    }\n', helperStart) + 7;
     assert.ok(helperStart > 0 && helperEnd > helperStart, '_updateVrmWithPhysicsStep 定位失败');
-    const helperSrc = 'this._updateVrmWithPhysicsStep = function ' + src.slice(helperStart, helperEnd) + ';';
+    const canSplitStart = src.indexOf('_canSplitVrmPhysicsUpdate(vrm) {');
+    const canSplitEnd = src.indexOf('\n    }\n', canSplitStart) + 7;
+    assert.ok(canSplitStart > 0 && canSplitEnd > canSplitStart, '_canSplitVrmPhysicsUpdate 定位失败');
+    const helperSrc = 'this._canSplitVrmPhysicsUpdate = function ' + src.slice(canSplitStart, canSplitEnd) + ';'
+        + 'this._updateVrmWithPhysicsStep = function ' + src.slice(helperStart, helperEnd) + ';';
     return new Function('delta', 'window', 'VRM_PHYSICS_MAX_STEP_S', helperSrc + src.slice(start, end));
 }
 function makeVrmPhysicsCtx({ componentApi = true } = {}) {
@@ -637,10 +641,14 @@ test('VRM 物理隔帧：累计步长只喂弹簧骨，LookAt / MToon 材质每 
     assert.deepEqual(ctx.lookAtTime, frames, 'LookAt 每帧只拿当前 delta，不吃累计');
     // 跳过帧不更新材质（与旧行为一致），更新帧材质拿当前 delta 而不是累计步长
     assert.deepEqual(ctx.materialTime, [0.0167, 0.0333, 0.0167], '材质只在物理更新帧按当前 delta 推进');
-    // 旧版 three-vrm（无 springBoneManager.update）退回整体 update
+    // 旧版 three-vrm（无 springBoneManager.update）：不隔帧，每帧整体 update(delta)，
+    // 累计步长不会喂给 lookAt/材质
     const legacy = makeVrmPhysicsCtx({ componentApi: false });
-    for (const d of [0.0167, 0.0167]) run.call(legacy, d, { renderQuality: 'medium' }, 0.05);
-    assert.ok(Math.abs(legacy.simulated - 0.0334) < 1e-9, '退回整体 update 时物理时间仍守恒');
+    const legacyFrames = [0.0167, 0.0167, 0.0167];
+    for (const d of legacyFrames) run.call(legacy, d, { renderQuality: 'medium' }, 0.05);
+    assert.ok(Math.abs(legacy.simulated - 0.0501) < 1e-9, '旧版每帧都整体 update');
+    assert.deepEqual(legacy.lookAtTime, legacyFrames, '旧版 lookAt 每帧只拿当前 delta');
+    assert.equal(legacy._physicsPendingDelta, 0, '旧版从不累计跳帧时间');
 });
 
 test('VRM 物理隔帧：隔帧↔全量切换时物理时间总和 = 实际经过时间', () => {

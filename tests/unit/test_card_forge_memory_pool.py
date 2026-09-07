@@ -359,3 +359,53 @@ async def test_wire_ids_fit_community_query_and_forge_constraints(query_pool, fa
         assert wire_id != fact_id
     remaining = await query_pool([], [memory("row", id=fact_id)], exclude_fact_ids=wire_id)
     assert remaining["returnedCount"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive", "mixed"])
+@pytest.mark.parametrize("different_field", ["subject_kind", "subject_id", "scope"])
+@pytest.mark.parametrize("identity_mode", ["same_id", "text_only"])
+async def test_scoped_equal_text_keeps_distinct_candidates(query_pool, collection, different_field, identity_mode):
+    subject = {"subject_kind": "group_chat", "subject_id": "qq:group-a", "scope": "group_chat:qq:group-a"}
+    other = {**subject, different_field: {"subject_kind": "participant", "subject_id": "qq:group-b", "scope": "custom:other"}[different_field]}
+    first = memory("first", id="shared-id", text="Shared scoped memory", **subject)
+    second = memory("second", id="shared-id", text="Shared scoped memory", **other)
+    if identity_mode == "text_only":
+        for item in (first, second):
+            item.pop("id")
+            item.pop("hash")
+    rows = [first, second, *[memory(f"unique-{i}") for i in range(3)]]
+    private = [memory(f"private-{i}", private=True) for i in range(10)]
+    active, archive = (rows, private) if collection == "active" else ([], rows + private) if collection == "archive" else (rows[:1], rows[1:] + private)
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == 15
+    assert payload["returnedCount"] == 5
+    assert len({item["id"] for item in payload["facts"]}) == 5
+    assert len({item["hash"] for item in payload["facts"]}) == 5
+    assert payload["fallbackReason"] == ""
+    for selected in (item for item in payload["facts"] if item["text"] == "Shared scoped memory"):
+        remaining = await query_pool(active, archive, exclude_fact_ids=selected["id"], exclude_hashes=selected["hash"])
+        assert remaining["returnedCount"] == 4
+        assert sum(item["text"] == "Shared scoped memory" for item in remaining["facts"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_same_scope_text_alias_deduplicates_active_archive_copy(query_pool):
+    subject = {"subject_kind": "group_chat", "subject_id": "qq:group-a", "scope": "group_chat:qq:group-a"}
+    first = memory("active", text="Shared memory", **subject)
+    second = memory("archive", text="Shared memory", **subject)
+    payload = await query_pool([first], [second])
+    assert payload["totalMemoryCount"] == payload["returnedCount"] == 1
+    assert payload["facts"][0]["hash"] == first["hash"]
+    archived = await query_pool([], [first])
+    assert archived["facts"][0]["id"] == payload["facts"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_text_alias_does_not_collide_with_legacy_private(query_pool):
+    legacy = memory("legacy", id=None, hash=None, text="Same text")
+    scoped = dict(legacy, subject_kind="participant", subject_id="qq:user", scope="participant:qq:user")
+    payload = await query_pool([legacy], [scoped])
+    assert payload["totalMemoryCount"] == payload["returnedCount"] == 2
+    assert len({item["id"] for item in payload["facts"]}) == 2
+    assert len({item["hash"] for item in payload["facts"]}) == 2

@@ -225,14 +225,24 @@ def _weighted_pick(items: list[dict[str, Any]], count: int) -> list[dict[str, An
     return picked
 
 
-_FactKey = tuple[str, str]
+_FactKey = tuple[str, ...]
 _FORGE_WIRE_ID_PREFIX = "__neko_forge_id_v1__:"
 
 
 def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]]:
     text = str(item.get("text") or "")
     raw_hash = str(item.get("hash") or "")
-    text_hash = hashlib.sha1(text.encode("utf-8")).hexdigest() if text else ""
+    subject_fields = tuple(
+        str(item.get(field) or "").strip()
+        for field in ("subject_kind", "subject_id", "scope")
+    )
+    subject_key = subject_fields if any(subject_fields) else ()
+    # Equal text in different subject domains is distinct in FactStore.
+    text_identity = (
+        json.dumps([subject_key, text], ensure_ascii=False, separators=(",", ":"))
+        if subject_key else text
+    )
+    text_hash = hashlib.sha1(text_identity.encode("utf-8")).hexdigest() if text else ""
     raw_id = item.get("id")
     if isinstance(raw_id, (str, int, float, bool)) and raw_id != "":
         fact_key: _FactKey | None = (f"id:{type(raw_id).__name__}", str(raw_id))
@@ -242,12 +252,14 @@ def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]
         fact_key = ("text", text_hash)
     else:
         fact_key = None
+    if fact_key is not None:
+        fact_key = (*fact_key, *subject_key)
     return fact_key, raw_hash or text_hash, {value for value in (raw_hash, text_hash) if value}
 
 
 def _fact_wire_id(fact_key: _FactKey) -> str:
     """Preserve ordinary string IDs; encode other identities for unique round trips."""
-    kind, value = fact_key
+    kind, value, *subject_key = fact_key
     # Old responses erased scalar types. Move ambiguous string forms too, so
     # a historical forged ID cannot hide another type; its hash still excludes it.
     legacy_scalar_string = value in {"True", "False"}
@@ -260,6 +272,7 @@ def _fact_wire_id(fact_key: _FactKey) -> str:
             legacy_scalar_string = True
     if (
         kind == "id:str"
+        and not subject_key
         and not legacy_scalar_string
         and not value.startswith((_FORGE_WIRE_ID_PREFIX, "hash:", "text:"))
         and 1 <= len(value) <= 128

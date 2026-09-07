@@ -225,6 +225,124 @@ def _weighted_pick(items: list[dict[str, Any]], count: int) -> list[dict[str, An
     return picked
 
 
+_FactKey = tuple[str, ...]
+_FORGE_WIRE_ID_PREFIX = "__neko_forge_id_v1__:"
+
+
+def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]]:
+    text = str(item.get("text") or "")
+    hash_value = item.get("hash")
+    # Structured values are malformed hashes, not persistent memory identities.
+    raw_hash = str(hash_value) if isinstance(hash_value, (str, int, float, bool)) else ""
+    subject_fields = tuple(
+        str(item.get(field) or "").strip()
+        for field in ("subject_kind", "subject_id", "scope")
+    )
+    subject_key = subject_fields if any(subject_fields) else ()
+    # Equal text in different subject domains is distinct in FactStore.
+    text_identity = (
+        json.dumps([subject_key, text], ensure_ascii=False, separators=(",", ":"))
+        if subject_key else text
+    )
+    text_hash = hashlib.sha1(text_identity.encode("utf-8")).hexdigest() if text else ""
+    raw_id = item.get("id")
+    if isinstance(raw_id, (str, int, float, bool)) and raw_id != "":
+        fact_key: _FactKey | None = (f"id:{type(raw_id).__name__}", str(raw_id))
+    elif raw_hash:
+        fact_key = ("hash", raw_hash)
+    elif text_hash:
+        fact_key = ("text", text_hash)
+    else:
+        fact_key = None
+    if fact_key is not None:
+        fact_key = (*fact_key, *subject_key)
+    return fact_key, raw_hash or text_hash, {value for value in (raw_hash, text_hash) if value}
+
+
+def _fact_wire_id(fact_key: _FactKey) -> str:
+    """Preserve ordinary string IDs; encode other identities for unique round trips."""
+    kind, value, *subject_key = fact_key
+    # Old responses erased scalar types. Move ambiguous string forms too, so
+    # a historical forged ID cannot hide another type; its hash still excludes it.
+    legacy_scalar_string = value in {"True", "False"}
+    if kind == "id:str":
+        try:
+            float(value)
+        except ValueError:
+            pass
+        else:
+            legacy_scalar_string = True
+    if (
+        kind == "id:str"
+        and not subject_key
+        and not legacy_scalar_string
+        and not value.startswith((_FORGE_WIRE_ID_PREFIX, "hash:", "text:"))
+        and 1 <= len(value) <= 128
+        and value == value.strip()
+        and not any(char == "," or ord(char) < 32 for char in value)
+    ):
+        return value
+    encoded = json.dumps(fact_key, ensure_ascii=False, separators=(",", ":"))
+    return _FORGE_WIRE_ID_PREFIX + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _legacy_excluded_fact_keys(
+    raw: list[dict[str, Any]],
+    raw_archive: list[dict[str, Any]],
+    exclude_ids: set[str],
+) -> set[_FactKey]:
+    """Resolve pre-scope wire IDs only when the entire memory pool is unambiguous."""
+    if not exclude_ids:
+        return set()
+    # Eligibility can change after forging. Ignoring a now-private/archived row
+    # would reassign its historical ID to another subject with the same raw ID.
+    matches: dict[str, set[_FactKey]] = {}
+    for collection in (raw, raw_archive):
+        for item in collection:
+            if not isinstance(item, dict):
+                continue
+            fact_key, _, _ = _fact_identity(item)
+            if fact_key is None:
+                continue
+            legacy_key = fact_key
+            if len(fact_key) > 2:
+                legacy_key, _, _ = _fact_identity({
+                    **item, "subject_kind": None, "subject_id": None, "scope": None,
+                })
+            if legacy_key is None:
+                continue
+            legacy_id = _fact_wire_id(legacy_key)
+            if legacy_id in exclude_ids:
+                matches.setdefault(legacy_id, set()).add(fact_key)
+    return {next(iter(keys)) for keys in matches.values() if len(keys) == 1}
+
+
+def _memory_identity_stats(
+    raw: list[dict[str, Any]], raw_archive: list[dict[str, Any]],
+) -> tuple[int, set[_FactKey], set[str]]:
+    """Count accumulated memories before eligibility filters; active rows win overlaps."""
+    ids: set[_FactKey] = set()
+    hashes: set[str] = set()
+    active_ids: set[_FactKey] = set()
+    active_hashes: set[str] = set()
+    count = 0
+    for collection, is_active in ((raw, True), (raw_archive, False)):
+        for item in collection:
+            if not isinstance(item, dict):
+                continue
+            fact_id, _, fact_hashes = _fact_identity(item)
+            if fact_id is None:
+                continue
+            if fact_id not in ids and not fact_hashes.intersection(hashes):
+                count += 1
+            ids.add(fact_id)
+            hashes.update(fact_hashes)
+            if is_active:
+                active_ids.add(fact_id)
+                active_hashes.update(fact_hashes)
+    return count, active_ids, active_hashes
+
+
 def _select_forge_facts_with_stats(
     raw: list[dict[str, Any]],
     *,
@@ -233,9 +351,11 @@ def _select_forge_facts_with_stats(
     limit: int = 5,
     exclude_ids: set[str] | None = None,
     exclude_hashes: set[str] | None = None,
+    exclude_keys: set[_FactKey] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     exclude_ids = exclude_ids or set()
     exclude_hashes = exclude_hashes or set()
+    exclude_keys = exclude_keys or set()
     filtered: list[dict[str, Any]] = []
     missing_id_count = 0
     excluded_count = 0
@@ -244,23 +364,14 @@ def _select_forge_facts_with_stats(
     for item in raw:
         if not isinstance(item, dict):
             continue
-        fact_id = item.get("id")
-        text = str(item.get("text") or "")
-        raw_hash = str(item.get("hash") or "")
-        if fact_id:
-            fact_key = str(fact_id)
-        else:
+        fact_key, hash_key, hash_aliases = _fact_identity(item)
+        has_scalar_id = fact_key is not None and fact_key[0].startswith("id:")
+        if not has_scalar_id:
             missing_id_count += 1
-            if raw_hash:
-                fact_key = f"hash:{raw_hash}"
-            elif text:
-                fact_key = f"text:{hashlib.sha1(text.encode('utf-8')).hexdigest()}"
-            else:
-                continue
-        hash_key = raw_hash or (
-            hashlib.sha1(text.encode("utf-8")).hexdigest() if text else ""
-        )
-        if fact_key in exclude_ids or (hash_key and hash_key in exclude_hashes):
+        if fact_key is None or not str(item.get("text") or "").strip():
+            continue
+        wire_id = _fact_wire_id(fact_key)
+        if wire_id in exclude_ids or fact_key in exclude_keys or hash_aliases.intersection(exclude_hashes):
             excluded_count += 1
             continue
         if item.get("private") is True or item.get("redacted") is True:
@@ -273,27 +384,29 @@ def _select_forge_facts_with_stats(
         if importance < min_importance:
             low_importance_count += 1
             continue
-        filtered.append({**item, "_forge_fid": fact_key, "_forge_hash": hash_key})
+        filtered.append({
+            **item, "_forge_fid": fact_key, "_forge_wire_id": wire_id, "_forge_hash": hash_key,
+            "_forge_hash_aliases": hash_aliases,
+        })
 
     random.shuffle(filtered)
     deduped: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
-    seen_ids: set[str] = set()
+    seen_ids: set[_FactKey] = set()
     duplicate_count = 0
     for item in filtered:
-        fact_key = str(item.get("_forge_fid") or item.get("id", ""))
-        hash_key = str(item.get("_forge_hash") or item.get("hash") or "")
-        if fact_key in seen_ids or (hash_key and hash_key in seen_hashes):
+        fact_key = item["_forge_fid"]
+        hash_aliases = item["_forge_hash_aliases"]
+        if fact_key in seen_ids or hash_aliases.intersection(seen_hashes):
             duplicate_count += 1
             continue
         if fact_key:
             seen_ids.add(fact_key)
-        if hash_key:
-            seen_hashes.add(hash_key)
+        seen_hashes.update(hash_aliases)
         deduped.append(item)
 
-    def item_key(item: dict[str, Any]) -> str:
-        return str(item.get("_forge_fid") or item.get("id", ""))
+    def item_key(item: dict[str, Any]) -> _FactKey:
+        return item["_forge_fid"]
 
     recent_count = 0
     distant_count = 0
@@ -382,14 +495,14 @@ def _select_forge_facts_with_stats(
 
     facts = [
         {
-            "id": str(item.get("id") or item.get("_forge_fid") or ""),
+            "id": item["_forge_wire_id"],
             "text": str(item.get("text", "")),
             "importance": _safe_importance(item.get("importance")),
             "entity": str(item.get("entity", "")),
             "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
             "created_at": item.get("created_at"),
             "event_start_at": item.get("event_start_at"),
-            "hash": str(item.get("hash") or item.get("_forge_hash") or ""),
+            "hash": item["_forge_hash"],
             "recentGuaranteed": bool(item.get("_forge_recent_guaranteed")),
             "distantGuaranteed": bool(item.get("_forge_distant_guaranteed")),
             "sourceCollection": str(item.get("_forge_source_collection") or "facts"),
@@ -411,22 +524,25 @@ def _select_forge_facts_with_stats(
     }
 
 
-def _select_archive_distant_fact(
+def _select_archive_facts(
     raw_archive: list[dict[str, Any]],
     *,
     min_importance: int,
     include_absorbed: bool,
     exclude_ids: set[str],
     exclude_hashes: set[str],
-) -> tuple[dict[str, Any] | None, dict[str, int]]:
+    fill_count: int = 0,
+    exclude_keys: set[_FactKey] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     if not raw_archive:
-        return None, {"archiveRawCount": 0, "archiveFilteredCount": 0}
+        return [], {"archiveRawCount": 0, "archiveFilteredCount": 0}
     archive_raw_count = len([
         item for item in raw_archive if isinstance(item, dict)
     ])
     eligible_archive = [
         item for item in raw_archive
         if isinstance(item, dict)
+        and not item.get("subject_archived_at")
         and not item.get("arbitration_archived_at")
         and not item.get("arbitration_reason")
     ]
@@ -437,14 +553,13 @@ def _select_archive_distant_fact(
         limit=len(raw_archive) + 1,
         exclude_ids=exclude_ids,
         exclude_hashes=exclude_hashes,
+        exclude_keys=exclude_keys,
     )
     dated = [item for item in candidates if _fact_memory_datetime(item) is not None]
     archive_stats = {
         "archiveRawCount": archive_raw_count,
         "archiveFilteredCount": stats.get("filteredCount", 0),
     }
-    if not dated:
-        return None, archive_stats
     dated.sort(
         key=lambda item: (
             _fact_memory_datetime(item) or datetime.max.replace(tzinfo=timezone.utc),
@@ -452,15 +567,23 @@ def _select_archive_distant_fact(
         )
     )
     oldest_size = max(1, min(len(dated), max(1, len(dated) // 4)))
-    picked = _weighted_pick(dated[:oldest_size], 1)
-    if not picked:
-        return None, archive_stats
-    return {
-        **picked[0],
-        "distantGuaranteed": True,
-        "recentGuaranteed": False,
-        "sourceCollection": "facts_archive",
-    }, archive_stats
+    distant = _weighted_pick(dated[:oldest_size], 1)
+    # Candidates are already deduplicated by typed identity and hash aliases.
+    # Remove the selected object, since distinct scalar IDs can serialize alike.
+    remaining = [item for item in candidates if not distant or item is not distant[0]]
+    # Keep the distant slot last, then fill any active-memory shortfall from
+    # all other eligible archive memories, including entries without dates.
+    fillers = _weighted_pick(remaining, max(0, fill_count - len(distant)))
+    return [
+        {
+            **item,
+            "distantGuaranteed": is_distant,
+            "recentGuaranteed": False,
+            "sourceCollection": "facts_archive",
+        }
+        for items, is_distant in ((fillers, False), (distant, True))
+        for item in items
+    ], archive_stats
 
 
 def _parse_csv_set(value: str | None) -> set[str]:
@@ -481,6 +604,7 @@ def _empty_payload(character: str | None, limit: int) -> dict[str, Any]:
         "fallbackReason": "runtime_character_hint_missing",
         "error": "active_neko_runtime_not_linked",
         "rawCount": 0,
+        "totalMemoryCount": 0,
         "filteredCount": 0,
         "dedupedCount": 0,
         "excludedCount": 0,
@@ -542,6 +666,7 @@ async def build_forge_facts_payload(
         return _empty_payload(character, limit)
     runtime_hint_used = bool(runtime_hint and runtime_hint == resolved_character)
 
+    remote_facts_used = False
     url_template = os.environ.get("NEKO_FORGE_FACTS_URL", "").strip()
     if url_template:
         try:
@@ -551,6 +676,7 @@ async def build_forge_facts_payload(
         fetched = await _fetch_facts_from_url(url)
         if fetched is not None:
             raw = fetched
+            remote_facts_used = bool(fetched)
 
     if not raw:
         path = context.facts_path if context else None
@@ -566,11 +692,18 @@ async def build_forge_facts_payload(
         if context and context.facts_path
         else None
     )
-    if archive_path is not None:
+    # Local archives only belong to the local fallback, never to a remote pool.
+    if archive_path is not None and not remote_facts_used:
         raw_archive = await asyncio.to_thread(_load_facts_json, archive_path)
 
     excluded_ids = _parse_csv_set(exclude_fact_ids)
     excluded_hashes = _parse_csv_set(exclude_hashes)
+    total_memory_count, active_ids, active_hashes = await asyncio.to_thread(
+        _memory_identity_stats, raw, raw_archive,
+    )
+    legacy_excluded_keys = await asyncio.to_thread(
+        _legacy_excluded_fact_keys, raw, raw_archive, excluded_ids,
+    )
     facts, stats = await asyncio.to_thread(
         _select_forge_facts_with_stats,
         raw,
@@ -579,8 +712,9 @@ async def build_forge_facts_payload(
         limit=limit,
         exclude_ids=excluded_ids,
         exclude_hashes=excluded_hashes,
+        exclude_keys=legacy_excluded_keys,
     )
-    archive_fact: dict[str, Any] | None = None
+    archive_facts: list[dict[str, Any]] = []
     archive_stats = {
         "archiveRawCount": len([item for item in raw_archive if isinstance(item, dict)]),
         "archiveFilteredCount": 0,
@@ -590,27 +724,18 @@ async def build_forge_facts_payload(
         # 提交（先 facts_archive.json 再 facts.json）被打断时同一行会同时留在
         # 两个文件里，最长到下一次成功归档才收敛。只按抽中的几条排除的话，
         # 那种行只要这轮没被抽中，就会作为"久远记忆"发出去，而它其实还活着。
-        active_source = [item for item in raw if isinstance(item, dict)]
-        active_ids = {
-            str(item.get("id") or "") for item in active_source if item.get("id")
-        }
-        active_hashes = {
-            str(item.get("hash") or "") for item in active_source if item.get("hash")
-        }
-        archive_fact, archive_stats = await asyncio.to_thread(
-            _select_archive_distant_fact,
+        archive_facts, archive_stats = await asyncio.to_thread(
+            _select_archive_facts,
             raw_archive,
             min_importance=min_importance,
             include_absorbed=include_absorbed,
-            exclude_ids=excluded_ids | active_ids,
+            exclude_ids=excluded_ids,
+            exclude_keys=active_ids | legacy_excluded_keys,
             exclude_hashes=excluded_hashes | active_hashes,
+            fill_count=max(0, limit - len(facts)),
         )
-        if archive_fact:
-            facts = (
-                [*facts[: limit - 1], archive_fact]
-                if len(facts) >= limit
-                else [*facts, archive_fact][:limit]
-            )
+        if archive_facts:
+            facts = [*facts[: limit - len(archive_facts)], *archive_facts]
             recent_count = sum(bool(item.get("recentGuaranteed")) for item in facts)
             distant_count = sum(bool(item.get("distantGuaranteed")) for item in facts)
             stats["recentGuaranteedCount"] = recent_count
@@ -620,7 +745,11 @@ async def build_forge_facts_payload(
             )
 
     fallback_reason = ""
-    if error and not facts:
+    if len(facts) >= limit:
+        pass
+    elif facts:
+        fallback_reason = "insufficient_facts"
+    elif error:
         fallback_reason = error
     elif not raw:
         fallback_reason = "facts_file_empty_or_missing"
@@ -628,8 +757,6 @@ async def build_forge_facts_payload(
         fallback_reason = "all_available_facts_excluded"
     elif stats.get("filteredCount", 0) == 0:
         fallback_reason = "no_facts_after_filter"
-    elif len(facts) < limit:
-        fallback_reason = "insufficient_facts"
 
     payload: dict[str, Any] = {
         "character": resolved_character,
@@ -640,7 +767,8 @@ async def build_forge_facts_payload(
         "requestedLimit": limit,
         "returnedCount": len(facts),
         "fallbackReason": fallback_reason,
-        "archiveDistantCount": 1 if archive_fact else 0,
+        "archiveDistantCount": sum(bool(item["distantGuaranteed"]) for item in archive_facts),
+        "totalMemoryCount": total_memory_count,
         **archive_stats,
         **stats,
     }

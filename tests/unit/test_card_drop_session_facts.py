@@ -552,7 +552,7 @@ async def test_shared_facts_file_parsing_and_selection_run_off_event_loop(
     worker_threads: list[int] = []
     original_load = F._load_facts_json
     original_select = F._select_forge_facts_with_stats
-    original_archive_select = F._select_archive_distant_fact
+    original_archive_select = F._select_archive_facts
 
     def tracked_load(path):
         worker_threads.append(threading.get_ident())
@@ -569,7 +569,7 @@ async def test_shared_facts_file_parsing_and_selection_run_off_event_loop(
     monkeypatch.setattr(F, "resolve_active_neko_context", fake_context)
     monkeypatch.setattr(F, "_load_facts_json", tracked_load)
     monkeypatch.setattr(F, "_select_forge_facts_with_stats", tracked_select)
-    monkeypatch.setattr(F, "_select_archive_distant_fact", tracked_archive_select)
+    monkeypatch.setattr(F, "_select_archive_facts", tracked_archive_select)
 
     payload = await F.build_forge_facts_payload(
         runtime_character_hint="Lanlan",
@@ -2532,6 +2532,7 @@ async def test_archive_pick_excludes_rows_still_present_in_active_facts(
 
     assert payload["returnedCount"] == 5
     assert payload["archiveRawCount"] == 6
+    assert payload["totalMemoryCount"] == 6
     assert payload["archiveFilteredCount"] == 0, payload["archiveFilteredCount"]
     sources = [fact["sourceCollection"] for fact in payload["facts"]]
     assert "facts_archive" not in sources, sources

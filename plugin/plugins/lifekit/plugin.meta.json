@@ -1,0 +1,3128 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.getConfig.description",
+        "default": "获取生活助手当前配置。"
+      },
+      "event_key": "lifekit.get_config",
+      "event_type": "plugin_entry",
+      "id": "get_config",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.getConfig.name",
+        "default": "获取配置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.updateConfig.description",
+        "default": "更新生活助手配置字段。"
+      },
+      "event_key": "lifekit.update_config",
+      "event_type": "plugin_entry",
+      "id": "update_config",
+      "input_schema": {
+        "properties": {
+          "amap_key": {
+            "type": "string"
+          },
+          "baidu_map_key": {
+            "type": "string"
+          },
+          "cache_ttl_seconds": {
+            "type": "integer"
+          },
+          "confirmation_token": {
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "description": "Explicit confirmation / 明确确认 / 明示的な確認",
+            "type": "boolean"
+          },
+          "default_city": {
+            "type": "string"
+          },
+          "enable_geoip": {
+            "type": "boolean"
+          },
+          "force_locale": {
+            "type": "boolean"
+          },
+          "forecast_days": {
+            "type": "integer"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "message",
+        "config",
+        "choices",
+        "confirmation_token"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "ClarificationResult": {
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Choices",
+                "type": "array"
+              },
+              "confirmation_token": {
+                "default": "",
+                "title": "Confirmation Token",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": true,
+                "title": "Context",
+                "type": "object"
+              },
+              "status": {
+                "const": "clarify",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary"
+            ],
+            "title": "ClarificationResult",
+            "type": "object"
+          },
+          "_UpdateConfigReadyResult": {
+            "properties": {
+              "config": {
+                "additionalProperties": true,
+                "title": "Config",
+                "type": "object"
+              },
+              "message": {
+                "title": "Message",
+                "type": "string"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "message",
+              "config"
+            ],
+            "title": "_UpdateConfigReadyResult",
+            "type": "object"
+          }
+        },
+        "discriminator": {
+          "mapping": {
+            "clarify": "#/$defs/ClarificationResult",
+            "ready": "#/$defs/_UpdateConfigReadyResult"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/_UpdateConfigReadyResult"
+          },
+          {
+            "$ref": "#/$defs/ClarificationResult"
+          }
+        ],
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "confirmation_token": {
+            "default": "",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "clarify"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "message",
+          "config",
+          "choices",
+          "confirmation_token"
+        ],
+        "title": "UpdateConfigResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.updateConfig.name",
+        "default": "更新配置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.getWeather.description",
+        "default": "Get current weather and daily forecasts for a city, saved location, or automatic location."
+      },
+      "event_key": "lifekit.get_weather",
+      "event_type": "plugin_entry",
+      "id": "get_weather",
+      "input_schema": {
+        "properties": {
+          "city": {
+            "default": "",
+            "description": "City; blank uses automatic or default location / 城市；留空用自动或默认地点 / 都市；空欄は自動または既定の場所",
+            "title": "City",
+            "type": "string"
+          }
+        },
+        "title": "CityParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "city",
+        "current",
+        "forecast",
+        "timezone_mismatch",
+        "vpn_detected",
+        "next_actions"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_GetWeatherReadyResult": {
+            "properties": {
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "city": {
+                "title": "City",
+                "type": "string"
+              },
+              "current": {
+                "additionalProperties": true,
+                "title": "Current",
+                "type": "object"
+              },
+              "forecast": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Forecast",
+                "type": "array"
+              },
+              "next_actions": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Next Actions",
+                "type": "array"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "timezone_mismatch": {
+                "default": false,
+                "title": "Timezone Mismatch",
+                "type": "boolean"
+              },
+              "vpn_detected": {
+                "default": false,
+                "title": "Vpn Detected",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "status",
+              "city",
+              "summary",
+              "current",
+              "forecast"
+            ],
+            "title": "_GetWeatherReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_GetWeatherReadyResult",
+        "properties": {
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "current": {
+            "additionalProperties": true,
+            "title": "Current",
+            "type": "object"
+          },
+          "forecast": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Forecast",
+            "type": "array"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "timezone_mismatch": {
+            "default": false,
+            "title": "Timezone Mismatch",
+            "type": "boolean"
+          },
+          "vpn_detected": {
+            "default": false,
+            "title": "Vpn Detected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "city",
+          "current",
+          "forecast",
+          "timezone_mismatch",
+          "vpn_detected",
+          "next_actions"
+        ],
+        "title": "GetWeatherResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.getWeather.name",
+        "default": "Get weather"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.travelAdvice.description",
+        "default": "Give clothing, umbrella, sunscreen, and travel advice based on weather."
+      },
+      "event_key": "lifekit.travel_advice",
+      "event_type": "plugin_entry",
+      "id": "travel_advice",
+      "input_schema": {
+        "properties": {
+          "city": {
+            "default": "",
+            "description": "City; blank uses automatic or default location / 城市；留空用自动或默认地点 / 都市；空欄は自動または既定の場所",
+            "title": "City",
+            "type": "string"
+          }
+        },
+        "title": "CityParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "city",
+        "tips",
+        "clothing",
+        "umbrella",
+        "sunscreen",
+        "next_actions"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_TravelAdviceReadyResult": {
+            "properties": {
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "city": {
+                "title": "City",
+                "type": "string"
+              },
+              "clothing": {
+                "default": "",
+                "title": "Clothing",
+                "type": "string"
+              },
+              "next_actions": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Next Actions",
+                "type": "array"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "sunscreen": {
+                "default": false,
+                "title": "Sunscreen",
+                "type": "boolean"
+              },
+              "tips": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Tips",
+                "type": "array"
+              },
+              "umbrella": {
+                "default": false,
+                "title": "Umbrella",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "status",
+              "city",
+              "summary",
+              "tips"
+            ],
+            "title": "_TravelAdviceReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_TravelAdviceReadyResult",
+        "properties": {
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "clothing": {
+            "default": "",
+            "title": "Clothing",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "sunscreen": {
+            "default": false,
+            "title": "Sunscreen",
+            "type": "boolean"
+          },
+          "tips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tips",
+            "type": "array"
+          },
+          "umbrella": {
+            "default": false,
+            "title": "Umbrella",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "city",
+          "tips",
+          "clothing",
+          "umbrella",
+          "sunscreen",
+          "next_actions"
+        ],
+        "title": "TravelAdviceResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.travelAdvice.name",
+        "default": "Travel advice"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.hourlyForecast.description",
+        "default": "Get hourly temperature, precipitation, and wind forecasts for up to 168 hours."
+      },
+      "event_key": "lifekit.hourly_forecast",
+      "event_type": "plugin_entry",
+      "id": "hourly_forecast",
+      "input_schema": {
+        "properties": {
+          "city": {
+            "default": "",
+            "description": "City; blank uses auto location / 城市；留空自动定位 / 都市；空欄は自動位置情報",
+            "title": "City",
+            "type": "string"
+          },
+          "hours": {
+            "default": 48,
+            "description": "Forecast hours (1-168) / 预报小时数（1-168） / 予報時間（1-168）",
+            "maximum": 168,
+            "minimum": 1,
+            "title": "Hours",
+            "type": "integer"
+          }
+        },
+        "title": "HourlyForecastParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "city",
+        "hours",
+        "total_hours"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_HourlyForecastReadyResult": {
+            "properties": {
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "city": {
+                "title": "City",
+                "type": "string"
+              },
+              "hours": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Hours",
+                "type": "array"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "total_hours": {
+                "title": "Total Hours",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "status",
+              "city",
+              "summary",
+              "hours",
+              "total_hours"
+            ],
+            "title": "_HourlyForecastReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_HourlyForecastReadyResult",
+        "properties": {
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "hours": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Hours",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "total_hours": {
+            "title": "Total Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "city",
+          "hours",
+          "total_hours"
+        ],
+        "title": "HourlyForecastResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.hourlyForecast.name",
+        "default": "Hourly forecast"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.addLocation.description",
+        "default": "Add a saved location by label and city, geocoding coordinates automatically."
+      },
+      "event_key": "lifekit.add_location",
+      "event_type": "plugin_entry",
+      "id": "add_location",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "default": "",
+            "description": "Optional address / 可选详细地址 / 任意の住所",
+            "title": "Address",
+            "type": "string"
+          },
+          "city": {
+            "description": "City / 城市名 / 都市名",
+            "minLength": 1,
+            "title": "City",
+            "type": "string"
+          },
+          "confirmation_token": {
+            "default": "",
+            "description": "One-time token / 一次性确认令牌 / ワンタイム確認トークン",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "description": "Explicit confirmation / 明确确认 / 明示的な確認",
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "label": {
+            "description": "Location label / 地点标签 / 場所ラベル",
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "set_default": {
+            "default": false,
+            "description": "Set as default / 设为默认地点 / 既定に設定",
+            "title": "Set Default",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "city"
+        ],
+        "title": "AddLocationParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "message",
+        "location",
+        "choices",
+        "confirmation_token"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "ClarificationResult": {
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Choices",
+                "type": "array"
+              },
+              "confirmation_token": {
+                "default": "",
+                "title": "Confirmation Token",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": true,
+                "title": "Context",
+                "type": "object"
+              },
+              "status": {
+                "const": "clarify",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary"
+            ],
+            "title": "ClarificationResult",
+            "type": "object"
+          },
+          "SavedLocationModel": {
+            "properties": {
+              "address": {
+                "default": "",
+                "title": "Address",
+                "type": "string"
+              },
+              "city": {
+                "title": "City",
+                "type": "string"
+              },
+              "country": {
+                "default": "",
+                "title": "Country",
+                "type": "string"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "is_default": {
+                "default": false,
+                "title": "Is Default",
+                "type": "boolean"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "lat": {
+                "title": "Lat",
+                "type": "number"
+              },
+              "lon": {
+                "title": "Lon",
+                "type": "number"
+              },
+              "timezone": {
+                "default": "",
+                "title": "Timezone",
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "city",
+              "lat",
+              "lon"
+            ],
+            "title": "SavedLocationModel",
+            "type": "object"
+          },
+          "_AddLocationReadyResult": {
+            "properties": {
+              "location": {
+                "$ref": "#/$defs/SavedLocationModel"
+              },
+              "message": {
+                "title": "Message",
+                "type": "string"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "message",
+              "location"
+            ],
+            "title": "_AddLocationReadyResult",
+            "type": "object"
+          }
+        },
+        "discriminator": {
+          "mapping": {
+            "clarify": "#/$defs/ClarificationResult",
+            "ready": "#/$defs/_AddLocationReadyResult"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/_AddLocationReadyResult"
+          },
+          {
+            "$ref": "#/$defs/ClarificationResult"
+          }
+        ],
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "confirmation_token": {
+            "default": "",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/$defs/SavedLocationModel"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "clarify"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "message",
+          "location",
+          "choices",
+          "confirmation_token"
+        ],
+        "title": "AddLocationResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.addLocation.name",
+        "default": "Add saved location"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listLocations.description",
+        "default": "List all saved LifeKit locations."
+      },
+      "event_key": "lifekit.list_locations",
+      "event_type": "plugin_entry",
+      "id": "list_locations",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "count",
+        "locations"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "SavedLocationModel": {
+            "properties": {
+              "address": {
+                "default": "",
+                "title": "Address",
+                "type": "string"
+              },
+              "city": {
+                "title": "City",
+                "type": "string"
+              },
+              "country": {
+                "default": "",
+                "title": "Country",
+                "type": "string"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "is_default": {
+                "default": false,
+                "title": "Is Default",
+                "type": "boolean"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "lat": {
+                "title": "Lat",
+                "type": "number"
+              },
+              "lon": {
+                "title": "Lon",
+                "type": "number"
+              },
+              "timezone": {
+                "default": "",
+                "title": "Timezone",
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "city",
+              "lat",
+              "lon"
+            ],
+            "title": "SavedLocationModel",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/SavedLocationModel"
+            },
+            "title": "Locations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "locations"
+        ],
+        "title": "ListLocationsResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.listLocations.name",
+        "default": "List saved locations"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.removeLocation.description",
+        "default": "Remove a saved location by ID or label."
+      },
+      "event_key": "lifekit.remove_location",
+      "event_type": "plugin_entry",
+      "id": "remove_location",
+      "input_schema": {
+        "properties": {
+          "confirmation_token": {
+            "default": "",
+            "description": "One-time token / 一次性确认令牌 / ワンタイム確認トークン",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "description": "Explicit confirmation / 明确确认 / 明示的な確認",
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "location_id": {
+            "description": "Location ID or label / 地点 ID 或标签 / 場所 ID またはラベル",
+            "minLength": 1,
+            "title": "Location Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location_id"
+        ],
+        "title": "LocationIdParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "message",
+        "remaining",
+        "choices",
+        "confirmation_token"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "ClarificationResult": {
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Choices",
+                "type": "array"
+              },
+              "confirmation_token": {
+                "default": "",
+                "title": "Confirmation Token",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": true,
+                "title": "Context",
+                "type": "object"
+              },
+              "status": {
+                "const": "clarify",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary"
+            ],
+            "title": "ClarificationResult",
+            "type": "object"
+          },
+          "_RemoveLocationReadyResult": {
+            "properties": {
+              "message": {
+                "title": "Message",
+                "type": "string"
+              },
+              "remaining": {
+                "title": "Remaining",
+                "type": "integer"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "message",
+              "remaining"
+            ],
+            "title": "_RemoveLocationReadyResult",
+            "type": "object"
+          }
+        },
+        "discriminator": {
+          "mapping": {
+            "clarify": "#/$defs/ClarificationResult",
+            "ready": "#/$defs/_RemoveLocationReadyResult"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/_RemoveLocationReadyResult"
+          },
+          {
+            "$ref": "#/$defs/ClarificationResult"
+          }
+        ],
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "confirmation_token": {
+            "default": "",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "clarify"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "message",
+          "remaining",
+          "choices",
+          "confirmation_token"
+        ],
+        "title": "RemoveLocationResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.removeLocation.name",
+        "default": "Remove saved location"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.setDefaultLocation.description",
+        "default": "Set the location preferred by weather and travel tools."
+      },
+      "event_key": "lifekit.set_default_location",
+      "event_type": "plugin_entry",
+      "id": "set_default_location",
+      "input_schema": {
+        "properties": {
+          "confirmation_token": {
+            "default": "",
+            "description": "One-time token / 一次性确认令牌 / ワンタイム確認トークン",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "description": "Explicit confirmation / 明确确认 / 明示的な確認",
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "location_id": {
+            "description": "Location ID or label / 地点 ID 或标签 / 場所 ID またはラベル",
+            "minLength": 1,
+            "title": "Location Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location_id"
+        ],
+        "title": "LocationIdParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "message",
+        "choices",
+        "confirmation_token"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "ClarificationResult": {
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Choices",
+                "type": "array"
+              },
+              "confirmation_token": {
+                "default": "",
+                "title": "Confirmation Token",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": true,
+                "title": "Context",
+                "type": "object"
+              },
+              "status": {
+                "const": "clarify",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary"
+            ],
+            "title": "ClarificationResult",
+            "type": "object"
+          },
+          "_SetDefaultLocationReadyResult": {
+            "properties": {
+              "message": {
+                "title": "Message",
+                "type": "string"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "message"
+            ],
+            "title": "_SetDefaultLocationReadyResult",
+            "type": "object"
+          }
+        },
+        "discriminator": {
+          "mapping": {
+            "clarify": "#/$defs/ClarificationResult",
+            "ready": "#/$defs/_SetDefaultLocationReadyResult"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/_SetDefaultLocationReadyResult"
+          },
+          {
+            "$ref": "#/$defs/ClarificationResult"
+          }
+        ],
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "confirmation_token": {
+            "default": "",
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "clarify"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "message",
+          "choices",
+          "confirmation_token"
+        ],
+        "title": "SetDefaultLocationResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.setDefaultLocation.name",
+        "default": "Set default location"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.tripAdvice.description",
+        "default": "Plan routes between cities or saved locations and combine them with weather advice."
+      },
+      "event_key": "lifekit.trip_advice",
+      "event_type": "plugin_entry",
+      "id": "trip_advice",
+      "input_schema": {
+        "properties": {
+          "destination": {
+            "description": "Destination label or city / 终点标签或城市 / 目的地ラベルまたは都市",
+            "minLength": 1,
+            "title": "Destination",
+            "type": "string"
+          },
+          "mode": {
+            "default": "",
+            "description": "Travel mode; blank selects automatically / 出行方式；留空自动选择 / 移動手段；空欄は自動選択",
+            "title": "Mode",
+            "type": "string"
+          },
+          "origin": {
+            "default": "",
+            "description": "Origin label or city; blank uses default / 起点标签或城市；留空用默认 / 出発地ラベルまたは都市；空欄は既定",
+            "title": "Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination"
+        ],
+        "title": "TripAdviceParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "origin",
+        "destination",
+        "distance_km",
+        "routes",
+        "weather_tips",
+        "mode_advice",
+        "requested_mode",
+        "selected_mode",
+        "mode_assumption",
+        "provider",
+        "next_actions"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_TripAdviceReadyResult": {
+            "properties": {
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "destination": {
+                "title": "Destination",
+                "type": "string"
+              },
+              "distance_km": {
+                "title": "Distance Km",
+                "type": "number"
+              },
+              "mode_advice": {
+                "default": "",
+                "title": "Mode Advice",
+                "type": "string"
+              },
+              "mode_assumption": {
+                "default": "",
+                "title": "Mode Assumption",
+                "type": "string"
+              },
+              "next_actions": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Next Actions",
+                "type": "array"
+              },
+              "origin": {
+                "title": "Origin",
+                "type": "string"
+              },
+              "provider": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Provider"
+              },
+              "requested_mode": {
+                "default": "",
+                "title": "Requested Mode",
+                "type": "string"
+              },
+              "routes": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Routes",
+                "type": "array"
+              },
+              "selected_mode": {
+                "default": "auto",
+                "title": "Selected Mode",
+                "type": "string"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "weather_tips": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Weather Tips",
+                "type": "array"
+              }
+            },
+            "required": [
+              "status",
+              "origin",
+              "destination",
+              "distance_km",
+              "summary",
+              "routes"
+            ],
+            "title": "_TripAdviceReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_TripAdviceReadyResult",
+        "properties": {
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "distance_km": {
+            "title": "Distance Km",
+            "type": "number"
+          },
+          "mode_advice": {
+            "default": "",
+            "title": "Mode Advice",
+            "type": "string"
+          },
+          "mode_assumption": {
+            "default": "",
+            "title": "Mode Assumption",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "requested_mode": {
+            "default": "",
+            "title": "Requested Mode",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "selected_mode": {
+            "default": "auto",
+            "title": "Selected Mode",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "weather_tips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weather Tips",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "origin",
+          "destination",
+          "distance_km",
+          "routes",
+          "weather_tips",
+          "mode_advice",
+          "requested_mode",
+          "selected_mode",
+          "mode_assumption",
+          "provider",
+          "next_actions"
+        ],
+        "title": "TripAdviceResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.tripAdvice.name",
+        "default": "Plan a trip"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.searchNearby.description",
+        "default": "Search near a road, landmark, current position, or city. Preserve the user's wording in request; use typed intent and explicit preference hints, and do not invent provider search terms."
+      },
+      "event_key": "lifekit.search_nearby",
+      "event_type": "plugin_entry",
+      "id": "search_nearby",
+      "input_schema": {
+        "properties": {
+          "location_hint": {
+            "default": "",
+            "description": "Search center inferred from the request; blank if uncertain / 从原话识别的搜索中心；不确定留空 / 原文から推定した検索中心；不明なら空欄",
+            "title": "Location Hint",
+            "type": "string"
+          },
+          "place_intent": {
+            "default": "explore",
+            "description": "Closest place intent; use explore if uncertain / 最接近需求的地点意图；不确定用 explore / 最も近い場所意図；不明なら explore",
+            "enum": [
+              "food",
+              "coffee",
+              "shopping",
+              "outdoors",
+              "culture",
+              "family",
+              "nightlife",
+              "service",
+              "explore"
+            ],
+            "title": "Place Intent",
+            "type": "string"
+          },
+          "preference_hints": {
+            "description": "Up to four explicit short preferences; do not invent map search terms / 最多四个明确偏好；不要编造地图召回词 / 明示された好みを最大4件；地図検索語を作らない",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Preference Hints",
+            "type": "array"
+          },
+          "query": {
+            "description": "Original nearby request; preserve full meaning / 附近搜索原话；保留完整语义 / 周辺検索の原文；意味を保持",
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "radius": {
+            "default": 3000,
+            "description": "Search radius in meters / 搜索半径（米） / 検索半径（メートル）",
+            "maximum": 50000,
+            "minimum": 500,
+            "title": "Radius",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "NearbyParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "request",
+        "searched_terms",
+        "results",
+        "location_groups"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_NearbyReadyResult": {
+            "properties": {
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "count": {
+                "title": "Count",
+                "type": "integer"
+              },
+              "location_groups": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Location Groups",
+                "type": "array"
+              },
+              "provider": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Provider"
+              },
+              "request": {
+                "title": "Request",
+                "type": "string"
+              },
+              "results": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Results",
+                "type": "array"
+              },
+              "searched_terms": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Searched Terms",
+                "type": "array"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "suggestion": {
+                "default": "",
+                "title": "Suggestion",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "weather_tip": {
+                "default": "",
+                "title": "Weather Tip",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "request",
+              "searched_terms",
+              "results",
+              "count"
+            ],
+            "title": "_NearbyReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_NearbyReadyResult",
+        "properties": {
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "location_groups": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Location Groups",
+            "type": "array"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "searched_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Searched Terms",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "request",
+          "searched_terms",
+          "results",
+          "location_groups"
+        ],
+        "title": "NearbyResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.searchNearby.name",
+        "default": "Search nearby"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.foodRecommend.description",
+        "default": "Recommend nearby food from location, weather, cuisine, and dining occasion."
+      },
+      "event_key": "lifekit.food_recommend",
+      "event_type": "plugin_entry",
+      "id": "food_recommend",
+      "input_schema": {
+        "properties": {
+          "cuisine": {
+            "default": "",
+            "description": "Cuisine preference; blank searches restaurants and uses weather only as advice / 口味偏好；留空搜索餐厅，天气仅用于提示 / 料理の好み；空欄はレストランを検索し、天気は補足にのみ使用",
+            "title": "Cuisine",
+            "type": "string"
+          },
+          "location": {
+            "default": "",
+            "description": "Location label or city; blank uses default / 地点标签或城市；留空用默认 / 場所ラベルまたは都市；空欄は既定",
+            "title": "Location",
+            "type": "string"
+          },
+          "radius": {
+            "default": 3000,
+            "description": "Search radius in meters / 搜索半径（米） / 検索半径（メートル）",
+            "maximum": 50000,
+            "minimum": 500,
+            "title": "Radius",
+            "type": "integer"
+          },
+          "scene": {
+            "default": "",
+            "description": "Dining occasion / 用餐场景 / 食事の場面",
+            "title": "Scene",
+            "type": "string"
+          }
+        },
+        "title": "FoodRecommendParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "recommendations",
+        "query",
+        "weather_reason",
+        "provider",
+        "next_actions"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_FoodRecommendReadyResult": {
+            "properties": {
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "next_actions": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Next Actions",
+                "type": "array"
+              },
+              "provider": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Provider"
+              },
+              "query": {
+                "title": "Query",
+                "type": "string"
+              },
+              "recommendations": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Recommendations",
+                "type": "array"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "weather_reason": {
+                "default": "",
+                "title": "Weather Reason",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "recommendations",
+              "query"
+            ],
+            "title": "_FoodRecommendReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_FoodRecommendReadyResult",
+        "properties": {
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "recommendations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "weather_reason": {
+            "default": "",
+            "title": "Weather Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "recommendations",
+          "query",
+          "weather_reason",
+          "provider",
+          "next_actions"
+        ],
+        "title": "FoodRecommendResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.foodRecommend.name",
+        "default": "Recommend food"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "recipe.entry_random_description",
+        "default": "Recommend a random recipe and suggest nearby restaurants as an alternative."
+      },
+      "event_key": "lifekit.random_recipe",
+      "event_type": "plugin_entry",
+      "id": "random_recipe",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Recipe"
+          },
+          "status": {
+            "const": "ready",
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary"
+        ],
+        "title": "RandomRecipeResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "recipe.entry_random_name",
+        "default": "Random recipe"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "recipe.entry_search_description",
+        "default": "Search recipes by the requested dish name or ingredient without replacing a dish with a generic ingredient."
+      },
+      "event_key": "lifekit.search_recipe",
+      "event_type": "plugin_entry",
+      "id": "search_recipe",
+      "input_schema": {
+        "properties": {
+          "by_ingredient": {
+            "default": false,
+            "description": "Search by ingredient / 按食材搜索 / 食材で検索",
+            "title": "By Ingredient",
+            "type": "boolean"
+          },
+          "query": {
+            "description": "Dish or ingredient / 菜名或食材 / 料理名または食材",
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchRecipeParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "recipes"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "query": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          },
+          "recipes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recipes",
+            "type": "array"
+          },
+          "status": {
+            "const": "ready",
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "recipes"
+        ],
+        "title": "SearchRecipeResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "recipe.entry_search_name",
+        "default": "Search recipes"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.airQuality.description",
+        "default": "Query current air quality, PM2.5, PM10, UV, and related advice for a city or saved location."
+      },
+      "event_key": "lifekit.air_quality",
+      "event_type": "plugin_entry",
+      "id": "air_quality",
+      "input_schema": {
+        "properties": {
+          "city": {
+            "default": "",
+            "description": "City; blank uses automatic or default location / 城市；留空用自动或默认地点 / 都市；空欄は自動または既定の場所",
+            "title": "City",
+            "type": "string"
+          }
+        },
+        "title": "CityParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "summary",
+        "assumed",
+        "assumed_location",
+        "ambiguity_warning",
+        "city",
+        "aqi",
+        "advice",
+        "next_actions"
+      ],
+      "llm_result_schema": {
+        "$defs": {
+          "_AirQualityReadyResult": {
+            "properties": {
+              "advice": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Advice",
+                "type": "array"
+              },
+              "ambiguity_warning": {
+                "default": "",
+                "title": "Ambiguity Warning",
+                "type": "string"
+              },
+              "aqi": {
+                "additionalProperties": true,
+                "title": "Aqi",
+                "type": "object"
+              },
+              "assumed": {
+                "default": false,
+                "title": "Assumed",
+                "type": "boolean"
+              },
+              "assumed_location": {
+                "default": "",
+                "title": "Assumed Location",
+                "type": "string"
+              },
+              "city": {
+                "title": "City",
+                "type": "string"
+              },
+              "next_actions": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Next Actions",
+                "type": "array"
+              },
+              "status": {
+                "const": "ready",
+                "title": "Status",
+                "type": "string"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "city",
+              "summary",
+              "aqi",
+              "advice"
+            ],
+            "title": "_AirQualityReadyResult",
+            "type": "object"
+          }
+        },
+        "$ref": "#/$defs/_AirQualityReadyResult",
+        "properties": {
+          "advice": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Advice",
+            "type": "array"
+          },
+          "ambiguity_warning": {
+            "title": "Ambiguity Warning",
+            "type": "string"
+          },
+          "aqi": {
+            "additionalProperties": true,
+            "title": "Aqi",
+            "type": "object"
+          },
+          "assumed": {
+            "title": "Assumed",
+            "type": "boolean"
+          },
+          "assumed_location": {
+            "title": "Assumed Location",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumed",
+          "assumed_location",
+          "ambiguity_warning",
+          "city",
+          "aqi",
+          "advice",
+          "next_actions"
+        ],
+        "title": "AirQualityResult"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.airQuality.name",
+        "default": "Air quality"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.currencyConvert.description",
+        "default": "Convert major currencies using European Central Bank reference rates."
+      },
+      "event_key": "lifekit.currency_convert",
+      "event_type": "plugin_entry",
+      "id": "currency_convert",
+      "input_schema": {
+        "properties": {
+          "amount": {
+            "default": 1,
+            "description": "Amount / 金额 / 金額",
+            "title": "Amount",
+            "type": "number"
+          },
+          "from_currency": {
+            "description": "Source currency code / 源货币代码 / 変換元通貨コード",
+            "minLength": 1,
+            "title": "From Currency",
+            "type": "string"
+          },
+          "to_currency": {
+            "description": "Target currency code / 目标货币代码 / 変換先通貨コード",
+            "minLength": 1,
+            "title": "To Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_currency",
+          "to_currency"
+        ],
+        "title": "CurrencyConvertParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary",
+        "conversion"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "conversion": {
+            "additionalProperties": true,
+            "title": "Conversion",
+            "type": "object"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "conversion"
+        ],
+        "title": "CurrencyConvertResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.currencyConvert.name",
+        "default": "Convert currency"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.countdown.description",
+        "default": "Count days to a date, month-day, or supported holiday name."
+      },
+      "event_key": "lifekit.countdown",
+      "event_type": "plugin_entry",
+      "id": "countdown",
+      "input_schema": {
+        "properties": {
+          "country_hint": {
+            "default": "",
+            "description": "Country code used to interpret regional holiday names / 用于解释地域节日名称的国家代码 / 地域の祝日名を解釈する国コード",
+            "title": "Country Hint",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "description": "Optional event label / 可选事件名称 / 任意のイベント名",
+            "title": "Label",
+            "type": "string"
+          },
+          "target_date": {
+            "description": "Target date, month-day, or holiday / 目标日期、月日或节日 / 対象日、月日、祝日",
+            "minLength": 1,
+            "title": "Target Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_date"
+        ],
+        "title": "CountdownParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary",
+        "detail"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "detail"
+        ],
+        "title": "DateDetailResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.countdown.name",
+        "default": "Countdown"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.daysBetween.description",
+        "default": "Calculate the number of days between two dates."
+      },
+      "event_key": "lifekit.days_between",
+      "event_type": "plugin_entry",
+      "id": "days_between",
+      "input_schema": {
+        "properties": {
+          "country_hint": {
+            "default": "",
+            "description": "Country code used to interpret regional holiday names / 用于解释地域节日名称的国家代码 / 地域の祝日名を解釈する国コード",
+            "title": "Country Hint",
+            "type": "string"
+          },
+          "end_date": {
+            "default": "",
+            "description": "End date; blank means today / 结束日期；留空为今天 / 終了日；空欄は今日",
+            "title": "End Date",
+            "type": "string"
+          },
+          "start_date": {
+            "default": "",
+            "description": "Start date; blank means today / 起始日期；留空为今天 / 開始日；空欄は今日",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "title": "DaysBetweenParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary",
+        "detail"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "detail"
+        ],
+        "title": "DateDetailResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.daysBetween.name",
+        "default": "Days between dates"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.unitConvert.description",
+        "default": "Convert common length, weight, temperature, volume, area, and speed units."
+      },
+      "event_key": "lifekit.unit_convert",
+      "event_type": "plugin_entry",
+      "id": "unit_convert",
+      "input_schema": {
+        "properties": {
+          "from_unit": {
+            "description": "Source unit / 源单位 / 変換元の単位",
+            "minLength": 1,
+            "title": "From Unit",
+            "type": "string"
+          },
+          "to_unit": {
+            "description": "Target unit / 目标单位 / 変換先の単位",
+            "minLength": 1,
+            "title": "To Unit",
+            "type": "string"
+          },
+          "value": {
+            "description": "Value to convert / 要换算的数值 / 変換する値",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "from_unit",
+          "to_unit"
+        ],
+        "title": "UnitConvertParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary",
+        "conversion"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "conversion": {
+            "additionalProperties": true,
+            "title": "Conversion",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "conversion"
+        ],
+        "title": "UnitConvertResult",
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.unitConvert.name",
+        "default": "Convert units"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "get_config": "get_config_entry",
+    "update_config": "update_config_entry"
+  },
+  "handlers": {
+    "lifekit.get_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.getConfig.description",
+        "default": "获取生活助手当前配置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_config",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.getConfig.name",
+        "default": "获取配置"
+      }
+    },
+    "lifekit.update_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.updateConfig.description",
+        "default": "更新生活助手配置字段。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "update_config",
+      "input_schema": {
+        "properties": {
+          "amap_key": {
+            "type": "string"
+          },
+          "baidu_map_key": {
+            "type": "string"
+          },
+          "cache_ttl_seconds": {
+            "type": "integer"
+          },
+          "confirmation_token": {
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "description": "Explicit confirmation / 明确确认 / 明示的な確認",
+            "type": "boolean"
+          },
+          "default_city": {
+            "type": "string"
+          },
+          "enable_geoip": {
+            "type": "boolean"
+          },
+          "force_locale": {
+            "type": "boolean"
+          },
+          "forecast_days": {
+            "type": "integer"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.updateConfig.name",
+        "default": "更新配置"
+      }
+    },
+    "lifekit:lifecycle:config_change": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "config_change",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "config_change"
+    },
+    "lifekit:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "lifekit:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "lifekit:plugin_entry:get_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.getConfig.description",
+        "default": "获取生活助手当前配置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_config",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.getConfig.name",
+        "default": "获取配置"
+      }
+    },
+    "lifekit:plugin_entry:update_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.updateConfig.description",
+        "default": "更新生活助手配置字段。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "update_config",
+      "input_schema": {
+        "properties": {
+          "amap_key": {
+            "type": "string"
+          },
+          "baidu_map_key": {
+            "type": "string"
+          },
+          "cache_ttl_seconds": {
+            "type": "integer"
+          },
+          "confirmation_token": {
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "description": "Explicit confirmation / 明确确认 / 明示的な確認",
+            "type": "boolean"
+          },
+          "default_city": {
+            "type": "string"
+          },
+          "enable_geoip": {
+            "type": "boolean"
+          },
+          "force_locale": {
+            "type": "boolean"
+          },
+          "forecast_days": {
+            "type": "integer"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.updateConfig.name",
+        "default": "更新配置"
+      }
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 681065,
+  "source_files": [
+    ".github/workflows/release.yml",
+    ".github/workflows/verify.yml",
+    ".gitignore",
+    ".vscode/settings.json",
+    ".vscode/tasks.json",
+    "README.md",
+    "__init__.py",
+    "_advice_policy.py",
+    "_api.py",
+    "_chat.py",
+    "_coerce.py",
+    "_contracts.py",
+    "_coordinates.py",
+    "_currency.py",
+    "_entry_errors.py",
+    "_geo.py",
+    "_geocoders.py",
+    "_geodesy.py",
+    "_hedged.py",
+    "_holiday.py",
+    "_i18n.py",
+    "_location.py",
+    "_location_entry.py",
+    "_nearby_discovery.py",
+    "_nearby_intent.py",
+    "_poi.py",
+    "_recipe.py",
+    "_routing.py",
+    "_write_confirmation.py",
+    "docs/quickstart.tsx",
+    "locales/en.json",
+    "locales/es.json",
+    "locales/ja.json",
+    "locales/ko.json",
+    "locales/pt.json",
+    "locales/ru.json",
+    "locales/zh-CN.json",
+    "locales/zh-TW.json",
+    "plugin.toml",
+    "pyproject.toml",
+    "routers/__init__.py",
+    "routers/air_quality.py",
+    "routers/countdown.py",
+    "routers/currency.py",
+    "routers/current.py",
+    "routers/food.py",
+    "routers/hourly.py",
+    "routers/locations.py",
+    "routers/nearby.py",
+    "routers/recipe.py",
+    "routers/travel.py",
+    "routers/trip.py",
+    "routers/unit_convert.py",
+    "ruff.toml",
+    "tests/test_advice_policy.py",
+    "tests/test_api.py",
+    "tests/test_config_security.py",
+    "tests/test_coordinates.py",
+    "tests/test_countdown.py",
+    "tests/test_hedged.py",
+    "tests/test_i18n.py",
+    "tests/test_llm_projection.py",
+    "tests/test_location.py",
+    "tests/test_location_entry_clarification.py",
+    "tests/test_location_live.py",
+    "tests/test_location_properties.py",
+    "tests/test_nearby_discovery.py",
+    "tests/test_nearby_router.py",
+    "tests/test_poi.py",
+    "tests/test_recipe.py",
+    "tests/test_review_regressions.py",
+    "tests/test_routing.py",
+    "tests/test_smoke.py",
+    "ui/panel.tsx"
+  ],
+  "source_sha256": "978d120201d72cfc139bbfc27335bb8a2dd2ad26edd7d42768830b2c5aacdbff"
+}

@@ -35,6 +35,10 @@
          timer，业务代码之后加载就抓不到早期注册的那些。默认关，靠
          localStorage.NEKO_DEBUG_HEALTH=1 + 刷新启用。详见 static/debug-health.js。 -->
     <script src="/static/debug-health.js?v={{ static_asset_version }}"></script>
+    <!-- 帧率总闸（仅 Electron Pet 窗口生效）：量显示器刷新率，决定 Live2D/VRM/MMD 在
+         配置帧率低于刷新率时改用定时器驱动而非 rAF 跳帧。只在本页加载；其它页面不加载
+         即保持原行为。详见 static/frame-pacing.js。 -->
+    <script src="/static/frame-pacing.js?v={{ static_asset_version }}"></script>
     <!-- i18next 加载器（统一处理 CDN 加载和初始化） -->
     <script src="/static/i18n-i18next.js?v={{ static_asset_version }}"></script>
     <script src="/static/common_dialogs.js?v={{ static_asset_version }}"></script>

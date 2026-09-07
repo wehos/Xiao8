@@ -114,6 +114,100 @@ from .staging import (
 )
 
 
+SNAPSHOT_KIND_CHARACTER_COLLECTION = "character_collection"
+SNAPSHOT_KIND_FULL_RUNTIME = "full_runtime"
+CHARACTER_COLLECTION_PROFILE_PATH = "profiles/character_collection.json"
+LEGACY_RUNTIME_PROFILE_PATH = "profiles/characters.json"
+CLOUDSAVE_READER_SCHEMA_VERSION = 2
+_SUPPORTED_SNAPSHOT_KINDS = {
+    SNAPSHOT_KIND_CHARACTER_COLLECTION,
+    SNAPSHOT_KIND_FULL_RUNTIME,
+}
+
+
+def _manifest_schema_version(manifest: dict[str, Any]) -> int:
+    try:
+        return int(manifest.get("schema_version") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def _resolve_snapshot_kind(manifest: dict[str, Any], staged_entries: dict[str, Path]) -> str:
+    """Resolve explicit snapshot semantics and fail safe for legacy manifests.
+
+    Before ``snapshot_kind`` existed, per-character exports did not stage the
+    global payloads but could retain copies from an earlier full export.
+    Treating every ambiguous legacy payload as a character collection is
+    intentionally conservative: a merge can leave extra local data behind,
+    while a mistaken full replacement can erase the owner profile and
+    unrelated character memories.
+    """
+    full_runtime_markers = {
+        "profiles/conversation_settings.json",
+        "catalog/current_character.json",
+    }
+    schema_version = _manifest_schema_version(manifest)
+    snapshot_kind = str(manifest.get("snapshot_kind") or "").strip()
+    # Legacy writers preserve unknown top-level keys while rebuilding the
+    # manifest, so a stale ``full_runtime`` kind can survive a character-only
+    # upload. Those writers reset schema_version to 1; only schema 2+ binds the
+    # kind to writer semantics we understand.
+    if snapshot_kind and schema_version >= 2:
+        if snapshot_kind not in _SUPPORTED_SNAPSHOT_KINDS:
+            raise ValueError(f"unsupported cloudsave snapshot kind: {snapshot_kind}")
+        if (
+            snapshot_kind == SNAPSHOT_KIND_FULL_RUNTIME
+            and not full_runtime_markers <= set(staged_entries)
+        ):
+            raise ValueError("full_runtime cloudsave snapshot is missing required global payloads")
+        return snapshot_kind
+
+    # Legacy full exports and single-character uploads can have identical file
+    # shapes. A character upload rebuilt its manifest from files already on
+    # disk, retaining both global markers from an earlier full export; across
+    # devices, its new sequence can also collide with the retained marker's
+    # sequence. There is therefore no reliable proof that a kind-less manifest
+    # is a full snapshot. Always choose the non-destructive merge semantics.
+    return SNAPSHOT_KIND_CHARACTER_COLLECTION
+
+
+def _validate_manifest_reader_compatibility(manifest: dict[str, Any]) -> None:
+    try:
+        min_reader_schema_version = int(manifest.get("min_reader_schema_version") or 1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid cloudsave minimum reader schema version") from exc
+    if min_reader_schema_version > CLOUDSAVE_READER_SCHEMA_VERSION:
+        raise ValueError(
+            "cloudsave snapshot requires a newer reader schema: "
+            f"{min_reader_schema_version}"
+        )
+
+
+def _has_usable_master_profile(payload: Any) -> bool:
+    return bool(
+        isinstance(payload, dict)
+        and str(payload.get("档案名") or "").strip()
+    )
+
+
+def _runtime_characters_with_safe_master(config_manager) -> dict[str, Any]:
+    runtime_payload = config_manager.load_characters()
+    if not isinstance(runtime_payload, dict):
+        runtime_payload = {}
+    runtime_payload = deepcopy(runtime_payload)
+
+    if not _has_usable_master_profile(runtime_payload.get("主人")):
+        defaults = config_manager.get_default_characters()
+        default_master = defaults.get("主人") if isinstance(defaults, dict) else None
+        if not _has_usable_master_profile(default_master):
+            raise ValueError("default characters payload does not contain a usable master profile")
+        runtime_payload["主人"] = deepcopy(default_master)
+
+    if not isinstance(runtime_payload.get("猫娘"), dict):
+        runtime_payload["猫娘"] = {}
+    return runtime_payload
+
+
 def _assert_single_character_name_safe(character_name: str, *, context: str) -> None:
     audit_result = audit_cloudsave_character_names([character_name])
     try:
@@ -217,19 +311,17 @@ def export_cloudsave_character_unit(config_manager, character_name: str, *, over
 
         staged_entries: dict[str, Path] = {}
         existing_cloud_character_map, _tombstone_names = _load_cloudsave_character_payloads(config_manager)
-        cloud_profiles_payload = _load_json_if_exists(config_manager.cloudsave_profiles_dir / "characters.json")
-        if not isinstance(cloud_profiles_payload, dict):
-            cloud_profiles_payload = {}
-        cloud_profiles_payload = deepcopy(cloud_profiles_payload)
         merged_cloud_character_map = deepcopy(existing_cloud_character_map)
         merged_cloud_character_map[character_name] = deepcopy(character_payload)
-        cloud_profiles_payload["猫娘"] = {
-            name: deepcopy(payload)
-            for name, payload in sorted(merged_cloud_character_map.items())
+        cloud_profiles_payload = {
+            "猫娘": {
+                name: deepcopy(payload)
+                for name, payload in sorted(merged_cloud_character_map.items())
+            },
         }
-        staged_entries["profiles/characters.json"] = _stage_json_file(
+        staged_entries[CHARACTER_COLLECTION_PROFILE_PATH] = _stage_json_file(
             stage_root,
-            "profiles/characters.json",
+            CHARACTER_COLLECTION_PROFILE_PATH,
             cloud_profiles_payload,
         )
 
@@ -305,7 +397,15 @@ def export_cloudsave_character_unit(config_manager, character_name: str, *, over
 
         existing_cloud_memory_root = config_manager.cloudsave_memory_dir / character_name
         existing_cloud_character_root = config_manager.cloudsave_dir / "characters" / character_name
-        delete_targets: set[Path] = set()
+        delete_targets: set[Path] = {
+            path
+            for path in (
+                config_manager.cloudsave_profiles_dir / "characters.json",
+                config_manager.cloudsave_profiles_dir / "conversation_settings.json",
+                config_manager.cloudsave_catalog_dir / "current_character.json",
+            )
+            if path.exists()
+        }
         for base_dir in (existing_cloud_memory_root, existing_cloud_character_root / "memory"):
             if not base_dir.is_dir():
                 continue
@@ -321,9 +421,12 @@ def export_cloudsave_character_unit(config_manager, character_name: str, *, over
 
         mutation_targets = {
             config_manager.cloudsave_profiles_dir / "characters.json",
+            config_manager.cloudsave_profiles_dir / "character_collection.json",
             config_manager.cloudsave_bindings_dir / f"{character_name}.json",
             config_manager.cloudsave_catalog_dir / "catgirls_index.json",
             config_manager.cloudsave_catalog_dir / "character_tombstones.json",
+            config_manager.cloudsave_profiles_dir / "conversation_settings.json",
+            config_manager.cloudsave_catalog_dir / "current_character.json",
             config_manager.cloudsave_dir / "characters" / character_name,
             config_manager.cloudsave_memory_dir / character_name,
             config_manager.cloudsave_manifest_path,
@@ -1061,13 +1164,14 @@ def _rebuild_cloudsave_manifest_from_disk(
     }
     manifest.update(
         {
-            "schema_version": 1,
-            "min_reader_schema_version": 1,
+            "schema_version": 2,
+            "min_reader_schema_version": 2,
             "min_app_version": "",
             "client_id": str(client_id or manifest.get("client_id", "")),
             "device_id": str(manifest.get("device_id", "")),
             "sequence_number": int(sequence_number),
             "exported_at_utc": exported_at,
+            "snapshot_kind": SNAPSHOT_KIND_CHARACTER_COLLECTION,
             "files": files,
         }
     )
@@ -1075,6 +1179,7 @@ def _rebuild_cloudsave_manifest_from_disk(
         client_id=str(manifest.get("client_id", "")),
         sequence_number=int(manifest.get("sequence_number") or 0),
         files=files,
+        snapshot_kind=SNAPSHOT_KIND_CHARACTER_COLLECTION,
     )
     save_cloudsave_manifest(config_manager, manifest)
     return manifest
@@ -1312,13 +1417,14 @@ def export_local_cloudsave_snapshot(
 
         manifest.update(
             {
-                "schema_version": 1,
-                "min_reader_schema_version": 1,
+                "schema_version": 2,
+                "min_reader_schema_version": 2,
                 "min_app_version": "",
                 "client_id": str(cloud_state.get("client_id", "")),
                 "device_id": str(manifest.get("device_id", "")),
                 "sequence_number": sequence_number,
                 "exported_at_utc": exported_at,
+                "snapshot_kind": SNAPSHOT_KIND_FULL_RUNTIME,
                 "files": files,
             }
         )
@@ -1326,6 +1432,7 @@ def export_local_cloudsave_snapshot(
             client_id=manifest["client_id"],
             sequence_number=sequence_number,
             files=files,
+            snapshot_kind=SNAPSHOT_KIND_FULL_RUNTIME,
         )
 
         _assert_deadline_not_exceeded(
@@ -1383,6 +1490,7 @@ def import_local_cloudsave_snapshot(
             stage="prepare_import",
         )
         manifest = load_cloudsave_manifest(config_manager)
+        _validate_manifest_reader_compatibility(manifest)
         manifest_files = manifest.get("files") or {}
         if not isinstance(manifest_files, dict) or not manifest_files:
             raise ValueError("cloudsave manifest does not contain any staged files")
@@ -1407,17 +1515,36 @@ def import_local_cloudsave_snapshot(
             }
             for relative_path, staged_path in sorted(staged_entries.items())
         }
+        schema_version = _manifest_schema_version(manifest)
+        fingerprint_snapshot_kind = (
+            str(manifest.get("snapshot_kind") or "").strip()
+            if schema_version >= 2
+            else ""
+        )
+        manifest_fingerprint = str(manifest.get("fingerprint") or "")
+        if schema_version >= 2 and fingerprint_snapshot_kind and not manifest_fingerprint:
+            raise ValueError("schema 2 cloudsave manifest fingerprint is required")
         computed_fingerprint = _build_manifest_fingerprint(
             client_id=str(manifest.get("client_id", "")),
             sequence_number=int(manifest.get("sequence_number") or 0),
             files=computed_files,
+            snapshot_kind=fingerprint_snapshot_kind,
         )
-        if manifest.get("fingerprint") and manifest["fingerprint"] != computed_fingerprint:
+        if manifest_fingerprint and manifest_fingerprint != computed_fingerprint:
             raise ValueError("cloudsave manifest fingerprint mismatch")
 
-        characters_payload = _load_staged_json_file(staged_entries, "profiles/characters.json", required=True)
-        if not isinstance(characters_payload, dict):
-            raise ValueError("profiles/characters.json must contain a JSON object")
+        snapshot_kind = _resolve_snapshot_kind(manifest, staged_entries)
+        profile_path = (
+            CHARACTER_COLLECTION_PROFILE_PATH
+            if snapshot_kind == SNAPSHOT_KIND_CHARACTER_COLLECTION
+            and CHARACTER_COLLECTION_PROFILE_PATH in staged_entries
+            else LEGACY_RUNTIME_PROFILE_PATH
+        )
+        cloud_characters_payload = _load_staged_json_file(
+            staged_entries, profile_path, required=True,
+        )
+        if not isinstance(cloud_characters_payload, dict):
+            raise ValueError(f"{profile_path} must contain a JSON object")
 
         conversation_settings = _load_staged_json_file(staged_entries, "profiles/conversation_settings.json") or {}
         if not isinstance(conversation_settings, dict):
@@ -1431,38 +1558,75 @@ def import_local_cloudsave_snapshot(
         tombstones = tombstones_state.get("tombstones") or []
         tombstone_names = [tombstone["character_name"] for tombstone in tombstones]
 
-        sensitive_findings = scan_for_sensitive_values(characters_payload, path="profiles.characters")
+        sensitive_findings = scan_for_sensitive_values(cloud_characters_payload, path="profiles.characters")
         if sensitive_findings:
             raise ValueError(f"sensitive values detected in import payload: {', '.join(sensitive_findings)}")
 
-        character_map = deepcopy(characters_payload.get("猫娘") or {})
-        live_character_names = sorted(character_map.keys())
+        snapshot_character_map = deepcopy(cloud_characters_payload.get("猫娘") or {})
+        if not isinstance(snapshot_character_map, dict):
+            raise ValueError(f"{profile_path} 猫娘 must contain a JSON object")
+        live_character_names = sorted(snapshot_character_map.keys())
         name_audit = audit_cloudsave_character_names(live_character_names, tombstone_names)
         _raise_for_name_audit(name_audit, context="import")
 
         catalog_character_names = _parse_catalog_character_names(catalog_index_payload)
         if catalog_character_names and catalog_character_names != set(live_character_names):
-            raise ValueError("catalog/catgirls_index.json is inconsistent with profiles/characters.json")
+            raise ValueError(f"catalog/catgirls_index.json is inconsistent with {profile_path}")
         if binding_payloads and set(binding_payloads) != set(live_character_names):
-            raise ValueError("bindings/ payloads are inconsistent with profiles/characters.json")
+            raise ValueError(f"bindings/ payloads are inconsistent with {profile_path}")
 
         for tombstone_name in tombstone_names:
-            character_map.pop(tombstone_name, None)
-        characters_payload["猫娘"] = character_map
+            snapshot_character_map.pop(tombstone_name, None)
 
-        requested_current_name = str(characters_payload.get("当前猫娘") or "").strip()
+        requested_current_name = str(cloud_characters_payload.get("当前猫娘") or "").strip()
         if isinstance(current_character_catalog_payload, dict):
             catalog_current_name = str(current_character_catalog_payload.get("current_character_name") or "").strip()
             if catalog_current_name:
                 requested_current_name = catalog_current_name
 
-        imported_character_names = sorted(character_map.keys())
-        if requested_current_name and requested_current_name in character_map:
-            characters_payload["当前猫娘"] = requested_current_name
-        elif imported_character_names:
-            characters_payload["当前猫娘"] = imported_character_names[0]
+        applied_character_names = sorted(snapshot_character_map.keys())
+        if snapshot_kind == SNAPSHOT_KIND_CHARACTER_COLLECTION:
+            runtime_characters_path = Path(
+                config_manager.get_runtime_config_path("characters.json")
+            )
+            runtime_characters_existed = runtime_characters_path.is_file()
+            characters_payload = _runtime_characters_with_safe_master(config_manager)
+            merged_character_map = deepcopy(characters_payload.get("猫娘") or {})
+            for tombstone_name in tombstone_names:
+                merged_character_map.pop(tombstone_name, None)
+            merged_character_map.update(snapshot_character_map)
+            characters_payload["猫娘"] = merged_character_map
+
+            local_current_name = str(characters_payload.get("当前猫娘") or "").strip()
+            if (
+                runtime_characters_existed
+                and local_current_name
+                and local_current_name in merged_character_map
+            ):
+                characters_payload["当前猫娘"] = local_current_name
+            elif requested_current_name and requested_current_name in merged_character_map:
+                characters_payload["当前猫娘"] = requested_current_name
+            elif applied_character_names:
+                characters_payload["当前猫娘"] = applied_character_names[0]
+            elif local_current_name and local_current_name in merged_character_map:
+                characters_payload["当前猫娘"] = local_current_name
+            elif merged_character_map:
+                characters_payload["当前猫娘"] = sorted(merged_character_map)[0]
+            else:
+                characters_payload["当前猫娘"] = ""
         else:
-            characters_payload["当前猫娘"] = ""
+            characters_payload = deepcopy(cloud_characters_payload)
+            characters_payload["猫娘"] = snapshot_character_map
+            if not _has_usable_master_profile(characters_payload.get("主人")):
+                safe_runtime_payload = _runtime_characters_with_safe_master(config_manager)
+                characters_payload["主人"] = deepcopy(safe_runtime_payload["主人"])
+
+            if requested_current_name and requested_current_name in snapshot_character_map:
+                characters_payload["当前猫娘"] = requested_current_name
+            elif applied_character_names:
+                characters_payload["当前猫娘"] = applied_character_names[0]
+            else:
+                characters_payload["当前猫娘"] = ""
         apply_time = _utc_now_iso()
         backup_root = config_manager.cloudsave_backups_dir / f"import-{apply_time.replace(':', '').replace('.', '')}"
 
@@ -1475,12 +1639,13 @@ def import_local_cloudsave_snapshot(
             Path(config_manager.get_runtime_config_path("characters.json")): characters_stage_path,
         }
 
-        preferences_stage_path = _stage_json_file(
-            stage_root,
-            "__runtime__/user_preferences.json",
-            _build_runtime_preferences_payload(config_manager, conversation_settings),
-        )
-        runtime_targets[Path(config_manager.get_runtime_config_path("user_preferences.json"))] = preferences_stage_path
+        if snapshot_kind == SNAPSHOT_KIND_FULL_RUNTIME:
+            preferences_stage_path = _stage_json_file(
+                stage_root,
+                "__runtime__/user_preferences.json",
+                _build_runtime_preferences_payload(config_manager, conversation_settings),
+            )
+            runtime_targets[Path(config_manager.get_runtime_config_path("user_preferences.json"))] = preferences_stage_path
 
         memory_entries: list[tuple[str, str, Path]] = []
         for relative_path, staged_path in staged_entries.items():
@@ -1526,7 +1691,7 @@ def import_local_cloudsave_snapshot(
 
         delete_file_targets: set[Path] = set()
         delete_dir_targets: set[Path] = set()
-        for character_name in imported_character_names:
+        for character_name in applied_character_names:
             character_dir = Path(config_manager.memory_dir) / character_name
             for filename in MANAGED_MEMORY_FILENAMES:
                 relative_path = f"memory/{character_name}/{filename}"
@@ -1590,7 +1755,10 @@ def import_local_cloudsave_snapshot(
                     # character's stray marker never will be, however
                     # firmly something holds it.
                     continue
-                if child.name not in imported_character_names:
+                if snapshot_kind == SNAPSHOT_KIND_FULL_RUNTIME:
+                    if child.name not in applied_character_names:
+                        delete_dir_targets.add(child)
+                elif child.name in tombstone_names:
                     delete_dir_targets.add(child)
 
         recent_targets = {
@@ -1598,7 +1766,7 @@ def import_local_cloudsave_snapshot(
             for target_path in set(runtime_targets) | delete_file_targets
             if target_path.name == "recent.json"
         }
-        for character_name in imported_character_names:
+        for character_name in applied_character_names:
             recent_targets.update(
                 list_character_recent_paths(config_manager, character_name)
             )
@@ -1616,7 +1784,7 @@ def import_local_cloudsave_snapshot(
             }
             imported_recent_paths = {
                 recent_path
-                for character_name in imported_character_names
+                for character_name in applied_character_names
                 for recent_path in list_character_recent_paths(
                     config_manager, character_name,
                 )
@@ -1715,11 +1883,12 @@ def import_local_cloudsave_snapshot(
                 # evicting would fence away a staged-but-unflushed snapshot.
                 # Removed names are the opposite case: their directories really
                 # are gone, so they retire.
-                revive_character_runtime_caches(*imported_character_names)
+                revive_character_runtime_caches(*applied_character_names)
                 retire_character_runtime_caches(*removed_character_names)
                 return {
                     "manifest_fingerprint": computed_fingerprint,
-                    "applied_character_count": len(imported_character_names),
+                    "snapshot_kind": snapshot_kind,
+                    "applied_character_count": len(applied_character_names),
                     "name_audit": name_audit,
                 }
             except Exception:

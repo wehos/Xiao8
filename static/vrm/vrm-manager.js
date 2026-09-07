@@ -9,6 +9,10 @@
 const VRM_IDLE_FPS = 30;
 const VRM_INTERACTIVE_FPS_HOLD_MS = 900;
 const VRM_IDLE_FPS_GOVERNOR_INTERVAL_MS = 300;
+// medium 画质隔帧物理允许的最低 tick 频率：2×(1000/40) = 50ms，正好是物理 delta 的防爆 clamp
+const VRM_PHYSICS_FRAME_SKIP_MIN_FPS = 40;
+// 隔帧物理允许的最大步长（秒）：与 renderFrame 里 delta 的 50ms 防爆 clamp 一致
+const VRM_PHYSICS_MAX_STEP_S = 0.05;
 
 const COMPRESSED_BUNDLED_VRMA_NAMES = new Set([
     'liked',
@@ -341,8 +345,13 @@ class VRMManager {
         if (!this._mouseMoveHandler) {
             this._mouseMoveHandler = (event) => {
                 if (!this.isMouseTrackingEnabled()) return;
-                // 供空闲低频 governor 判定"光标最近在动"（legacy 视线跟随路径）
-                this._lastLookAtPointerMoveAt = performance.now();
+                // 供空闲低频 governor 判定"光标最近在动"（legacy 视线跟随路径）。
+                // 坐标没变的重复事件（Electron Pet 的 preload 轮询在光标静止时也会转发）不算，
+                // 否则 VRM 永远降不到空闲帧率。
+                const moved = event.clientX !== this._lastLookAtMouseX || event.clientY !== this._lastLookAtMouseY;
+                this._lastLookAtMouseX = event.clientX;
+                this._lastLookAtMouseY = event.clientY;
+                if (moved) this._lastLookAtPointerMoveAt = performance.now();
                 this._setLookAtTargetByMouse(event.clientX, event.clientY);
             };
             document.addEventListener('mousemove', this._mouseMoveHandler, { passive: true });
@@ -779,21 +788,48 @@ class VRMManager {
                 // low: 仅 lookAt + expressions；medium: 隔帧物理；high: 每帧物理
                 const quality = window.renderQuality || 'medium';
                 if (this.enablePhysics && quality !== 'low') {
-                    // 空闲低频模式下绕过 medium 的隔帧物理：30fps 地板上再隔帧会让
-                    // 弹簧骨物理退化到 15Hz/66.7ms 步长，超出 50ms 防爆 clamp 的设计
-                    // 意图且发丝/裙摆可见抖动；30Hz 全帧物理成本 ≈ medium@60 不变
-                    if (quality === 'medium' && !this._idleTickMode) {
+                    // 30fps 地板上绕过 medium 的隔帧物理：再隔帧会让弹簧骨物理退化到
+                    // 15Hz/66.7ms 步长，超出 50ms 防爆 clamp 的设计意图且发丝/裙摆可见抖动；
+                    // 30Hz 全帧物理成本 ≈ medium@60 不变。判据是 tick 频率而不是「是否定时器
+                    // 驱动」：活动态定时器驱动（45/60fps）仍按 medium 隔帧，物理成本不翻倍。
+                    // 再按实际 delta 兜底：rAF 路径被配置限到 30~39fps、或定时器抖动时，
+                    // 隔帧后的步长 2×delta 超过 50ms clamp 也走全量物理
+                    // 被跳过那一帧的时间累计在 _physicsPendingDelta 里，下一次物理更新把它一起
+                    // 补上；隔帧/全量两种模式之间切换时不丢时间也不重复计时（全量分支同样
+                    // 冲掉累计值并重置奇偶计数，重新进入隔帧模式从"跳过"一帧开始）。
+                    // 换了模型：上一模型残留的累计时间/奇偶计数不能带到新模型
+                    if (this._physicsStateModel !== this.currentModel.vrm) {
+                        this._physicsStateModel = this.currentModel.vrm;
+                        this._physicsFrameSkip = 0;
+                        this._physicsPendingDelta = 0;
+                    }
+                    const pendingDelta = this._physicsPendingDelta || 0;
+                    // 补上累计时间后的步长仍受 50ms 防爆 clamp
+                    const physicsStep = Math.min(delta + pendingDelta, VRM_PHYSICS_MAX_STEP_S);
+                    // 隔帧只在能把弹簧骨物理单独更新时启用；旧版 three-vrm 只有整体 vrm.update(t)，
+                    // 累计步长会一并喂给 lookAt/材质，所以旧版一律每帧 update(delta)
+                    const canSplitPhysics = this._canSplitVrmPhysicsUpdate(this.currentModel.vrm);
+                    if (quality === 'medium' && canSplitPhysics && !this._isLowTickRate() && delta * 2 <= VRM_PHYSICS_MAX_STEP_S) {
                         this._physicsFrameSkip = (this._physicsFrameSkip || 0) + 1;
                         if (this._physicsFrameSkip % 2 === 0) {
-                            this.currentModel.vrm.update(delta * 2);
+                            this._physicsPendingDelta = 0;
+                            this._updateVrmWithPhysicsStep(this.currentModel.vrm, delta, physicsStep);
                         } else {
-                            if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
-                            if (this.currentModel.vrm.expressionManager) this.currentModel.vrm.expressionManager.update(delta);
+                            this._physicsPendingDelta = pendingDelta + delta;
+                            // 跳过的只是弹簧骨物理：其余分量（humanoid / lookAt / 表情 / 约束 / 材质）
+                            // 仍按库顺序每帧推进，受约束的骨骼不会显示上一帧姿态
+                            this._updateVrmWithoutPhysics(this.currentModel.vrm, delta);
                         }
                     } else {
-                        this.currentModel.vrm.update(delta);
+                        this._physicsFrameSkip = 0;
+                        this._physicsPendingDelta = 0;
+                        this._updateVrmWithPhysicsStep(this.currentModel.vrm, delta, physicsStep);
                     }
                 } else {
+                    // 物理关闭 / low 画质：清掉隔帧状态，重新开启时从干净状态起步，
+                    // 不把旧会话的累计时间套到当前（甚至新）模型上
+                    this._physicsFrameSkip = 0;
+                    this._physicsPendingDelta = 0;
                     if (this.currentModel.vrm.lookAt) this.currentModel.vrm.lookAt.update(delta);
                     if (this.currentModel.vrm.expressionManager) this.currentModel.vrm.expressionManager.update(delta);
                 }
@@ -881,7 +917,8 @@ class VRMManager {
             // VMC 启用时使用累计目标时间，避免 144Hz 等非整数倍刷新率
             // 下发送速率退化；关闭时保留原渲染节流行为，隔离功能影响。
             const now = performance.now();
-            const targetFps = typeof window.targetFrameRate === 'number' ? window.targetFrameRate : 60;
+            // 与定时器路径同一套解析：负数/NaN/Infinity 一律按 60，0 = 不限帧
+            const targetFps = this._resolveConfiguredTargetFps();
             if (targetFps > 0) {
                 const frameInterval = 1000 / targetFps;
                 if (window.__NEKO_VMC_ACTIVE__ === true) {
@@ -910,22 +947,103 @@ class VRMManager {
 
     // ═══════ 空闲低频 tick 模式（对齐 live2d-core.js / mmd-core.js 的同名机制）═══════
 
-    _resolveIdleFps() {
+    // 用户配置的目标帧率；负数/非法值一律按 60，0 = 不限帧
+    _resolveConfiguredTargetFps() {
         const raw = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
-        const configured = Number.isFinite(raw) ? raw : 60;
+        return Number.isFinite(raw) && raw >= 0 ? raw : 60;
+    }
+
+    _resolveIdleFps() {
+        const configured = this._resolveConfiguredTargetFps();
         return configured === 0 ? VRM_IDLE_FPS : Math.min(VRM_IDLE_FPS, configured);
     }
 
-    _enterIdleTickMode() {
-        if (this._idleTickMode) return;
+    // 活动态应改用定时器驱动的帧率（Pet 窗口且配置帧率明显低于显示器刷新率时由
+    // frame-pacing.js 给出）；null = 留在 rAF 驱动。非 Pet 页面没有 nekoFramePacing，恒为 null。
+    _resolveActiveTimerTickFps() {
+        const pacing = window.nekoFramePacing;
+        if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
+        const fps = Number(pacing.activeTimerTickFps(this._resolveConfiguredTargetFps()));
+        return Number.isFinite(fps) && fps > 0 ? fps : null;
+    }
+
+    // 分量更新：只有弹簧骨物理吃「当前帧 + 上一跳过帧」的累计步长，LookAt / 表情 / 材质
+    // 仍按当前帧 delta 推进——three-vrm 的 VRM.update(t) 会把 t 一并喂给 lookAt 和 MToon
+    // 材质，直接传累计步长会让视线/材质动画在一帧里多走一倍。顺序与 three-vrm 的
+    // VRM.update 完全一致（VRMCore.update：humanoid → lookAt → 表情；再 约束 → 弹簧骨 → 材质），
+    // 约束/弹簧骨必须在 LookAt 驱动的姿态之后跑，否则拿到的是上一帧的骨骼变换。
+    // 没有分量 API（旧版 three-vrm）时退回整体 update。
+    _canSplitVrmPhysicsUpdate(vrm) {
+        return !!(vrm && vrm.springBoneManager && typeof vrm.springBoneManager.update === 'function');
+    }
+
+    _updateVrmWithPhysicsStep(vrm, delta, physicsStep) {
+        if (this._canSplitVrmPhysicsUpdate(vrm)) {
+            this._updateVrmPoseComponents(vrm, delta);
+            vrm.springBoneManager.update(physicsStep);
+            this._updateVrmMaterials(vrm, delta);
+            return;
+        }
+        vrm.update(physicsStep);
+    }
+
+    // 跳过弹簧骨物理的帧：除 springBoneManager 外的分量全部按当前 delta 推进（库顺序不变）
+    _updateVrmWithoutPhysics(vrm, delta) {
+        this._updateVrmPoseComponents(vrm, delta);
+        this._updateVrmMaterials(vrm, delta);
+    }
+
+    // VRM.update 里弹簧骨之前的部分：humanoid → lookAt → 表情 → 约束
+    _updateVrmPoseComponents(vrm, delta) {
+        if (!vrm) return;
+        if (vrm.humanoid && typeof vrm.humanoid.update === 'function') vrm.humanoid.update();
+        if (vrm.lookAt) vrm.lookAt.update(delta);
+        if (vrm.expressionManager) vrm.expressionManager.update(delta);
+        if (vrm.nodeConstraintManager && typeof vrm.nodeConstraintManager.update === 'function') vrm.nodeConstraintManager.update();
+    }
+
+    // MToon 等材质的逐帧推进（three-vrm VRM.update 的最后一步）；跳过物理的帧也要调
+    _updateVrmMaterials(vrm, delta) {
+        if (!vrm || !Array.isArray(vrm.materials)) return;
+        vrm.materials.forEach((material) => {
+            if (material && typeof material.update === 'function') material.update(delta);
+        });
+    }
+
+    // 当前定时器 tick 频率是否低到不能再隔帧做物理：隔帧后的步长 2×(1000/fps) 必须
+    // 落在 50ms 防爆 clamp 之内，即 fps ≥ 40；再低（含 30 地板、以及 31~39 的非
+    // 标准配置）就每 tick 全量物理。与 _idleTickMode 区分：活动态定时器驱动也置
+    // 该标志，但频率是配置帧率，45/60 仍按 medium 隔帧。
+    _isLowTickRate() {
+        if (!this._idleTickMode) return false;
+        const fps = Number(this._idleTickFps);
+        return !(fps >= VRM_PHYSICS_FRAME_SKIP_MIN_FPS);
+    }
+
+    _enterIdleTickMode(fps) {
+        const requested = Number(fps);
+        const tickFps = Number.isFinite(requested) && requested > 0 ? requested : this._resolveIdleFps();
+        if (this._idleTickMode) {
+            // 已在定时器模式（空闲地板 ↔ 活动态定时器驱动之间切换）：只换周期，不经过 rAF
+            if (this._idleTickFps === tickFps) return;
+            if (this._idleTickTimer) clearInterval(this._idleTickTimer);
+            this._idleTickTimer = this._startTimerTick(tickFps);
+            return;
+        }
         if (!this.renderer || !this.scene || !this.camera) return;
         // 外部已暂停（pauseRendering 后 rAF 链不存在）：不接管
         if (!this._animationFrameId) return;
         this._idleTickMode = true;
         cancelAnimationFrame(this._animationFrameId);
         this._animationFrameId = null;
-        const intervalMs = Math.max(16, Math.round(1000 / Math.max(1, this._resolveIdleFps())));
-        this._idleTickTimer = setInterval(() => {
+        this._idleTickTimer = this._startTimerTick(tickFps);
+    }
+
+    // 定时器驱动的 tick 循环：空闲地板（30）和活动态定时器驱动（配置帧率）共用，只有周期不同。
+    _startTimerTick(fps) {
+        this._idleTickFps = fps;
+        const intervalMs = Math.max(4, Math.round(1000 / Math.max(1, fps)));
+        return setInterval(() => {
             if (!this._idleTickMode) return;
             if (!this.renderer || !this.scene || !this.camera) { this._exitIdleTickMode(false); return; }
             // 外部代码绕过 startAnimateLoop 拉起了 rAF 链：让位
@@ -946,6 +1064,7 @@ class VRMManager {
     _exitIdleTickMode(restartRaf = true) {
         if (!this._idleTickMode) return;
         this._idleTickMode = false;
+        this._idleTickFps = null;
         if (this._idleTickTimer) {
             clearInterval(this._idleTickTimer);
             this._idleTickTimer = null;
@@ -958,9 +1077,27 @@ class VRMManager {
         }
     }
 
+    // 帧率设置变更：有活动按新配置重新升帧；空闲定时器模式按新地板换周期。
+    // rAF 驱动路径每帧自己读 window.targetFrameRate，不需要在这里处理。
+    applyTargetFrameRate() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (this._hasRenderActivity()) {
+            this._boostInteractiveFPS();
+        } else if (this._idleTickMode) {
+            this._enterIdleTickMode(this._resolveIdleFps());
+        }
+    }
+
     // 有交互/活动时升回 rAF 满帧，并安排在 durationMs 后无活动则回落空闲低频
     _boostInteractiveFPS(durationMs = VRM_INTERACTIVE_FPS_HOLD_MS) {
-        this._exitIdleTickMode();
+        const timerFps = this._resolveActiveTimerTickFps();
+        if (timerFps != null) {
+            // Pet 窗口且配置帧率低于刷新率：活动态也留在定时器驱动，只把周期换成配置帧率。
+            // 回到 rAF 只会让 Blink 按刷新率跑主帧再跳掉一半，省不出 CPU/GPU。
+            this._enterIdleTickMode(timerFps);
+        } else {
+            this._exitIdleTickMode();
+        }
         if (this._idleFpsRestoreTimer) clearTimeout(this._idleFpsRestoreTimer);
         // 豁免页：只升频、不安排衰减——衰减会在 governor 缺席时把渲染拖回空闲模式
         if (window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__ === true) {
@@ -986,19 +1123,21 @@ class VRMManager {
         try { if (this.interaction && this.interaction.isDragging) return true; } catch (_) {}
         try {
             const cf = this._cursorFollow;
-            if (cf && typeof cf.isEnabled === 'function' && cf.isEnabled() &&
-                cf._lastPointerMoveAt && (performance.now() - cf._lastPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
+            // 时间戳 0 是合法值（performance.now() 起点），不能用真值判断；但 CursorFollow
+            // 构造/重置时把 _lastPointerMoveAt 置 0 当「尚无指针输入」，要靠 _hasPointerInput 区分
+            if (cf && typeof cf.isEnabled === 'function' && cf.isEnabled() && cf._hasPointerInput === true &&
+                Number.isFinite(cf._lastPointerMoveAt) && (performance.now() - cf._lastPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
-            if (this._lastLookAtPointerMoveAt &&
+            if (Number.isFinite(this._lastLookAtPointerMoveAt) &&
                 (performance.now() - this._lastLookAtPointerMoveAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
-            if (this._lastCameraChangeAt &&
+            if (Number.isFinite(this._lastCameraChangeAt) &&
                 (performance.now() - this._lastCameraChangeAt) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
-            if (this._lastInteractionBoostTs &&
+            if (Number.isFinite(this._lastInteractionBoostTs) &&
                 (performance.now() - this._lastInteractionBoostTs) < VRM_INTERACTIVE_FPS_HOLD_MS) return true;
         } catch (_) {}
         try {
@@ -2118,3 +2257,11 @@ class VRMManager {
 }
 
 window.VRMManager = VRMManager;
+
+// 监听帧率变更事件（与 live2d-core.js 同名事件对齐）
+window.addEventListener('neko-frame-rate-changed', () => {
+    const manager = window.vrmManager;
+    if (manager && typeof manager.applyTargetFrameRate === 'function') {
+        try { manager.applyTargetFrameRate(); } catch (_) {}
+    }
+});

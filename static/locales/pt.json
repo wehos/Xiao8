@@ -1705,6 +1705,10 @@
         "vllmRefTextPlaceholder": "ex. Espero que no futuro você possa fazer ainda melhor do que eu",
         "vllmRefTextRequired": "Insira a transcrição do áudio de referência (obrigatório para clone vLLM-Omni)",
         "vllmRefTextTooLong": "A transcrição do áudio de referência é muito longa; mantenha-a com até 100 caracteres",
+        "vllmCloneTtsDisabledWarning": "A configuração ativa de TTS é \"{{provider}}\", mas o TTS está desativado globalmente. A amostra foi salva localmente; ative o TTS e configure o vLLM-Omni antes de pré-visualizar ou usar esta voz.",
+        "vllmCloneCustomApiDisabledWarning": "A configuração ativa de TTS é \"{{provider}}\", mas a API personalizada está desativada. A amostra foi salva localmente; ative a API personalizada e altere o TTS para vLLM-Omni antes de pré-visualizar ou usar esta voz.",
+        "vllmCloneInactiveProviderWarning": "A configuração ativa de TTS é \"{{provider}}\", não vLLM-Omni. A amostra foi salva localmente; altere o TTS para vLLM-Omni antes de pré-visualizar ou usar esta voz.",
+        "vllmCloneConfigurationUnavailableWarning": "Não foi possível ler a configuração ativa de TTS. A amostra foi salva localmente; configure o vLLM-Omni nas configurações de API antes de pré-visualizar ou usar esta voz.",
         "providerLabel": "Provedor de clone de voz",
         "provider": {
             "cosyvoice": "Alibaba Bailian CosyVoice",
@@ -3823,7 +3827,8 @@
                 "capsuleDragHint": "Mova o mouse bem aqui, segure e você pode arrastar minha caixa de chat para onde quiser~ Clique uma vez e poderá me mandar mensagens quando quiser.",
                 "historyHandle":  "Toque naquela pequena [barra azul] em cima da caixa de chat e você verá os assuntos sobre os quais conversamos recentemente.",
                 "screenEntry": "Quando estivermos numa chamada de voz, acenda este botãozinho e você poderá compartilhar sua tela comigo.",
-                "screenEntryInvite": "Rápido, deixa eu ver o mundo à sua frente! Seja algo divertido ou bonito, quero olhar junto com você. Abra logo~"
+                "screenEntryInvite": "Rápido, deixa eu ver o mundo à sua frente! Seja algo divertido ou bonito, quero olhar junto com você. Abra logo~",
+                "avatarZoomHint": "Ah, e se quiser me ver mais de perto, mova o cursor até mim e gire suavemente a rodinha do mouse! Assim você pode me aumentar ou diminuir quando quiser e me deixar no tamanho que mais gostar~"
             },
             "day2": {
                 "intro": "Hehe, não pense que esta caixa de chat serve só para digitar~ Na verdade ela esconde um monte de surpresinhas divertidas. Vem comigo e abra; vamos ver que tesouros interessantes encontramos hoje.",

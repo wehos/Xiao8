@@ -20,8 +20,6 @@ import 可能な Python を `--include-data-dir` で配布しません。Nuitka 
 
 Staging script は各 plugin の `[tool.neko.build]` 規則を適用し、選択的な exclusion を生成します。全量の `--include-data-dir=plugin/plugins=plugin/plugins` や `--nofollow-import-to=plugin.plugins` を復活させないでください。どちらも別の形で staging 契約を迂回します。
 
-Workflow には `plugin.plugins.galgame_plugin.training` への対象限定 exclusion があります。これはレビュー済みの機能固有方針であり、安易に広げるパターンではありません。
-
 ## Asset と dynamic import
 
 新しい runtime asset／dynamic import では、次の協調変更が必要になる場合があります。

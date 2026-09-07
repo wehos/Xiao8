@@ -648,7 +648,13 @@ export default {
     returnedLines: '返回行数',
     connected: '已连接',
     disconnected: '未连接',
-    connectionFailed: '日志流连接失败'
+    connectionFailed: '日志流连接失败',
+    exportLog: '导出日志压缩包',
+    openLogDirectory: '打开日志目录',
+    exportSuccess: '日志导出成功',
+    exportFailed: '日志导出失败',
+    openDirectoryFailed: '打开目录失败',
+    noLogFileToExport: '没有可导出的日志文件'
   },
   runs: {
     title: '运行记录',

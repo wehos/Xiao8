@@ -1,0 +1,458 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": "清空所有已记录的活动事件",
+      "event_key": "claude_companion.clear_events",
+      "event_type": "plugin_entry",
+      "id": "clear_events",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "清空事件日志",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "获取最近的 Claude Code 活动事件日志",
+      "event_key": "claude_companion.get_events",
+      "event_type": "plugin_entry",
+      "id": "get_events",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 20,
+            "description": "返回的事件数量（默认 20）",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "count",
+        "events"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {},
+          "events": {}
+        },
+        "required": [
+          "count",
+          "events"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "获取事件日志",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "获取 Claude Companion 插件的运行状态",
+      "event_key": "claude_companion.get_status",
+      "event_type": "plugin_entry",
+      "id": "get_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "status",
+        "port",
+        "user_name",
+        "event_count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "event_count": {},
+          "port": {},
+          "status": {},
+          "user_name": {}
+        },
+        "required": [
+          "status",
+          "port",
+          "user_name",
+          "event_count"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "获取状态",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "设置两次推送之间的最小间隔（秒）",
+      "event_key": "claude_companion.set_cooldown",
+      "event_type": "plugin_entry",
+      "id": "set_cooldown",
+      "input_schema": {
+        "properties": {
+          "seconds": {
+            "description": "冷却时间（秒），最小 10",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "设置冷却时间",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "设置 Claude Companion 使用的用户名（默认从 NEKO 配置读取）",
+      "event_key": "claude_companion.set_user_name",
+      "event_type": "plugin_entry",
+      "id": "set_user_name",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "要设置的用户名",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "设置用户名",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "发送一条测试消息给 NEKO 伙伴，验证连接是否正常",
+      "event_key": "claude_companion.test_push",
+      "event_type": "plugin_entry",
+      "id": "test_push",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "测试推送",
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "clear_events": "clear_events",
+    "get_events": "get_events",
+    "get_status": "get_status",
+    "set_cooldown": "set_cooldown",
+    "set_user_name": "set_user_name",
+    "test_push": "test_push"
+  },
+  "handlers": {
+    "claude_companion.clear_events": {
+      "auto_start": false,
+      "description": "清空所有已记录的活动事件",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_events",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "清空事件日志"
+    },
+    "claude_companion.get_events": {
+      "auto_start": false,
+      "description": "获取最近的 Claude Code 活动事件日志",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_events",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 20,
+            "description": "返回的事件数量（默认 20）",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "获取事件日志"
+    },
+    "claude_companion.get_status": {
+      "auto_start": false,
+      "description": "获取 Claude Companion 插件的运行状态",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "获取状态"
+    },
+    "claude_companion.set_cooldown": {
+      "auto_start": false,
+      "description": "设置两次推送之间的最小间隔（秒）",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_cooldown",
+      "input_schema": {
+        "properties": {
+          "seconds": {
+            "description": "冷却时间（秒），最小 10",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "设置冷却时间"
+    },
+    "claude_companion.set_user_name": {
+      "auto_start": false,
+      "description": "设置 Claude Companion 使用的用户名（默认从 NEKO 配置读取）",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_user_name",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "要设置的用户名",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "设置用户名"
+    },
+    "claude_companion.test_push": {
+      "auto_start": false,
+      "description": "发送一条测试消息给 NEKO 伙伴，验证连接是否正常",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "test_push",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "测试推送"
+    },
+    "claude_companion:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "claude_companion:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "claude_companion:plugin_entry:clear_events": {
+      "auto_start": false,
+      "description": "清空所有已记录的活动事件",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_events",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "清空事件日志"
+    },
+    "claude_companion:plugin_entry:get_events": {
+      "auto_start": false,
+      "description": "获取最近的 Claude Code 活动事件日志",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_events",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 20,
+            "description": "返回的事件数量（默认 20）",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "获取事件日志"
+    },
+    "claude_companion:plugin_entry:get_status": {
+      "auto_start": false,
+      "description": "获取 Claude Companion 插件的运行状态",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "获取状态"
+    },
+    "claude_companion:plugin_entry:set_cooldown": {
+      "auto_start": false,
+      "description": "设置两次推送之间的最小间隔（秒）",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_cooldown",
+      "input_schema": {
+        "properties": {
+          "seconds": {
+            "description": "冷却时间（秒），最小 10",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "设置冷却时间"
+    },
+    "claude_companion:plugin_entry:set_user_name": {
+      "auto_start": false,
+      "description": "设置 Claude Companion 使用的用户名（默认从 NEKO 配置读取）",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_user_name",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "要设置的用户名",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "设置用户名"
+    },
+    "claude_companion:plugin_entry:test_push": {
+      "auto_start": false,
+      "description": "发送一条测试消息给 NEKO 伙伴，验证连接是否正常",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "test_push",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "测试推送"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 107242,
+  "source_files": [
+    "__init__.py",
+    "config.json",
+    "hooks.json",
+    "i18n/en.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml",
+    "static/index.html"
+  ],
+  "source_sha256": "7e55d4539949608744df4540600b139cdd72fc235f4dbf1a70285a840558b070"
+}

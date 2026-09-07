@@ -305,12 +305,13 @@ def _signal_second_operation_lock_acquire(
     original_acquire = operation_lock_module._PROCESS_LOCK.acquire
     acquire_calls = 0
 
-    async def _tracked_acquire() -> None:
+    async def _tracked_acquire(deadline: float | None = None) -> None:
         nonlocal acquire_calls
         acquire_calls += 1
         if acquire_calls == 2:
             second_acquire_attempted.set()
-        await original_acquire()
+        # 截止期照原样转发，别在替身里把它吞掉。
+        await original_acquire(deadline)
 
     monkeypatch.setattr(
         operation_lock_module._PROCESS_LOCK,

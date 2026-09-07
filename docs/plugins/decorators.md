@@ -41,7 +41,7 @@ Defines an externally callable entry point.
     llm_result_model=MyResult,   # Pydantic model for result schema
     metadata={"category": "data"}  # Additional metadata
 )
-def process(self, data: str, **_):
+async def process(self, data: str, **_):
     return Ok({"result": data})
 ```
 
@@ -68,28 +68,47 @@ def process(self, data: str, **_):
 Use `**_` only when the handler intentionally accepts extra host-supplied fields. The runtime filters unsupported keyword arguments for handlers with explicit signatures, so it is not mandatory.
 :::
 
+Runtime entries must use `async def`; the host rejects synchronous entry handlers.
+
 ## @lifecycle
 
-Defines lifecycle event handlers.
+Defines optional handlers for startup, shutdown, external configuration changes,
+and process suspension. Use `startup` for initialization; a normal
+`@plugin_entry(auto_start=True)` is not executed when the plugin process starts.
 
 ```python
 @lifecycle(id="startup")
-def on_startup(self, **_):
-    self.logger.info("Starting up...")
+async def on_startup(self, **_):
+    cfg = await self.config.dump()
+    self.timeout = cfg.get("my_settings", {}).get("timeout", 30)
     return Ok({"status": "ready"})
 
 @lifecycle(id="shutdown")
-def on_shutdown(self, **_):
-    self.logger.info("Shutting down...")
+async def on_shutdown(self, **_):
+    session = getattr(self, "session", None)
+    if session:
+        await session.close()
     return Ok({"status": "stopped"})
 
-@lifecycle(id="reload")
-def on_reload(self, **_):
-    self.logger.info("Reloading config...")
-    return Ok({"status": "reloaded"})
+@lifecycle(id="config_change")
+async def on_config_change(self, old_config, new_config, mode):
+    self.timeout = new_config.get("my_settings", {}).get("timeout", 30)
+    return Ok({"status": "config_updated"})
 ```
 
-Valid lifecycle IDs: `startup`, `shutdown`, `reload`, `freeze`, `unfreeze`, `config_change`.
+| Lifecycle ID or action | When it happens | Typical use |
+| --- | --- | --- |
+| `startup` | Plugin process starts | Load config, open connections, prepare resources |
+| `shutdown` | Plugin process stops | Close connections, save state, release resources |
+| Plugin Manager Reload | User clicks Reload | Runs `shutdown`, then starts the process and runs `startup` |
+| `config_change` | Config is changed externally | Apply new settings without a restart |
+| `freeze` / `unfreeze` | Plugin is suspended or resumed | Pause or resume work |
+
+The `reload` lifecycle ID remains accepted for compatibility, but the Plugin
+Manager Reload button restarts the process instead of dispatching it. Updating
+configuration through `await self.ctx.update_own_config(...)` or
+`await self.config.update(...)` also does not dispatch `config_change` back to
+the same process; refresh derived state after the call.
 
 ## @timer_interval
 
@@ -102,13 +121,13 @@ Defines a scheduled task that executes at fixed intervals.
     name="Cleanup Task",
     auto_start=True          # Start automatically (default: True)
 )
-def cleanup(self, **_):
-    # Runs in a separate thread
+async def cleanup(self, **_):
+    # Runs in a dedicated timer thread with its own event loop
     return Ok({"cleaned": True})
 ```
 
 ::: info
-Timer tasks run in separate threads. Exceptions are logged but don't stop the timer.
+Timer tasks must use `async def`. Each timer runs in a separate thread with its own event loop; exceptions are logged but don't stop the timer.
 :::
 
 ## @message
@@ -120,7 +139,7 @@ Defines a handler for messages from the host system.
     id="handle_chat",
     source="chat",           # Filter by message source
 )
-def handle_chat(self, text: str, sender: str, **_):
+async def handle_chat(self, text: str, sender: str, **_):
     return Ok({"handled": True})
 ```
 
@@ -134,7 +153,7 @@ Generic event handler for custom event types.
     id="my_handler",
     kind="hook"
 )
-def custom_handler(self, event_data: str, **_):
+async def custom_handler(self, event_data: str, **_):
     return Ok({"processed": True})
 ```
 
@@ -149,7 +168,7 @@ Specialized event handler with trigger method control.
     trigger_method="message",  # How this event is triggered
     auto_start=False
 )
-def on_refresh(self, source: str, **_):
+async def on_refresh(self, source: str, **_):
     return Ok({"refreshed": True})
 ```
 
@@ -216,7 +235,7 @@ Completely replaces the target entry point.
 
 ```python
 @replace_entry(target="old_entry", priority=0)
-def new_implementation(self, **kwargs):
+async def new_implementation(self, **kwargs):
     return Ok({"replaced": True})
 ```
 
@@ -238,11 +257,11 @@ For cleaner syntax, use the `plugin` namespace object:
 from plugin.sdk.plugin import plugin
 
 @plugin.entry(id="greet", description="Say hello")
-def greet(self, name: str = "World", **_):
+async def greet(self, name: str = "World", **_):
     return Ok({"message": f"Hello, {name}!"})
 
 @plugin.lifecycle(id="startup")
-def on_startup(self, **_):
+async def on_startup(self, **_):
     return Ok({"status": "ready"})
 
 @plugin.hook(target="greet", timing="before")
@@ -250,10 +269,10 @@ def validate(self, *, args, **_):
     pass
 
 @plugin.timer(id="heartbeat", seconds=60)
-def heartbeat(self, **_):
+async def heartbeat(self, **_):
     return Ok({"alive": True})
 
 @plugin.message(id="on_chat", source="chat")
-def on_chat(self, text: str, **_):
+async def on_chat(self, text: str, **_):
     return Ok({"handled": True})
 ```

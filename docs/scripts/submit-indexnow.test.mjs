@@ -48,6 +48,18 @@ test('maps VitePress Markdown source paths to clean production URLs', () => {
     documentationPathToUrl('docs/zh-CN/guide/quick-start.md'),
     `${SITE_ORIGIN}/zh-CN/guide/quick-start`,
   )
+  assert.equal(
+    documentationPathToUrl('docs/plugins/Getting Started with Plugin Development.md'),
+    `${SITE_ORIGIN}/plugins/plugin-development`,
+  )
+  assert.equal(
+    documentationPathToUrl('docs/zh-CN/plugins/插件开发入门文档.md'),
+    `${SITE_ORIGIN}/zh-CN/plugins/plugin-development`,
+  )
+  assert.equal(
+    documentationPathToUrl('docs/ja/plugins/プラグイン開発入門ガイド.md'),
+    `${SITE_ORIGIN}/ja/plugins/plugin-development`,
+  )
   assert.equal(documentationPathToUrl('docs/public/example.md'), null)
   assert.equal(documentationPathToUrl('docs/README_en.md'), null)
   assert.equal(documentationPathToUrl('docs/design/index.md'), null)

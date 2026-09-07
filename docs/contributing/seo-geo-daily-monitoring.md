@@ -1,10 +1,10 @@
 # SEO/GEO 日报与自动监控
 
-`SEO GEO Daily Report` 工作流每天北京时间 08:15 生成同一份 Markdown + JSON artifact；它排在 `.cn` 源仓库 07:45 的排名基线之后。日报遵循 `gingiris-seo-geo-agent` 的四阶段顺序：技术健康 → GSC/GA4 → 排名与 AI 引用 → P0/P1/P2 动作。模板见 [`seo/reports/TEMPLATE.md`](/seo/reports/TEMPLATE)，N.E.K.O 双站适配和完成定义见 [`seo/reports/SKILL-INTEGRATION.md`](/seo/reports/SKILL-INTEGRATION)。
+`SEO GEO Daily Report` GitHub 工作流不再定时启动；它保留 PR 零费用验证和维护者手动付费基线。本地免费日报可按 `gingiris-seo-geo-agent` 的四阶段顺序运行：技术健康 → GSC/GA4 → 排名与 AI 引用 → P0/P1/P2 动作。模板见 [`seo/reports/TEMPLATE.md`](/seo/reports/TEMPLATE)，N.E.K.O 双站适配和完成定义见 [`seo/reports/SKILL-INTEGRATION.md`](/seo/reports/SKILL-INTEGRATION)。
 
-## 每天实际执行什么
+## 手动付费基线实际执行什么
 
-定时任务不是 `auth-check` 或零费用计划，而是一次真实付费基线：
+维护者明确选择 `paid` 后，工作流执行一次真实付费基线：
 
 - `.online en / United States`：19 个英文文档与品类词，Google Organic depth 100，AIO 开启，同时读取搜索量与可用的 KD；
 - `.cn zh-CN / China`：8 个产品主页/功能词，Google Ads Volume + Google Organic depth 100，AIO 开启，跳过不受支持的 Labs KD；
@@ -32,7 +32,7 @@
 | `UNKNOWN` | 没有凭证、artifact 或可验证证据 |
 | `UNSUPPORTED` | 供应商不支持该口径，例如 China KD |
 
-每天的生产门禁要求 **DataForSEO 排名/Volume + 两站 GSC + 两站 GA4 + 两站 IndexNow 执行证据 + 两站技术 SEO** 都不是缺失、失败或部分状态；同时逐字段校验固定 `8 + 19 + 3` 个 observed depth-100 排名、每段/每词采集时间确属上海时区当日日报、Volume 状态、AIO 布尔结果、搜索频率/引用频率汇总、费用、GSC 动态 finalized 最新日/两个 7 日窗口/sitemap 覆盖、两个不同的 GA4 数字 Property/昨日与两个 7 日窗口、IndexNow 的时间/URL 数/响应/artifact，以及首页、robots sitemap 声明、sitemap URL 数、Bing/IndexNow 文件、`lang`、canonical、hreflang、GA4 Measurement ID 和 AI crawler 策略。否则 workflow 会先保留完整诊断 artifact，再明确失败，而不是产生“顶层 complete、正文为空”的绿色日报。
+手动付费基线的生产门禁要求 **DataForSEO 排名/Volume + 两站 GSC + 两站 GA4 + 两站 IndexNow 执行证据 + 两站技术 SEO** 都不是缺失、失败或部分状态；同时逐字段校验固定 `8 + 19 + 3` 个 observed depth-100 排名、每段/每词采集时间确属上海时区当日日报、Volume 状态、AIO 布尔结果、搜索频率/引用频率汇总、费用、GSC 动态 finalized 最新日/两个 7 日窗口/sitemap 覆盖、两个不同的 GA4 数字 Property/昨日与两个 7 日窗口、IndexNow 的时间/URL 数/响应/artifact，以及首页、robots sitemap 声明、sitemap URL 数、Bing/IndexNow 文件、`lang`、canonical、hreflang、GA4 Measurement ID 和 AI crawler 策略。否则 workflow 会先保留完整诊断 artifact，再明确失败，而不是产生“顶层 complete、正文为空”的绿色日报。
 
 ## Repository 配置
 

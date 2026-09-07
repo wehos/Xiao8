@@ -21,6 +21,7 @@
                 ? normalizedOptions.resolveGuideLocale
                 : () => '';
             this.operationHandlers = [];
+            this.day1AvatarZoomOriginalLive2dLocked = null;
             this.registerBuiltInOperations();
         }
 
@@ -343,14 +344,88 @@
             return await director.runTakeoverKeyboardControlSequence(step, performance, director.sceneRunId);
         }
 
+        setDay1AvatarZoomInteractionActive(active) {
+            const director = this.director;
+            const isActive = active === true;
+            if (!director) {
+                return false;
+            }
+
+            if (director.overlay && typeof director.overlay.setInteractionShieldSuppressed === 'function') {
+                director.overlay.setInteractionShieldSuppressed(isActive);
+            }
+            if (typeof director.clearUserCursorRevealSuppression === 'function') {
+                director.clearUserCursorRevealSuppression(true);
+            }
+            if (isActive) {
+                if (typeof director.disableInterrupts === 'function') {
+                    director.disableInterrupts();
+                }
+                if (director.cursor) {
+                    if (typeof director.cursor.cancel === 'function') {
+                        director.cursor.cancel();
+                    }
+                    if (typeof director.cursor.hide === 'function') {
+                        director.cursor.hide();
+                    }
+                }
+            }
+            this.setDay1AvatarZoomModelLocked(isActive);
+
+            if (typeof document !== 'undefined' && document.body) {
+                document.documentElement.classList.toggle('yui-user-cursor-revealed', isActive);
+                document.body.classList.toggle('yui-user-cursor-revealed', isActive);
+            }
+            if (typeof director.syncSystemCursorHidden === 'function') {
+                director.syncSystemCursorHidden(
+                    !isActive,
+                    isActive ? 'day1-avatar-zoom-hint' : 'day1-return-control'
+                );
+            }
+            return true;
+        }
+
+        setDay1AvatarZoomModelLocked(active) {
+            const manager = typeof window !== 'undefined' ? window.live2dManager : null;
+            if (!manager || typeof manager.setLocked !== 'function') {
+                return false;
+            }
+            if (active === true) {
+                if (typeof this.day1AvatarZoomOriginalLive2dLocked !== 'boolean') {
+                    this.day1AvatarZoomOriginalLive2dLocked = manager.isLocked === true;
+                }
+                manager.setLocked(false, { updateFloatingButtons: false });
+                return true;
+            }
+            if (typeof this.day1AvatarZoomOriginalLive2dLocked !== 'boolean') {
+                return false;
+            }
+            manager.setLocked(this.day1AvatarZoomOriginalLive2dLocked, { updateFloatingButtons: false });
+            this.day1AvatarZoomOriginalLive2dLocked = null;
+            return true;
+        }
+
         async runCleanup(scene) {
             const sceneId = scene && typeof scene.id === 'string' ? scene.id : '';
+            const day1RestoreReason = sceneId === 'day1_avatar_zoom_hint'
+                ? 'day1-before-avatar-zoom-hint'
+                : (sceneId === 'day1_takeover_return_control' ? 'day1-return-control' : '');
+            if (sceneId === 'day1_takeover_return_control') {
+                this.setDay1AvatarZoomInteractionActive(false);
+            }
             if (
-                sceneId === 'day1_takeover_return_control'
+                day1RestoreReason
                 && this.director
                 && typeof this.director.restoreDay1TakeoverAgentSwitches === 'function'
             ) {
-                return await this.director.restoreDay1TakeoverAgentSwitches('day1-return-control');
+                const restored = await this.director.restoreDay1TakeoverAgentSwitches(day1RestoreReason);
+                if (sceneId === 'day1_avatar_zoom_hint') {
+                    this.setDay1AvatarZoomInteractionActive(true);
+                }
+                return restored;
+            }
+            if (sceneId === 'day1_avatar_zoom_hint') {
+                this.setDay1AvatarZoomInteractionActive(true);
             }
             return true;
         }

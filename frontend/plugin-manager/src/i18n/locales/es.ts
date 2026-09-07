@@ -648,7 +648,13 @@ export default {
     returnedLines: 'Líneas devueltas',
     connected: 'Conectado',
     disconnected: 'Desconectado',
-    connectionFailed: 'Error de conexión al flujo de registros'
+    connectionFailed: 'Error de conexión al flujo de registros',
+    exportLog: 'Exportar archivo de registros',
+    openLogDirectory: 'Abrir directorio de registros',
+    exportSuccess: 'Registro exportado con éxito',
+    exportFailed: 'Error al exportar el registro',
+    openDirectoryFailed: 'Error al abrir el directorio',
+    noLogFileToExport: 'No hay archivo de registro para exportar'
   },
   runs: {
     title: 'Ejecuciones',

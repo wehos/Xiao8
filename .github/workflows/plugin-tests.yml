@@ -41,8 +41,8 @@ concurrency:
 jobs:
   plugin-pytest:
     name: Plugin pytest (Windows)
-    # windows-latest, not ubuntu: galgame_plugin / study_companion tests
-    # exercise win32 code paths (GetForegroundWindow, window inventory, DPI)
+    # windows-latest, not ubuntu: the plugin suite exercises Windows-specific
+    # win32 code paths (GetForegroundWindow, window inventory, DPI)
     # that FAIL — not skip — on Linux where ctypes.windll does not exist.
     # Windows is also the product's primary desktop platform, so this is the
     # environment the suite was written against. Native-extra cohorts that

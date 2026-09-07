@@ -552,8 +552,10 @@ def _load_cloudsave_character_payloads(config_manager) -> tuple[dict[str, dict[s
     tombstone_names = _load_cloudsave_tombstone_names(config_manager)
     cloud_characters: dict[str, dict[str, Any]] = {}
 
-    characters_payload = _load_json_if_exists(config_manager.cloudsave_profiles_dir / "characters.json")
-    if isinstance(characters_payload, dict):
+    for profile_name in ("characters.json", "character_collection.json"):
+        characters_payload = _load_json_if_exists(config_manager.cloudsave_profiles_dir / profile_name)
+        if not isinstance(characters_payload, dict):
+            continue
         for character_name, character_payload in (characters_payload.get("猫娘") or {}).items():
             if character_name in tombstone_names or not isinstance(character_payload, dict):
                 continue

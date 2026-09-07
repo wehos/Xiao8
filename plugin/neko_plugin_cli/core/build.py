@@ -16,12 +16,47 @@ from .dependencies import (
     validate_source_dependency_layout,
     write_dependency_manifest,
 )
+from .metadata_probe import PACKAGED_METADATA_FILENAME, write_packaged_metadata
 from .plugin_source import load_plugin_source
 from .profile import write_bundle_profile, write_default_profile
 from .toml_utils import escape_string
 
 _SCHEMA_VERSION = "1.0"
 _SAFE_PACKAGE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _record_staged_file(staged_files: list[Path], path: Path | None) -> None:
+    """Append ``path`` unless that file is already staged.
+
+    ``PayloadBuildResult`` only sorts its file list, it does not de-duplicate,
+    so a path staged twice is counted twice.
+    """
+    if path is None:
+        return
+    resolved = path.resolve()
+    if any(existing.resolve() == resolved for existing in staged_files):
+        return
+    staged_files.append(path)
+
+
+def _settle_staged_metadata(
+    staged_files: list[Path], plugin_payload_dir: Path, written: Path | None
+) -> None:
+    """Keep ``staged_files`` describing what is actually in the staging tree.
+
+    A plugin tree can already carry ``plugin.meta.json``, so
+    ``copy_plugin_runtime_files`` lists it before the probe runs. When the probe
+    fails, that stale copy is deleted — and a path that no longer exists makes
+    ``BuildResult._validate_layout`` raise ``FileNotFoundError`` with
+    ``keep_staging=True``, after the archive has already been written (codex).
+    """
+    if written is not None:
+        _record_staged_file(staged_files, written)
+        return
+    removed = (plugin_payload_dir / PACKAGED_METADATA_FILENAME).resolve()
+    staged_files[:] = [
+        path for path in staged_files if path.resolve() != removed
+    ]
 
 
 def _validate_package_id(package_id: str, *, label: str = "package_id") -> str:
@@ -216,6 +251,17 @@ class PluginBuilder:
             plugin_payload_dir,
             rules=build_rules,
         )
+        # 在算 payload_hash 之前写：plugin.meta.json 是包内容的一部分，不能游离在
+        # 完整性校验之外。导不进来的插件拿到 None，包照常出，只是不带元数据。
+        staged_metadata = write_packaged_metadata(
+            source_dir=source.plugin_dir,
+            target_dir=plugin_payload_dir,
+        )
+        # 仓库里的插件目录已经带着 plugin.meta.json，copy_plugin_runtime_files 会
+        # 把它复制过去并记进 staged_files；这里覆盖的是同一个路径，再 append 一次就
+        # 会让 staged_file_count 多算、--keep-staging 重复列出同一个文件（coderabbit）。
+        # 探测失败时那份旧的会被删掉，清单也要跟着少一条（codex）。
+        _settle_staged_metadata(staged_files, plugin_payload_dir, staged_metadata)
         profile_files = write_default_profile(source, paths.profiles_dir)
         write_dependency_manifest([source], paths.payload_dir)
         validate_payload_dependency_layout(paths.payload_dir, [source.plugin_id])
@@ -250,6 +296,11 @@ class PluginBuilder:
                     rules=build_rules,
                 )
             )
+            staged_metadata = write_packaged_metadata(
+                source_dir=source.plugin_dir,
+                target_dir=plugin_payload_dir,
+            )
+            _settle_staged_metadata(staged_files, plugin_payload_dir, staged_metadata)
 
         profile_files = write_bundle_profile(sources, paths.profiles_dir)
         write_dependency_manifest(sources, paths.payload_dir)

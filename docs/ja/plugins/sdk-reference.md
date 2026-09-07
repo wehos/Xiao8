@@ -1,4 +1,4 @@
-# SDK リファレンス
+# プラグイン機能と SDK リファレンス
 
 すべてのプラグイン開発 API は `plugin.sdk.plugin` からインポートします。
 
@@ -54,6 +54,44 @@ class MyPlugin(NekoPluginBase):
 | `self.plugins` | `Plugins` | プラグイン間呼び出しヘルパー |
 | `self.system_info` | `SystemInfo` | ホストシステムのメタデータ |
 
+### よく使う機能
+
+`NekoPluginBase` は、追加設定なしでログと実行時設定を提供します：
+
+```python
+self.logger.info("Processing request: {}", request_id)
+timeout = await self.config.get_int("my_settings.timeout", default=30)
+```
+
+ログは Plugin Manager に表示され、ホストが管理するログディレクトリにも保存されます。ファイルの保存先とローテーション方針はホストが管理します。実行時設定の更新には `await self.ctx.update_own_config(...)` または `await self.config.update(...)` を使い、呼び出し後に設定へ依存する派生状態を更新してください。
+
+データの種類に応じて保存方法を選びます：
+
+| 用途 | API |
+| --- | --- |
+| 小さなキー・バリュー状態 | `[plugin.store]` を有効にして `self.store` を使用 |
+| 構造化された SQLite データ | `[plugin.database]` を有効にして `self.db` を使用 |
+| 任意の永続ファイル | `self.data_path(...)` |
+| 再生成可能なファイル | `self.cache_path(...)` |
+
+```python
+from plugin.sdk.plugin import unwrap
+
+unwrap(await self.store.set("last_query", "weather"))
+
+async with unwrap(await self.db.session()) as session:
+    await session.execute(
+        "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT)"
+    )
+    await session.commit()
+```
+
+プラグインの表示文を翻訳する場合は、`plugin.toml` で `[plugin.i18n]` を設定し、各言語の JSON ファイルを追加してから `self.i18n.t(...)` を使います：
+
+```python
+message = self.i18n.t("greeting", name="Alice")
+```
+
 ### メソッド
 
 #### `report_status(status: dict) -> None`
@@ -94,6 +132,31 @@ if not result["submitted"]:
 `submitted` を正式な判定基準として使用してください。
 
 v1 field（`message_type`、`content`、`delivery`、`reply` および他の legacy alias）は deprecated ですが current source では変換されます。今すぐ移行し、この文書から正確な removal release を保証しないでください。[移行ガイド](./migration-v0.9#push-message-v2)を参照してください。
+
+#### メディアパート
+
+- テキストと画像のパートはホストで処理されます。小さな画像は inline で送れます：
+
+  ```python
+  parts=[{"type": "image", "data": image_bytes, "mime": "image/png"}]
+  ```
+
+- 小さくない画像は host に一時 upload し、返された part を送信してください：
+
+  ```python
+  image_part = await self.ctx.images.upload(image_bytes, mime="image/png")
+  result = self.push_message(
+      source="my_feature",
+      visibility=["chat"],
+      ai_behavior="read",
+      parts=[image_part],
+  )
+  ```
+
+  model への配信では任意の外部画像 URL は受け付けません。この host の一時 upload を使ってください。inline 画像は message plane payload の予算を message 全体と共有しますが、upload 後の part は画像 bytes をその envelope に含めません。lifecycle handler の実行中は plugin command loop が upload response を処理できないため、`ctx.images.upload()` は使用できません。plugin entry、timer、message handler、または custom event handler から呼び出してください。
+- `visibility` はユーザーのチャットまたは HUD への表示を決め、`ai_behavior` はモデルがメッセージを読むか応答するかを独立して決めます。
+- 音声と動画のメッセージパートは現在ホストから配信されません。送信成功を再生・表示の成功として扱わないでください。
+- Hosted UI パネル内ではユーザー向けの音声や動画を再生できますが、ネイティブのチャットまたはモデル経路へのメディア配信ではありません。
 
 #### `data_path(*parts) -> Path`
 

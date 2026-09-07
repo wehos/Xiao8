@@ -1218,6 +1218,9 @@ def test_local_cloudsave_round_trip_restores_runtime_truth(tmp_path):
 
     export_result = export_local_cloudsave_snapshot(cm)
     assert export_result["manifest"]["sequence_number"] == 1
+    assert export_result["manifest"]["schema_version"] == 2
+    assert export_result["manifest"]["min_reader_schema_version"] == 2
+    assert export_result["manifest"]["snapshot_kind"] == "full_runtime"
     assert (cm.cloudsave_dir / "profiles" / "characters.json").is_file()
     assert (cm.cloudsave_dir / "memory" / "小满" / "recent.json").is_file()
     assert (cm.cloudsave_dir / "bindings" / "小满.json").is_file()
@@ -1273,6 +1276,37 @@ def test_local_cloudsave_round_trip_restores_runtime_truth(tmp_path):
     assert cloud_state["next_sequence_number"] == 2
     assert cloud_state["last_applied_manifest_fingerprint"] == export_result["manifest"]["fingerprint"]
     assert cloud_state["last_successful_import_at"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("manifest_update", "error_match"),
+    [
+        ({"snapshot_kind": "character_collection"}, "fingerprint mismatch"),
+        ({"fingerprint": ""}, "fingerprint is required"),
+    ],
+    ids=["kind_tamper", "missing_fingerprint"],
+)
+def test_schema_two_manifest_binds_snapshot_kind_to_fingerprint(
+    tmp_path, manifest_update, error_match,
+):
+    cm = _make_config_manager(tmp_path)
+
+    from utils.cloudsave_runtime import export_local_cloudsave_snapshot, import_local_cloudsave_snapshot
+
+    _write_runtime_state(cm)
+    export_local_cloudsave_snapshot(cm)
+    manifest = json.loads(cm.cloudsave_manifest_path.read_text(encoding="utf-8"))
+    manifest.update(manifest_update)
+    atomic_write_json(
+        cm.cloudsave_manifest_path,
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    with pytest.raises(ValueError, match=error_match):
+        import_local_cloudsave_snapshot(cm)
 
 
 @pytest.mark.unit
@@ -1414,7 +1448,9 @@ def _tamper_manifest_with_memory_key(cm, hostile_key: str, placement_relative_pa
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["files"][hostile_key] = {"sha256": "0" * 64, "size": 2}
     # 攻击场景里 manifest 由存档作者产出，fingerprint 留空即可跳过一致性校验，
-    # 因此路径约束不能依赖 fingerprint 这道闸。
+    # 因此旧版路径约束不能依赖 fingerprint 这道闸。
+    manifest["schema_version"] = 1
+    manifest["min_reader_schema_version"] = 1
     manifest["fingerprint"] = ""
     atomic_write_json(manifest_path, manifest, ensure_ascii=False, indent=2)
 
@@ -2250,7 +2286,7 @@ def test_export_cloudsave_character_unit_updates_only_single_character_scope(tmp
 
     assert result["character_name"] == "小满"
     assert result["detail"]["item"]["relation_state"] == "matched"
-    assert (cm.cloudsave_dir / "profiles" / "characters.json").is_file()
+    assert (cm.cloudsave_dir / "profiles" / "character_collection.json").is_file()
     assert (cm.cloudsave_dir / "bindings" / "小满.json").is_file()
     assert (cm.cloudsave_dir / "memory" / "小满" / "recent.json").is_file()
     assert (cm.cloudsave_dir / "characters" / "小满" / "meta.json").is_file()
@@ -2258,8 +2294,41 @@ def test_export_cloudsave_character_unit_updates_only_single_character_scope(tmp
     assert not (cm.cloudsave_dir / "catalog" / "current_character.json").exists()
 
     manifest_payload = json.loads(cm.cloudsave_manifest_path.read_text(encoding="utf-8"))
+    assert manifest_payload["snapshot_kind"] == "character_collection"
+    assert manifest_payload["schema_version"] == 2
+    assert manifest_payload["min_reader_schema_version"] == 2
     assert "characters/小满/profile.json" in manifest_payload["files"]
-    assert "profiles/characters.json" in manifest_payload["files"]
+    assert "profiles/character_collection.json" in manifest_payload["files"]
+    # Old readers require this monolithic full-runtime path. Omitting it makes
+    # them reject a collection before applying any destructive replacement.
+    assert "profiles/characters.json" not in manifest_payload["files"]
+
+
+@pytest.mark.unit
+def test_character_upload_converts_full_snapshot_to_role_only_scope(tmp_path):
+    cm = _make_config_manager(tmp_path)
+
+    from utils.cloudsave_runtime import export_cloudsave_character_unit, export_local_cloudsave_snapshot
+
+    _write_runtime_state(cm, character_name="小满")
+    export_local_cloudsave_snapshot(cm)
+    assert (cm.cloudsave_profiles_dir / "conversation_settings.json").is_file()
+    assert (cm.cloudsave_catalog_dir / "current_character.json").is_file()
+
+    result = export_cloudsave_character_unit(cm, "小满", overwrite=True)
+
+    profiles = json.loads(
+        (cm.cloudsave_profiles_dir / "character_collection.json").read_text(encoding="utf-8")
+    )
+    assert set(profiles) == {"猫娘"}
+    assert result["manifest"]["snapshot_kind"] == "character_collection"
+    assert "profiles/character_collection.json" in result["manifest"]["files"]
+    assert "profiles/characters.json" not in result["manifest"]["files"]
+    assert "profiles/conversation_settings.json" not in result["manifest"]["files"]
+    assert "catalog/current_character.json" not in result["manifest"]["files"]
+    assert not (cm.cloudsave_profiles_dir / "characters.json").exists()
+    assert not (cm.cloudsave_profiles_dir / "conversation_settings.json").exists()
+    assert not (cm.cloudsave_catalog_dir / "current_character.json").exists()
 
 
 @pytest.mark.unit
@@ -2310,7 +2379,7 @@ def test_single_character_cloudsave_operations_support_embedded_dot_names(tmp_pa
 
 
 @pytest.mark.unit
-def test_single_character_upload_rebuilds_legacy_mirrors_from_sharded_cloud_union(tmp_path):
+def test_single_character_upload_rebuilds_collection_from_sharded_cloud_union(tmp_path):
     source_cm = _make_config_manager(tmp_path / "source")
     target_cm = _make_config_manager(tmp_path / "target")
 
@@ -2345,9 +2414,12 @@ def test_single_character_upload_rebuilds_legacy_mirrors_from_sharded_cloud_unio
 
     export_cloudsave_character_unit(source_cm, "角色A", overwrite=True)
 
-    repaired_profiles = json.loads((source_cm.cloudsave_profiles_dir / "characters.json").read_text(encoding="utf-8"))
+    repaired_profiles = json.loads(
+        (source_cm.cloudsave_profiles_dir / "character_collection.json").read_text(encoding="utf-8")
+    )
     repaired_catalog = json.loads((source_cm.cloudsave_catalog_dir / "catgirls_index.json").read_text(encoding="utf-8"))
     assert set((repaired_profiles.get("猫娘") or {}).keys()) == {"角色A", "角色B"}
+    assert not (source_cm.cloudsave_profiles_dir / "characters.json").exists()
     assert {entry.get("character_name") for entry in repaired_catalog.get("characters") or []} == {"角色A", "角色B"}
 
     shutil.copytree(source_cm.cloudsave_dir, target_cm.cloudsave_dir, dirs_exist_ok=True)
@@ -2355,7 +2427,188 @@ def test_single_character_upload_rebuilds_legacy_mirrors_from_sharded_cloud_unio
     result = import_local_cloudsave_snapshot(target_cm)
 
     assert result["applied_character_count"] == 2
-    assert set((target_cm.load_characters().get("猫娘") or {}).keys()) == {"角色A", "角色B"}
+    assert result["snapshot_kind"] == "character_collection"
+    imported_characters = target_cm.load_characters()
+    assert {"角色A", "角色B"} <= set((imported_characters.get("猫娘") or {}).keys())
+    assert imported_characters["主人"]["档案名"]
+
+
+@pytest.mark.unit
+def test_character_collection_import_preserves_owner_globals_and_unrelated_character(tmp_path):
+    source_cm = _make_config_manager(tmp_path / "source")
+    target_cm = _make_config_manager(tmp_path / "target")
+
+    from utils.cloudsave_runtime import export_cloudsave_character_unit, import_local_cloudsave_snapshot
+
+    _write_runtime_state(source_cm, character_name="云端角色")
+    export_cloudsave_character_unit(source_cm, "云端角色")
+
+    _write_runtime_state(target_cm, character_name="本地角色")
+    target_characters = target_cm.load_characters()
+    target_characters["主人"]["档案名"] = "本地主人"
+    target_characters["当前猫娘"] = "本地角色"
+    target_cm.save_characters(target_characters, bypass_write_fence=True)
+    target_preferences_path = Path(target_cm.get_runtime_config_path("user_preferences.json"))
+    target_preferences_path.parent.mkdir(parents=True, exist_ok=True)
+    target_preferences_path.write_text('[{"local_global":"keep"}]', encoding="utf-8")
+    unrelated_recent = Path(target_cm.memory_dir) / "本地角色" / "recent.json"
+    unrelated_recent_before = unrelated_recent.read_bytes()
+
+    shutil.copytree(source_cm.cloudsave_dir, target_cm.cloudsave_dir, dirs_exist_ok=True)
+    result = import_local_cloudsave_snapshot(target_cm)
+
+    imported_characters = target_cm.load_characters()
+    assert result["snapshot_kind"] == "character_collection"
+    assert imported_characters["主人"]["档案名"] == "本地主人"
+    assert imported_characters["当前猫娘"] == "本地角色"
+    assert {"本地角色", "云端角色"} <= set(imported_characters["猫娘"])
+    assert json.loads(target_preferences_path.read_text(encoding="utf-8")) == [
+        {"local_global": "keep"},
+    ]
+    assert unrelated_recent.read_bytes() == unrelated_recent_before
+    assert (Path(target_cm.memory_dir) / "云端角色" / "recent.json").is_file()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("marker_sequence", [None, "invalid"], ids=["collision", "malformed"])
+def test_legacy_snapshot_without_kind_uses_merge_semantics(tmp_path, marker_sequence):
+    source_cm = _make_config_manager(tmp_path / "source")
+    target_cm = _make_config_manager(tmp_path / "target")
+
+    from utils.cloudsave_runtime import export_local_cloudsave_snapshot, import_local_cloudsave_snapshot
+
+    _write_runtime_state(source_cm, character_name="云端角色")
+    export_local_cloudsave_snapshot(source_cm)
+    manifest = json.loads(source_cm.cloudsave_manifest_path.read_text(encoding="utf-8"))
+    marker_payload = json.loads(
+        (source_cm.cloudsave_catalog_dir / "current_character.json").read_text(encoding="utf-8")
+    )
+    manifest.pop("snapshot_kind", None)
+    manifest["schema_version"] = 1
+    manifest["min_reader_schema_version"] = 1
+    if marker_sequence is None:
+        assert int(marker_payload["entry_sequence_number"]) == int(manifest["sequence_number"])
+        from utils.cloudsave_runtime.staging import _build_manifest_fingerprint
+
+        manifest["fingerprint"] = _build_manifest_fingerprint(
+            client_id=str(manifest.get("client_id") or ""),
+            sequence_number=int(manifest.get("sequence_number") or 0),
+            files=manifest["files"],
+        )
+    else:
+        marker_payload["entry_sequence_number"] = marker_sequence
+        atomic_write_json(
+            source_cm.cloudsave_catalog_dir / "current_character.json",
+            marker_payload,
+            ensure_ascii=False,
+            indent=2,
+        )
+        manifest["fingerprint"] = ""
+    atomic_write_json(
+        source_cm.cloudsave_manifest_path,
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    _write_runtime_state(target_cm, character_name="本地角色")
+    target_characters = target_cm.load_characters()
+    target_characters["主人"]["档案名"] = "本地主人"
+    target_cm.save_characters(target_characters, bypass_write_fence=True)
+    unrelated_recent = Path(target_cm.memory_dir) / "本地角色" / "recent.json"
+    unrelated_recent_before = unrelated_recent.read_bytes()
+
+    shutil.copytree(source_cm.cloudsave_dir, target_cm.cloudsave_dir, dirs_exist_ok=True)
+    result = import_local_cloudsave_snapshot(target_cm)
+
+    imported_characters = target_cm.load_characters()
+    assert result["snapshot_kind"] == "character_collection"
+    assert imported_characters["主人"]["档案名"] == "本地主人"
+    assert {"本地角色", "云端角色"} <= set(imported_characters["猫娘"])
+    assert unrelated_recent.read_bytes() == unrelated_recent_before
+
+
+@pytest.mark.unit
+def test_schema_one_stale_full_kind_uses_merge_semantics(tmp_path):
+    source_cm = _make_config_manager(tmp_path / "source")
+    target_cm = _make_config_manager(tmp_path / "target")
+
+    from utils.cloudsave_runtime import export_local_cloudsave_snapshot, import_local_cloudsave_snapshot
+    from utils.cloudsave_runtime.staging import _build_manifest_fingerprint
+
+    _write_runtime_state(source_cm, character_name="云端角色")
+    export_local_cloudsave_snapshot(source_cm)
+    manifest = json.loads(source_cm.cloudsave_manifest_path.read_text(encoding="utf-8"))
+    assert manifest["snapshot_kind"] == "full_runtime"
+    manifest["schema_version"] = 1
+    manifest["min_reader_schema_version"] = 1
+    manifest["fingerprint"] = _build_manifest_fingerprint(
+        client_id=str(manifest.get("client_id") or ""),
+        sequence_number=int(manifest.get("sequence_number") or 0),
+        files=manifest["files"],
+    )
+    atomic_write_json(
+        source_cm.cloudsave_manifest_path,
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    _write_runtime_state(target_cm, character_name="本地角色")
+    target_characters = target_cm.load_characters()
+    target_characters["主人"]["档案名"] = "本地主人"
+    target_cm.save_characters(target_characters, bypass_write_fence=True)
+    unrelated_recent = Path(target_cm.memory_dir) / "本地角色" / "recent.json"
+    unrelated_recent_before = unrelated_recent.read_bytes()
+
+    shutil.copytree(source_cm.cloudsave_dir, target_cm.cloudsave_dir, dirs_exist_ok=True)
+    result = import_local_cloudsave_snapshot(target_cm)
+
+    imported_characters = target_cm.load_characters()
+    assert result["snapshot_kind"] == "character_collection"
+    assert imported_characters["主人"]["档案名"] == "本地主人"
+    assert {"本地角色", "云端角色"} <= set(imported_characters["猫娘"])
+    assert unrelated_recent.read_bytes() == unrelated_recent_before
+
+
+@pytest.mark.unit
+def test_legacy_character_collection_repairs_missing_owner_without_replacing_roles(tmp_path):
+    source_cm = _make_config_manager(tmp_path / "source")
+    target_cm = _make_config_manager(tmp_path / "target")
+
+    from utils.cloudsave_runtime import export_cloudsave_character_unit, import_local_cloudsave_snapshot
+    from utils.cloudsave_runtime.staging import _build_manifest_fingerprint
+
+    _write_runtime_state(source_cm, character_name="云端角色")
+    export_cloudsave_character_unit(source_cm, "云端角色")
+    manifest = json.loads(source_cm.cloudsave_manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("snapshot_kind", None)
+    manifest["schema_version"] = 1
+    manifest["min_reader_schema_version"] = 1
+    manifest["fingerprint"] = _build_manifest_fingerprint(
+        client_id=str(manifest.get("client_id") or ""),
+        sequence_number=int(manifest.get("sequence_number") or 0),
+        files=manifest["files"],
+    )
+    atomic_write_json(
+        source_cm.cloudsave_manifest_path,
+        manifest,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    _write_runtime_state(target_cm, character_name="本地角色")
+    broken_characters = target_cm.load_characters()
+    broken_characters.pop("主人", None)
+    target_cm.save_characters(broken_characters, bypass_write_fence=True)
+    shutil.copytree(source_cm.cloudsave_dir, target_cm.cloudsave_dir, dirs_exist_ok=True)
+
+    result = import_local_cloudsave_snapshot(target_cm)
+
+    repaired_characters = target_cm.load_characters()
+    assert result["snapshot_kind"] == "character_collection"
+    assert repaired_characters["主人"]["档案名"]
+    assert {"本地角色", "云端角色"} <= set(repaired_characters["猫娘"])
 
 
 @pytest.mark.unit
@@ -3341,7 +3594,7 @@ def test_cloud_export_rejects_redirected_recent_snapshot(tmp_path):
 
 
 @pytest.mark.unit
-def test_standard_data_candidates_on_unix_platforms(tmp_path):
+def test_standard_data_candidates_on_unix_platforms(tmp_path, real_root_resolution):
     from utils.config_manager import ConfigManager
 
     fake_home = tmp_path / "home"

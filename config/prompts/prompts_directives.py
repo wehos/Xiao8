@@ -78,6 +78,7 @@ ban-topic regex vs. negative-keyword scan
 from __future__ import annotations
 
 import re
+import threading
 import unicodedata
 from typing import List, Tuple
 
@@ -1888,11 +1889,45 @@ _PATTERNS_RAW: List[Tuple[str, str, str]] = [
 ]
 
 
-# 编译期一次性 compile，运行时直接复用。
-DIRECTIVE_PATTERNS: List[Tuple[str, str, "re.Pattern[str]"]] = [
-    (locale, kind, re.compile(raw, re.IGNORECASE | re.UNICODE))
-    for locale, kind, raw in _PATTERNS_RAW
-]
+# 惰性 compile，不在 import 时做。
+#
+# 这 21 条模板里有 4 条各约 51 KB 正则源码，合计 209 KB；模块级 compile 实测
+# 294-298 ms。而这个模块坐在 memory_server 的 eager 导入链上
+# （app/__init__.py -> app/runtime_bindings.py -> memory.user_directives），
+# memory_server 又是 merged 模式下第一个被 import 的 app 模块。uvicorn 先
+# await lifespan.startup() 再 create_server()，所以这段时间全花在**端口还不存在**
+# 的阶段——用户那边是 connection-refused，不是"慢"。
+#
+# 真正需要它的是用户开口之后的指令抽取。改成首次访问时才编译，并在
+# utils/module_warmup.py 的预热表里登记，服务 ready 之后由后台线程提前编好，
+# 首次真实抽取也不用等——与那几个 LLM SDK 的处理同构。
+_DIRECTIVE_PATTERNS_CACHE: List[Tuple[str, str, "re.Pattern[str]"]] | None = None
+_DIRECTIVE_PATTERNS_LOCK = threading.Lock()
+
+
+def _directive_patterns() -> List[Tuple[str, str, "re.Pattern[str]"]]:
+    global _DIRECTIVE_PATTERNS_CACHE
+
+    cached = _DIRECTIVE_PATTERNS_CACHE
+    if cached is None:
+        with _DIRECTIVE_PATTERNS_LOCK:
+            if _DIRECTIVE_PATTERNS_CACHE is None:
+                # 整列表建好再赋值：别的线程要么看到 None、要么看到完整的一份，
+                # 不会读到编译到一半的列表。
+                _DIRECTIVE_PATTERNS_CACHE = [
+                    (locale, kind, re.compile(raw, re.IGNORECASE | re.UNICODE))
+                    for locale, kind, raw in _PATTERNS_RAW
+                ]
+            cached = _DIRECTIVE_PATTERNS_CACHE
+    return cached
+
+
+def __getattr__(name: str) -> object:
+    # DIRECTIVE_PATTERNS 是这个模块的公开名字（测试和外部都按名字取），保持可用；
+    # 只是取它的那一刻才付编译代价。PEP 562 对 `from ... import X` 同样生效。
+    if name == "DIRECTIVE_PATTERNS":
+        return _directive_patterns()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def extract_directives(text: str) -> List[Tuple[str, str, str]]:
@@ -1917,7 +1952,7 @@ def extract_directives(text: str) -> List[Tuple[str, str, str]]:
     # 过滤器就只看得到第一条那个**不重叠**的区间，于是 ``股票就`` 逃过一劫（codex P2）。
     out: List[Tuple[str, str, str]] = []
     spans: List[Tuple[int, int]] = []
-    for locale, kind, pat in DIRECTIVE_PATTERNS:
+    for locale, kind, pat in _directive_patterns():
         # 同上：不手写 startswith("zh")，走公共的 fallback-family 判定。
         zh_family = prompt_locale_fallback_key(locale) == "zh"
         # ⚠️ 不能直接 finditer：日文守卫否掉一条命中之后，那整段区间已经被消费掉了，
@@ -2886,3 +2921,16 @@ def scan_negative_keywords(message: str, lang: str = "zh") -> bool:
         if kw.lower() in lower:
             return True
     return False
+
+
+# `from ... import *` 不经过 __getattr__。没有 __all__ 时 Python 直接枚举模块全局量，
+# 于是 DIRECTIVE_PATTERNS 改成惰性之后会从通配导入里**静默消失**，下游再用就是
+# NameError（codex）。声明 __all__ 把它显式列回去：有 __all__ 时 import * 逐名
+# getattr，惰性访问器照常触发。
+#
+# 其余名字按"此刻实际存在的公开全局量"原样算出来，而不是手写一张清单——这个模块
+# 没有 __all__ 时的历史行为就是"所有不以下划线开头的模块级名字"，手写会顺手收窄
+# 通配面，而收窄了谁也不会发现。必须留在文件末尾，globals() 才是全的。
+__all__ = sorted(
+    {name for name in globals() if not name.startswith("_")} | {"DIRECTIVE_PATTERNS"}
+)

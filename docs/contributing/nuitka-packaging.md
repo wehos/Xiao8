@@ -19,8 +19,6 @@ Current desktop workflows run:
 
 The staging script applies each plugin's `[tool.neko.build]` rules and generates selective exclusions. Do not restore blanket `--include-data-dir=plugin/plugins=plugin/plugins` or blanket `--nofollow-import-to=plugin.plugins`; both bypass the staged contract in different ways.
 
-The workflow has a targeted exclusion for `plugin.plugins.galgame_plugin.training`. Treat such exclusions as reviewed, feature-specific policy, not a pattern to broaden.
-
 ## Assets and dynamic imports
 
 A new runtime asset or dynamic import may require coordinated updates to:

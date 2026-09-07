@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -97,6 +98,82 @@ def test_prepare_and_install_plugins_apply_neko_build_rules(tmp_path: Path) -> N
     assert not (destination / ".nuitka-stage.json").exists()
 
 
+def test_prepare_skips_plugin_directory_missing_plugin_toml(tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    plugins_root = project_root / "plugin" / "plugins"
+    _write(project_root / "launcher.py")
+    _write(plugins_root / "demo" / "plugin.toml", '[plugin]\nid = "demo"\n')
+    _write(plugins_root / "demo" / "runtime.py")
+    # A plugin dropped from the index leaves its __pycache__ behind; the husk
+    # used to reach the payload and trip the dist gate at the end of the build.
+    _write(plugins_root / "husk" / "__pycache__" / "runtime.pyc")
+
+    result = prepare_plugins(
+        project_root=project_root,
+        plugins_root=Path("plugin") / "plugins",
+        stage_dir=Path("build") / "stage",
+        source_launcher=Path("launcher.py"),
+        generated_launcher=Path("build") / "launcher_gen.py",
+    )
+
+    assert result.plugin_dirs == ("demo",)
+    assert not (result.stage_dir / "husk").exists()
+    assert "husk/ (missing plugin.toml)" in result.skipped_entries
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is required")
+def test_prepare_skips_entries_absent_from_the_git_index(tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    plugins_root = project_root / "plugin" / "plugins"
+    _write(project_root / "launcher.py")
+    _write(plugins_root / "__init__.py")
+    _write(plugins_root / "_shared" / "helper.py")
+    _write(plugins_root / "demo" / "plugin.toml", '[plugin]\nid = "demo"\n')
+    _write(plugins_root / "demo" / "runtime.py")
+    # Complete, loadable and local-only: a private experiment, or a plugin that
+    # moved to the marketplace.  Only the index separates it from a built-in.
+    _write(plugins_root / "local_only" / "plugin.toml", '[plugin]\nid = "local_only"\n')
+    _write(plugins_root / "local_only" / "runtime.py")
+    _write(plugins_root / "scratch.txt")
+
+    subprocess.run(["git", "init"], cwd=project_root, check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "add",
+            "launcher.py",
+            "plugin/plugins/__init__.py",
+            "plugin/plugins/_shared",
+            "plugin/plugins/demo",
+        ],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+    )
+
+    result = prepare_plugins(
+        project_root=project_root,
+        plugins_root=Path("plugin") / "plugins",
+        stage_dir=Path("build") / "stage",
+        source_launcher=Path("launcher.py"),
+        generated_launcher=Path("build") / "launcher_gen.py",
+    )
+
+    assert result.plugin_dirs == ("_shared", "demo")
+    assert not (result.stage_dir / "local_only").exists()
+    assert not (result.stage_dir / "scratch.txt").exists()
+    assert (result.stage_dir / "demo" / "runtime.py").is_file()
+    assert (result.stage_dir / "_shared" / "helper.py").is_file()
+    assert (result.stage_dir / "__init__.py").is_file()
+    assert set(result.skipped_entries) == {
+        "local_only/ (untracked by git)",
+        "scratch.txt (untracked by git)",
+    }
+    manifest_path = result.stage_dir.parent / "nuitka-plugin-stage.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["skipped_entries"] == sorted(result.skipped_entries)
+
+
 def test_prepare_keeps_shared_plugin_runtime_directory(tmp_path: Path) -> None:
     project_root = tmp_path / "repo"
     _write(project_root / "launcher.py", "pass\n")
@@ -153,35 +230,42 @@ def test_dist_check_matches_stage_and_allows_shared_directory(tmp_path: Path) ->
     assert "unstaged file" in issues[0]
 
 
-def test_nuitka_dist_rejects_marketplace_only_plugin(tmp_path: Path) -> None:
+@pytest.mark.parametrize("plugin_id", sorted(_MARKETPLACE_ONLY_PLUGIN_IDS))
+def test_nuitka_dist_rejects_marketplace_only_plugin(
+    tmp_path: Path,
+    plugin_id: str,
+) -> None:
     dist_root = tmp_path / "dist"
     _write(
         dist_root / "plugin" / "plugins" / "demo" / "plugin.toml",
         '[plugin]\nid = "demo"\n',
     )
     _write(
-        dist_root / "plugin" / "plugins" / "neko_warthunder" / "plugin.toml",
-        '[plugin]\nid = "neko_warthunder"\n',
+        dist_root / "plugin" / "plugins" / plugin_id / "plugin.toml",
+        f'[plugin]\nid = "{plugin_id}"\n',
     )
 
     issues = _check_plugin_tomls(dist_root)
 
     assert issues == [
-        "marketplace-only plugin bundled: plugin/plugins/neko_warthunder"
+        f"marketplace-only plugin bundled: plugin/plugins/{plugin_id}"
     ]
 
 
+@pytest.mark.parametrize("plugin_id", sorted(_MARKETPLACE_ONLY_PLUGIN_IDS))
 def test_nuitka_dist_rejects_marketplace_only_manifest_id_after_directory_rename(
     tmp_path: Path,
+    plugin_id: str,
 ) -> None:
     dist_root = tmp_path / "dist"
+    renamed_dir = f"renamed_{plugin_id}"
     _write(
-        dist_root / "plugin" / "plugins" / "renamed_war_thunder" / "plugin.toml",
-        '[plugin]\nid = "neko_warthunder"\n',
+        dist_root / "plugin" / "plugins" / renamed_dir / "plugin.toml",
+        f'[plugin]\nid = "{plugin_id}"\n',
     )
 
     assert _check_plugin_tomls(dist_root) == [
-        "marketplace-only plugin bundled: plugin/plugins/renamed_war_thunder"
+        f"marketplace-only plugin bundled: plugin/plugins/{renamed_dir}"
     ]
 
 
@@ -239,7 +323,6 @@ def test_desktop_workflows_use_filtered_plugin_stage() -> None:
         assert "--include-data-dir=plugin/plugins=plugin/plugins" not in workflow
         assert 'NUITKA_OPTS="$NUITKA_OPTS --nofollow-import-to=plugin.plugins"' not in workflow
         assert "set NUITKA_OPTS=%NUITKA_OPTS% --nofollow-import-to=plugin.plugins" not in workflow_lines
-        assert "--nofollow-import-to=plugin.plugins.galgame_plugin.training" in workflow
 
 
 def test_prepare_helper_is_directly_executable_without_pythonpath(tmp_path: Path) -> None:

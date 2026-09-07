@@ -10,6 +10,16 @@ const BACKEND_TARGET = process.env.VITE_BACKEND_URL || 'http://localhost:48916'
 const isVitest = process.env.VITEST === 'true'
 const elementPlusImportStyle = isVitest ? false : 'css'
 
+// 提取代理目标的 hostname 用于运行时检测
+// 当 API_BASE_URL 为空（通过 Vite 代理）时，前端需要知道代理目标是本地还是远程
+let PROXY_TARGET_HOSTNAME = 'localhost'
+try {
+  PROXY_TARGET_HOSTNAME = new URL(BACKEND_TARGET).hostname
+} catch {
+  // 解析失败，假定为本地
+  PROXY_TARGET_HOSTNAME = 'localhost'
+}
+
 // 组件测试普遍用 `app.component('el-tabs', stub)` 之类的全局桩替掉 Element Plus，
 // 断言再去查桩渲染出的标记（如 data-tab-name）。ElementPlusResolver 会把模板里的
 // <el-tabs> 编译成显式 `import { ElTabs } from 'element-plus'`，直接绕过全局注册，
@@ -26,6 +36,10 @@ const autoImportComponents = isVitest
 // https://vite.dev/config/
 export default defineConfig({
   base: '/ui/',
+  define: {
+    // 注入代理目标的 hostname，用于运行时检测本地/远程后端
+    __VITE_PROXY_TARGET_HOSTNAME__: JSON.stringify(PROXY_TARGET_HOSTNAME)
+  },
   plugins: [
     vue(),
     ...autoImportComponents,

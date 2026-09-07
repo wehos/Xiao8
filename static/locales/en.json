@@ -1705,6 +1705,10 @@
         "vllmRefTextPlaceholder": "e.g. I hope you can do even better than me in the future",
         "vllmRefTextRequired": "Please enter the reference audio transcript (required for vLLM-Omni clone)",
         "vllmRefTextTooLong": "Reference audio transcript is too long; please keep it within 100 characters",
+        "vllmCloneTtsDisabledWarning": "The active TTS setting is \"{{provider}}\", but TTS is globally disabled. The sample was saved locally; enable TTS and configure vLLM-Omni before previewing or using this voice.",
+        "vllmCloneCustomApiDisabledWarning": "The active TTS setting is \"{{provider}}\", but Custom API is disabled. The sample was saved locally; enable Custom API and switch TTS to vLLM-Omni before previewing or using this voice.",
+        "vllmCloneInactiveProviderWarning": "The active TTS setting is \"{{provider}}\", not vLLM-Omni. The sample was saved locally; switch TTS to vLLM-Omni before previewing or using this voice.",
+        "vllmCloneConfigurationUnavailableWarning": "The active TTS setting could not be read. The sample was saved locally; configure vLLM-Omni in API Settings before previewing or using this voice.",
         "providerLabel": "Voice Clone Provider",
         "provider": {
             "cosyvoice": "Alibaba Bailian CosyVoice",
@@ -3823,7 +3827,8 @@
                 "capsuleDragHint": "Move your mouse right here, hold it down, and you can drag my chat box anywhere you want~ Click it once and you can send me messages anytime!",
                 "historyHandle":  "Poke that little [blue bar] on top of the chat box, and you'll see the topics we talked about recently!",
                 "screenEntry": "When we're on a voice call, light up this little button, and you can share your screen with me!",
-                "screenEntryInvite": "Hurry up and let me see the world in front of you! Whether it's something fun or something beautiful, I want to look at it with you. Open it up quickly~"
+                "screenEntryInvite": "Hurry up and let me see the world in front of you! Whether it's something fun or something beautiful, I want to look at it with you. Open it up quickly~",
+                "avatarZoomHint": "Oh, and if you'd like a closer look at me, move your cursor over me and gently scroll the mouse wheel! You can make me bigger or smaller anytime and set me to just the size you like~"
             },
             "day2": {
                 "intro": "Hehe, don't think this chat box is just for typing~ It actually hides tons of super fun little surprises inside! Follow me and open it up, let's see what interesting treasures we can dig up today!",

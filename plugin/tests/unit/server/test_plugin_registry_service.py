@@ -18,6 +18,37 @@ class _AliveHost:
         return True
 
 
+def _write_packaged_metadata_fixture(plugin_dir: Path, *, entry_ids: list[str]) -> None:
+    """Write the ``plugin.meta.json`` a real ``neko-plugin build`` would ship."""
+    import json
+
+    from plugin.server.infrastructure import packaged_metadata
+
+    payload = {
+        "schema_version": packaged_metadata.PACKAGED_METADATA_SCHEMA_VERSION,
+        "sdk_version": packaged_metadata.SDK_VERSION,
+        "source_sha256": packaged_metadata.compute_source_sha256(plugin_dir),
+        "source_files": packaged_metadata.source_file_names(plugin_dir)[0],
+        "source_bytes": packaged_metadata.source_stat_summary(plugin_dir).total_bytes,
+        "entries": [
+            {
+                "id": entry_id,
+                "name": entry_id.capitalize(),
+                "description": "",
+                "input_schema": {"type": "object", "properties": {}},
+            }
+            for entry_id in entry_ids
+        ],
+        # v3 一定会写这三张表，缺哪张都算包坏了。
+        "handlers": {},
+        "entry_methods": {},
+        "entries_config_sha256": packaged_metadata.entries_config_digest({}, {}),
+    }
+    (plugin_dir / packaged_metadata.PACKAGED_METADATA_FILENAME).write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+
 def _write_plugin_fixture(tmp_path: Path, plugin_id: str) -> Path:
     root = tmp_path / "plugins"
     plugin_dir = root / plugin_id
@@ -54,6 +85,9 @@ def _write_plugin_fixture(tmp_path: Path, plugin_id: str) -> Path:
         ),
         encoding="utf-8",
     )
+    # 打包过的插件带着自己的元数据，宿主刷新时读的就是它。夹具不写这份文件的话，
+    # 注册表里本来就看不到任何入口——刷新不再 import 插件去问。
+    _write_packaged_metadata_fixture(plugin_dir, entry_ids=["ping"])
     return root
 
 
@@ -172,6 +206,7 @@ async def test_refresh_registry_syncs_metadata_and_marks_missing_running_plugin(
         with module.state.acquire_plugins_read_lock():
             demo_meta = dict(module.state.plugins["demo_plugin"])
             running_removed = dict(module.state.plugins["running_removed"])
+            assert "demo_plugin_1" not in module.state.plugins
 
         assert demo_meta["runtime_enabled"] is True
         assert demo_meta["runtime_auto_start"] is False
@@ -437,10 +472,15 @@ async def test_refresh_registry_marks_syntax_error_plugin_failed_without_abortin
             healthy = dict(module.state.plugins["healthy_plugin"])
             broken = dict(module.state.plugins["broken_plugin"])
 
+        # 刷新不再 import 插件，所以语法错误在刷新阶段是看不出来的：坏插件照常
+        # 出现在注册表里，直到有人真的启动它才会失败。这是不 import 的直接代价。
+        # 这条测试现在守的是它**仍然在列表里**——"发现不了坏插件"和"把坏插件从
+        # 列表里漏掉"是两回事，后者用户会以为插件凭空消失了。
         assert healthy.get("runtime_load_state") != "failed"
-        assert broken["runtime_load_state"] == "failed"
-        assert broken["runtime_load_error_type"] == "SyntaxError"
-        assert broken["runtime_load_error_phase"] == "import_module"
+        assert broken.get("runtime_load_state") != "failed", (
+            "刷新阶段判定了插件代码坏没坏，说明它又去 import 插件了"
+        )
+        assert broken.get("id") == "broken_plugin"
     finally:
         with module.state.acquire_plugins_write_lock():
             module.state.plugins.clear()

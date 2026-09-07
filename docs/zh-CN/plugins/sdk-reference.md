@@ -1,4 +1,4 @@
-# SDK 参考
+# 插件能力与 SDK 参考
 
 所有插件开发 API 均从 `plugin.sdk.plugin` 导入。
 
@@ -54,6 +54,44 @@ class MyPlugin(NekoPluginBase):
 | `self.plugins` | `Plugins` | 跨插件调用辅助工具 |
 | `self.system_info` | `SystemInfo` | 宿主系统元数据 |
 
+### 常用能力
+
+`NekoPluginBase` 无需额外设置即可提供日志和配置：
+
+```python
+self.logger.info("Processing request: {}", request_id)
+timeout = await self.config.get_int("my_settings.timeout", default=30)
+```
+
+日志会显示在插件管理器中，并写入宿主管理的日志目录；日志文件位置和轮换策略由宿主负责。运行时配置通过 `await self.ctx.update_own_config(...)` 或 `await self.config.update(...)` 更新。调用后，应在同一进程中主动刷新依赖配置的派生状态。
+
+根据数据形式选择存储方式：
+
+| 需求 | API |
+| --- | --- |
+| 少量键值状态 | 启用 `[plugin.store]` 后使用 `self.store` |
+| 结构化 SQLite 数据 | 启用 `[plugin.database]` 后使用 `self.db` |
+| 任意持久文件 | `self.data_path(...)` |
+| 可重新生成的文件 | `self.cache_path(...)` |
+
+```python
+from plugin.sdk.plugin import unwrap
+
+unwrap(await self.store.set("last_query", "weather"))
+
+async with unwrap(await self.db.session()) as session:
+    await session.execute(
+        "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT)"
+    )
+    await session.commit()
+```
+
+需要翻译插件文本时，在 `plugin.toml` 中配置 `[plugin.i18n]`、添加各语言 JSON 文件，然后使用 `self.i18n.t(...)`：
+
+```python
+message = self.i18n.t("greeting", name="Alice")
+```
+
 ### 方法
 
 #### `report_status(status: dict) -> None`
@@ -93,6 +131,31 @@ if not result["submitted"]:
 兼容旧调用方的 `ok=False`；新代码应以 `submitted` 为正式判据。
 
 v1 字段（`message_type`、`content`、`delivery`、`reply` 及其他旧别名）已经弃用，但当前源码仍会转换。请立即迁移；本文档不保证确切移除版本。参见[迁移指南](./migration-v0.9#push-message-v2)。
+
+#### 媒体消息片段
+
+- 宿主支持文字和图片片段。小图片可以直接内联发送：
+
+  ```python
+  parts=[{"type": "image", "data": image_bytes, "mime": "image/png"}]
+  ```
+
+- 对于不是很小的图片，先交给宿主临时上传，再发送返回的 part：
+
+  ```python
+  image_part = await self.ctx.images.upload(image_bytes, mime="image/png")
+  result = self.push_message(
+      source="my_feature",
+      visibility=["chat"],
+      ai_behavior="read",
+      parts=[image_part],
+  )
+  ```
+
+  模型投递不接受任意外部图片 URL，请使用这条宿主临时上传路径。内联图片与整条消息共享 message plane 的 payload 预算；上传后的 part 不会把图片字节塞进该消息包。生命周期处理器运行时，插件命令循环无法接收上传响应，因此不能调用 `ctx.images.upload()`；请在插件 entry、定时器、消息处理器或自定义事件处理器中调用。
+- `visibility` 决定是否在用户的聊天窗口或 HUD 中显示；`ai_behavior` 独立决定模型是否读取消息或作出回应。
+- 宿主目前不会投递音频和视频消息片段，插件不能把提交成功当作已经播放或显示。
+- Hosted UI 面板可以自行向用户播放音频或视频，但这不等于通过原生聊天或模型通道投递媒体。
 
 #### `data_path(*parts) -> Path`
 

@@ -58,9 +58,9 @@ export function openExternalUrl(url: string): void {
   window.open(href, '_blank', 'noopener,noreferrer')
 }
 
-export function openLocalPath(path: string): void {
+export function openLocalPath(path: string): Promise<void> {
   const raw = String(path || '').trim()
-  if (!isLocalPath(raw)) return
+  if (!isLocalPath(raw)) return Promise.reject(new Error('Not a valid local path'))
   const target = normalizeLocalPath(raw)
   const host = (window as unknown as {
     nekoHost?: { openPath?: (payload: { path: string }) => void | Promise<unknown> }
@@ -71,28 +71,32 @@ export function openLocalPath(path: string): void {
     }
   })
   if (host.nekoHost && typeof host.nekoHost.openPath === 'function') {
-    Promise.resolve(host.nekoHost.openPath({ path: target })).catch((err) => {
-      console.warn('[openLocalPath] nekoHost.openPath failed:', err)
+    return Promise.resolve(host.nekoHost.openPath({ path: target })).then((result) => {
+      // nekoHost.openPath 可能返回 {ok: false, error: ...} 结构化失败
+      if (result && typeof result === 'object' && 'ok' in result && result.ok === false) {
+        const error = 'error' in result && result.error ? String(result.error) : 'Failed to open path'
+        throw new Error(error)
+      }
+      return undefined
     })
-    return
   }
   if (host.electronShell && typeof host.electronShell.openPath === 'function') {
-    Promise.resolve(host.electronShell.openPath(target)).catch((err) => {
-      console.warn('[openLocalPath] electronShell.openPath failed:', err)
+    return Promise.resolve(host.electronShell.openPath(target)).then((result) => {
+      // Electron shell.openPath 返回 Promise<string>：空字符串表示成功，非空字符串是错误消息
+      if (typeof result === 'string' && result !== '') {
+        throw new Error(result)
+      }
+      return undefined
     })
-    return
   }
   if (host.electronShell && typeof host.electronShell.showItemInFolder === 'function') {
-    Promise.resolve(host.electronShell.showItemInFolder(target)).catch((err) => {
-      console.warn('[openLocalPath] electronShell.showItemInFolder failed:', err)
-    })
-    return
+    return Promise.resolve(host.electronShell.showItemInFolder(target)).then(() => undefined)
   }
   if (host.electronShell && typeof host.electronShell.openExternal === 'function') {
-    Promise.resolve(host.electronShell.openExternal(localPathToFileUrl(target))).catch((err) => {
-      console.warn('[openLocalPath] electronShell.openExternal(file://) failed:', err)
-    })
+    return Promise.resolve(host.electronShell.openExternal(localPathToFileUrl(target))).then(() => undefined)
   }
+  // 纯浏览器环境：没有桌面桥接
+  return Promise.reject(new Error('No desktop bridge available'))
 }
 
 function isLocalPath(value: string): boolean {

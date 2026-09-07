@@ -277,7 +277,14 @@ async def unregister_remote_tool(
     return body if isinstance(body, dict) else {"ok": True}
 
 
-async def clear_plugin_tools(plugin_id: str, *, role: Optional[str] = None) -> Dict[str, Any]:
+# 停止插件时清理远端工具的超时。比默认的 2.0s connect 短得多：这一步是尽力而为
+# 的收尾，而它在跨进程锁里面，慢一秒就是所有插件操作排队慢一秒。
+_CLEAR_TOOLS_TIMEOUT = httpx.Timeout(2.0, connect=0.3)
+
+
+async def clear_plugin_tools(
+    plugin_id: str, *, role: Optional[str] = None, timeout: float | None = None
+) -> Dict[str, Any]:
     """Remove every LLM tool a plugin has registered on ``main_server``.
 
     Called from the plugin shutdown path so a stopped plugin doesn't
@@ -291,8 +298,38 @@ async def clear_plugin_tools(plugin_id: str, *, role: Optional[str] = None) -> D
     payload = {"source": _source_tag(plugin_id), "role": role}
     client = _get_http_client()
     url = f"{_main_server_base_url()}/api/tools/clear"
+    # 这次 await 在 stop_plugin 的跨进程锁里面。main_server 没在监听时，本机
+    # loopback 的拒连要吃满 connect 超时（默认 2.0s），reload-all 八个插件就是
+    # 锁链上十几秒纯死时间。
+    #
+    # 曾经想过「本地没记录就不发」，但那是错的：进程重启后 _plugin_tools 是空的，
+    # 而 main_server 那边可能还挂着这个插件注册的工具，跳过就会留下模型仍然能调
+    # 用的幽灵工具。本地记录不是远端状态的权威。所以照发，只是给这次尽力而为的
+    # 清理一个更短的超时。
     try:
-        resp = await client.post(url, json=payload)
+        # 调用方给了预算就用它：这一步跑在插件停止的关键路径上、操作锁还握着，
+        # 一个独立的超时会让关停在整轮预算之外再多花一截（codex）。
+        #
+        # httpx.Timeout 是**分阶段**的（connect/read/write/pool），不是总时长：一个
+        # 一直挤牙膏的 chunked 响应可以让每个阶段都不超时，而整通调用远超预算
+        # （CodeRabbit 用一个真实的分块服务端验过）。所以既保留分阶段上限，又在
+        # 外面套一层 asyncio.wait_for 来兜总时长。
+        request = client.post(
+            url,
+            json=payload,
+            timeout=(
+                _CLEAR_TOOLS_TIMEOUT
+                if timeout is None
+                else httpx.Timeout(timeout, connect=min(0.3, timeout))
+            ),
+        )
+        resp = await (request if timeout is None else asyncio.wait_for(request, timeout))
+    except asyncio.TimeoutError:
+        logger.debug(
+            "clear_plugin_tools exceeded its budget (best-effort): plugin_id={}, timeout={}",
+            plugin_id, timeout,
+        )
+        return {"ok": False, "removed": 0, "error": "timeout", "owned_count": len(owned)}
     except httpx.HTTPError as exc:
         logger.debug(
             "clear_plugin_tools HTTP error (best-effort): plugin_id={}, err={}",

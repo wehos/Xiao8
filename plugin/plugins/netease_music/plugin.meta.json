@@ -1,0 +1,417 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.clear.description",
+        "default": "删除网易云音乐插件私有数据目录中保存的 Cookie。"
+      },
+      "event_key": "netease_music.clear_music_u",
+      "event_type": "plugin_entry",
+      "id": "clear_music_u",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ui_token": {
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "ui_token"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.clear.name",
+        "default": "清除网易云凭据"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.play.description",
+        "default": "仅在用户明确要求播放或点播某首网易云歌曲时调用。将 query 整理为“歌名 歌手”，保留现场版、翻唱等版本限定。不要用于歌词或歌曲知识查询、泛推荐、歌单、暂停、停止、切歌或下一首。"
+      },
+      "event_key": "netease_music.play_netease_music",
+      "event_type": "plugin_entry",
+      "id": "play_netease_music",
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Public plugin-entry request.  The model never accepts delivery details.",
+        "properties": {
+          "query": {
+            "description": {
+              "$i18n": "entry.play.param.query",
+              "default": "歌曲名，可附带歌手或版本"
+            },
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "PlayRequest",
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.play.name",
+        "default": "播放网易云歌曲"
+      },
+      "return_message": "",
+      "timeout": 20.0
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.save.description",
+        "default": "将网易云 Cookie 白名单字段加密保存到插件私有数据目录。"
+      },
+      "event_key": "netease_music.save_music_u",
+      "event_type": "plugin_entry",
+      "id": "save_music_u",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "music_u": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "nmtid": {
+            "maxLength": 4096,
+            "type": "string",
+            "writeOnly": true
+          },
+          "ui_token": {
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "music_u",
+          "ui_token"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.save.name",
+        "default": "保存网易云凭据"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "clear_music_u": "clear_music_u",
+    "play_netease_music": "play_netease_music",
+    "save_music_u": "save_music_u"
+  },
+  "handlers": {
+    "netease_music.clear_music_u": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.clear.description",
+        "default": "删除网易云音乐插件私有数据目录中保存的 Cookie。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_music_u",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ui_token": {
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "ui_token"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.clear.name",
+        "default": "清除网易云凭据"
+      }
+    },
+    "netease_music.play_netease_music": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.play.description",
+        "default": "仅在用户明确要求播放或点播某首网易云歌曲时调用。将 query 整理为“歌名 歌手”，保留现场版、翻唱等版本限定。不要用于歌词或歌曲知识查询、泛推荐、歌单、暂停、停止、切歌或下一首。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "play_netease_music",
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Public plugin-entry request.  The model never accepts delivery details.",
+        "properties": {
+          "query": {
+            "description": {
+              "$i18n": "entry.play.param.query",
+              "default": "歌曲名，可附带歌手或版本"
+            },
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "PlayRequest",
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.play.name",
+        "default": "播放网易云歌曲"
+      }
+    },
+    "netease_music.save_music_u": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.save.description",
+        "default": "将网易云 Cookie 白名单字段加密保存到插件私有数据目录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_music_u",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "music_u": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "nmtid": {
+            "maxLength": 4096,
+            "type": "string",
+            "writeOnly": true
+          },
+          "ui_token": {
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "music_u",
+          "ui_token"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.save.name",
+        "default": "保存网易云凭据"
+      }
+    },
+    "netease_music:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "netease_music:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "netease_music:plugin_entry:clear_music_u": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.clear.description",
+        "default": "删除网易云音乐插件私有数据目录中保存的 Cookie。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_music_u",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ui_token": {
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "ui_token"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.clear.name",
+        "default": "清除网易云凭据"
+      }
+    },
+    "netease_music:plugin_entry:play_netease_music": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.play.description",
+        "default": "仅在用户明确要求播放或点播某首网易云歌曲时调用。将 query 整理为“歌名 歌手”，保留现场版、翻唱等版本限定。不要用于歌词或歌曲知识查询、泛推荐、歌单、暂停、停止、切歌或下一首。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "play_netease_music",
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Public plugin-entry request.  The model never accepts delivery details.",
+        "properties": {
+          "query": {
+            "description": {
+              "$i18n": "entry.play.param.query",
+              "default": "歌曲名，可附带歌手或版本"
+            },
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "PlayRequest",
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.play.name",
+        "default": "播放网易云歌曲"
+      }
+    },
+    "netease_music:plugin_entry:save_music_u": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.save.description",
+        "default": "将网易云 Cookie 白名单字段加密保存到插件私有数据目录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_music_u",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "music_u": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "nmtid": {
+            "maxLength": 4096,
+            "type": "string",
+            "writeOnly": true
+          },
+          "ui_token": {
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "music_u",
+          "ui_token"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.save.name",
+        "default": "保存网易云凭据"
+      }
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 68416,
+  "source_files": [
+    "README.md",
+    "__init__.py",
+    "credential_ui.py",
+    "credentials.py",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "models.py",
+    "plugin.toml",
+    "provider.py",
+    "ui/panel.tsx"
+  ],
+  "source_sha256": "185cfa16c05c5e2fa755d51608ecfa369d894e7ee29ac1c780e4a378344c7b05"
+}

@@ -68,12 +68,15 @@ auto_classify = true
 [plugin]
 id = "smart_notes"
 name = "Smart Notes"
+version = "1.2.0"
 entry = "plugin.plugins.smart_notes:SmartNotesPlugin"
 ```
 
-この 3 field は **必須** です。`id` は `^[A-Za-z0-9_-]+$` に一致し、一意でなければなりません。directory 名と揃えることを強く推奨します。不一致でも runtime load は可能ですが、profile lookup や tooling は `<plugin.id>/plugin.toml` を仮定する場合があります。`entry` は `module.path:ClassName` 形式で `NekoPluginBase` subclass を指す必要があり、`PluginRouter` は直接起動できません。
+サポート対象の check / release workflow では、この 4 フィールドが **必須** です。従来のソース探索では、不完全な manifest やディレクトリ名と ID が異なるプラグインを読み込める場合がありますが、有効なリリース package であることを意味しません。`id` は `^[A-Za-z0-9_-]+$` に一致し、一意でなければなりません。パッケージのビルドと本番環境へのインストールでは、宣言 ID、アーカイブ内のディレクトリ、インストール先、エントリーパッケージを一致させる必要があります。競合時に接尾辞付きのコピーは作成されません。`entry` は `module.path:ClassName` 形式で `NekoPluginBase` のサブクラスを指す必要があり、`PluginRouter` は直接起動できません。
 
 通常の plugin では `type = "plugin"` は default なので省略できます。Adapter package のみ `type = "adapter"` を使います。削除済みの `extension` type と `[plugin.host]` table は拒否されます。
+
+リリース間で `id` を変更しないでください。upgrade、reinstall、downgrade は実行コードだけを置き換え、実行時の `config`、`data`、`cache` は保持します。`id` を変更すると別のプラグインとして扱われます。任意の `previous_ids` は新旧 ID の同時インストールを防ぐだけで、runtime alias ではなく、旧データの移行や削除も行いません。置換操作にはユーザーの明示的な確認が必要です。
 
 ```toml
 description = "Manage your notes: search, create, organize, with AI-powered classification."
@@ -95,7 +98,7 @@ Stage 2 の最終出力は `plugin_id` と runtime `entry_id` です。どちら
 version = "1.2.0"
 ```
 
-任意です。バージョン管理やマーケットプレイス公開で使います。
+check / release workflow では必須です。バージョン管理やマーケットプレイス公開で使います。
 
 ---
 
@@ -245,7 +248,15 @@ plugin/plugins/smart_notes/
 │   └── panel.tsx
 ├── docs/                    ← ユーザーガイド（[[plugin.ui.guide]] を設定したため）
 │   └── guide.md
-└── data/                    ← 実行時データ（自動作成、self.data_path() が指す場所）
 ```
 
-必須なのは `plugin.toml` と `[plugin].entry` が指す import 可能な Python module です。一般的には `__init__.py` を使いますが、それに限定されません。
+書き込み可能な状態データは、ソースやインストール済みコードのディレクトリとは分けて保存されます。
+
+```text
+<ユーザーデータルート>/plugins/smart_notes/
+├── config/plugin.toml      ← 実際に使用される設定
+├── data/                   ← self.data_path()
+└── cache/                  ← self.cache_path()
+```
+
+必須なのは `plugin.toml` と `[plugin].entry` が指す、インポート可能な Python モジュールです。一般的には `__init__.py` を使いますが、それに限定されません。インストール済みコードは、これらの書き込み可能な状態データとは別に保存されます。

@@ -13,7 +13,6 @@ EXPECTED_LOCALES = ("en", "ja", "ko", "zh-CN", "zh-TW", "ru", "es", "pt")
 PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _REQUIRED_LOCALE_DIRS = (
     "static/locales",
-    "plugin/plugins/galgame_plugin/i18n",
 )
 _REQUIRED_LOCALE_DIR_SET = frozenset(_REQUIRED_LOCALE_DIRS)
 

@@ -119,19 +119,7 @@ N.E.K.O/plugin/plugins/hello_world/       ← 开发者修改这里
 
 `config.example.toml` 只是运行配置的初始模板。N.E.K.O 第一次需要运行配置时，会把它复制到用户数据目录中的 `config/plugin.toml`；如果实际配置已经存在，就不会用模板覆盖它。
 
-用户通过安装包安装插件时，情况稍有不同：在默认路径配置下，安装后的代码本来就在用户插件目录，因此代码和运行数据会放在一起：
-
-```text
-<用户数据根目录>/plugins/hello_world/
-├── plugin.toml                           ← 安装包中的插件清单
-├── __init__.py                           ← 安装包中的插件代码
-├── config.example.toml                   ← 安装包中的配置模板
-├── config/plugin.toml                    ← 这个用户实际使用的配置
-├── data/
-└── cache/
-```
-
-这篇教程讲的是源码开发，所以后面只修改 `N.E.K.O/plugin/plugins/hello_world/`；用户数据目录由 N.E.K.O 管理。
+安装包代码与可写的运行时状态分开存放。这篇教程讲的是源码开发，所以后面只修改 `N.E.K.O/plugin/plugins/hello_world/`；安装目录和用户数据目录都由 N.E.K.O 管理。
 
 命令中的三个值分别表示：
 

@@ -64,6 +64,14 @@ _logger_config_module.RobustLoggerConfig._get_documents_directory = (
     lambda self, _root=_NEKO_TEST_LOG_ROOT: _root
 )
 
+# 同理，但针对运行根本身：get_config_manager() 的 migrate 默认为 True，
+# 谁先 import 那 7 个模块级单例之一，谁就在真实运行根上跑完整条迁移链。
+# 必须在任何产品模块被 import 之前装好（见 tests/real_root_isolation.py）。
+from utils.config_manager import ConfigManager as _ConfigManagerForIsolation
+from tests import real_root_isolation as _real_root_isolation
+
+_real_root_isolation.install(_ConfigManagerForIsolation)
+
 import asyncio
 import asyncio.runners
 import asyncio.coroutines
@@ -165,6 +173,34 @@ KEY_MAPPING = {
 # pytest 按名字在 conftest 命名空间里发现 hook，所以这个导入没有显式调用点
 # ——它不是死代码：把它删掉，全进程时钟守卫就整个失效（改回全局 patch 也不再转红）。
 from tests.clock_guard import pytest_runtest_call  # noqa: F401,E402
+
+# 存储根环境变量守卫（见 tests/storage_root_env_guard.py）：NEKO_STORAGE_SELECTED_ROOT
+# 一旦泄漏到进程环境，后面每个"临时" ConfigManager 都会无视 patch 过的目录、直接写进
+# 开发机的真实运行根（2026-09-01 就这样把六个角色从 characters.json 里抹掉了）。
+# 同 clock_guard：pytest 按名字发现 hook，这个导入没有显式调用点但不是死代码。
+from tests.storage_root_env_guard import (  # noqa: E402
+    pytest_runtest_setup,  # noqa: F401
+    pytest_runtest_teardown,  # noqa: F401
+    pytest_sessionstart,  # noqa: F401
+)
+
+
+@pytest.fixture
+def real_root_resolution():
+    """Restore ConfigManager's genuine directory resolution for this test.
+
+    tests/conftest.py stubs it session-wide so no unpatched ConfigManager can
+    reach the user's real runtime root. Tests whose SUBJECT is that resolution
+    ask for this fixture; they patch sys.platform / Path.home / the environment
+    themselves and run inside tmp_path, so the real methods stay off the
+    developer's directories.
+    """
+    from utils.config_manager import ConfigManager
+
+    from tests import real_root_isolation
+
+    with real_root_isolation.real_resolution(ConfigManager):
+        yield
 
 
 def pytest_addoption(parser):

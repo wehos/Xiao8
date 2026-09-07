@@ -518,8 +518,22 @@
             I.clearChoicePromptBySource('new_user_icebreaker', 'new-user-icebreaker-reset');
         });
 
-        // Refresh option list whenever an assistant turn finishes streaming.
-        window.addEventListener('neko-assistant-turn-end', function () {
+        function isNewUserIcebreakerTurnEndEvent(event) {
+            var detail = event && event.detail && typeof event.detail === 'object'
+                ? event.detail
+                : {};
+            if (detail.source === 'new_user_icebreaker') return true;
+            var meta = detail.meta && typeof detail.meta === 'object' ? detail.meta : {};
+            if (meta.source === 'new_user_icebreaker' || meta.kind === 'new_user_icebreaker') {
+                return true;
+            }
+            var metaEvent = meta.event && typeof meta.event === 'object' ? meta.event : {};
+            return metaEvent.source === 'new_user_icebreaker';
+        }
+
+        // Refresh option list whenever an ordinary assistant turn finishes streaming.
+        window.addEventListener('neko-assistant-turn-end', function (event) {
+            if (isNewUserIcebreakerTurnEndEvent(event)) return;
             if (!I.state.galgameModeEnabled) return;
             // Skip when the chat overlay is hidden — otherwise galgame mode's
             // default-on flag would spam /api/galgame/options (and summary-tier

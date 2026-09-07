@@ -658,6 +658,127 @@ async def test_an_ordinary_turn_still_runs_both_hooks_in_order():
     assert host.calls == ["response_done", "sid_rotate"]
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_vad_rotation_owns_the_next_unannounced_response():
+    """An id-less no-VAD response still finishes under the rotated host turn."""
+
+    host = _Host()
+
+    async def deliver_transcript(_text, _is_first):
+        return None
+
+    client = _free_client(
+        host,
+        get_host_turn_id=host.read_speech_id,
+        on_output_transcript=deliver_transcript,
+    )
+    socket = _RecordingSocket()
+    client.ws = socket
+    receive_loop = asyncio.create_task(client.handle_messages())
+
+    socket.feed({"type": "response.created", "response": {"id": "first"}})
+    socket.feed(
+        {
+            "type": "response.done",
+            "response": {"id": "first", "status": "completed"},
+        }
+    )
+    await _settle()
+    assert client._current_turn_host_id == "sid-rotated-by-hook"
+    host.calls.clear()
+
+    socket.feed(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "user-2",
+            "transcript": "next",
+        }
+    )
+    socket.feed({"type": "response.audio_transcript.delta", "delta": "reply"})
+    socket.feed({"type": "response.done", "response": {"status": "completed"}})
+    await _settle()
+
+    assert host.calls == ["response_done", "sid_rotate"]
+
+    empty_ticket = await client._response_arbiter.enqueue(
+        source="empty-idless-response",
+        response_started_timeout=0.5,
+        response_done_timeout=0.5,
+    )
+    await asyncio.wait_for(empty_ticket.sent, timeout=1)
+    socket.feed({"type": "response.done", "response": {"status": "completed"}})
+    await _settle()
+
+    assert empty_ticket.done.done()
+    assert host.calls == [
+        "response_done",
+        "sid_rotate",
+        "response_done",
+        "sid_rotate",
+    ]
+
+    socket.finish()
+    await asyncio.wait_for(receive_loop, timeout=1)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stuck_release_does_not_carry_ownership_to_a_late_terminal():
+    """Only a normal terminal may carry the rotated host turn forward."""
+
+    host = _Host()
+    client = _free_client(host, get_host_turn_id=host.read_speech_id)
+    client._begin_response_lifecycle("stuck")
+
+    await client._on_arbiter_stuck_release("probe", response_id="stuck")
+    assert host.calls == ["response_done", "sid_rotate"]
+
+    socket = _RecordingSocket()
+    client.ws = socket
+    receive_loop = asyncio.create_task(client.handle_messages())
+    socket.feed({"type": "response.done", "response": {"status": "completed"}})
+    await _settle()
+
+    assert host.calls == ["response_done", "sid_rotate"]
+
+    socket.finish()
+    await asyncio.wait_for(receive_loop, timeout=1)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["canceled", "failed", "incomplete"])
+async def test_abnormal_terminal_does_not_carry_host_turn_forward(status):
+    """Only successful completion may own a later unannounced response."""
+
+    host = _Host()
+    client = _free_client(host, get_host_turn_id=host.read_speech_id)
+    socket = _RecordingSocket()
+    client.ws = socket
+    receive_loop = asyncio.create_task(client.handle_messages())
+
+    socket.feed({"type": "response.created", "response": {"id": "abnormal"}})
+    socket.feed(
+        {
+            "type": "response.done",
+            "response": {"id": "abnormal", "status": status},
+        }
+    )
+    await _settle()
+
+    assert host.calls == ["response_done", "sid_rotate"]
+    assert client._current_turn_host_id == "sid-turn-1"
+    assert host.speech_id == "sid-rotated-by-hook"
+
+    socket.feed({"type": "response.done", "response": {"status": "completed"}})
+    await _settle()
+    assert host.calls == ["response_done", "sid_rotate"]
+
+    socket.finish()
+    await asyncio.wait_for(receive_loop, timeout=1)
+
+
 # ---------------------------------------------------------------------------
 # Contract 1: the host moved on before the notification ran.
 # ---------------------------------------------------------------------------

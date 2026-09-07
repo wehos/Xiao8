@@ -201,6 +201,7 @@
         window.__NEKO_CARD_MAKER_EMBED__ = {{ card_maker_embed | tojson }};
         window.renderQuality = window.__NEKO_CARD_MAKER_EMBED__ ? 'medium' : 'high';
     </script>
+    <script src="/static/js/card_maker_embed_layout.js?v={{ static_asset_version | default('0') }}"></script>
 
     {% if not card_maker_embed %}
     <!-- Live2D SDK -->

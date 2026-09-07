@@ -22,6 +22,7 @@ _DEFAULT_EXCLUDE_DIR_NAMES = {
     ".idea",
     ".pytest_cache",
     ".mypy_cache",
+    ".ruff_cache",
     ".venv",
     ".git",
 }

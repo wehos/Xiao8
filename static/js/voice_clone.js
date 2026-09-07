@@ -571,6 +571,71 @@ async function ensureVoiceCloneApiConfigState(options = {}) {
     return voiceCloneApiConfigState;
 }
 
+function getConfiguredTtsProviderLabel(provider) {
+    const normalizedProvider = String(provider || '').trim().toLowerCase();
+    const translationKeyByProvider = {
+        follow_core: 'api.customModelProviderFollowCore',
+        follow_assist: 'api.customModelProviderFollowAssist',
+        follow_conversation: 'api.customModelProviderFollowConversation',
+        follow_summary: 'api.customModelProviderFollowSummary',
+        custom: 'api.customModelProviderCustom',
+        vllm_omni: 'api.providerNames.vllm_omni',
+    };
+    const translationKey = translationKeyByProvider[normalizedProvider]
+        || `api.assistProviderNames.${normalizedProvider}`;
+    if (window.t) {
+        const translated = window.t(translationKey);
+        if (translated && translated !== translationKey) return translated;
+    }
+    return normalizedProvider || voiceCloneI18n('voice.providerUnknown', 'Other');
+}
+
+function isVoiceCloneConfigFlagEnabled(value) {
+    if (typeof value === 'string') {
+        return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
+    }
+    return typeof value === 'number' ? value !== 0 : value === true;
+}
+
+function getVllmOmniCloneConfigurationWarning(cfg) {
+    if (!cfg || typeof cfg !== 'object') {
+        return window.t
+            ? window.t('voice.vllmCloneConfigurationUnavailableWarning')
+            : 'The active TTS setting could not be read. The sample will still be saved locally, but configure vLLM-Omni in API Settings before previewing or using this voice.';
+    }
+    const configuredProvider = String((cfg && cfg.ttsModelProvider) || '').trim().toLowerCase();
+    const providerLabel = getConfiguredTtsProviderLabel(configuredProvider);
+    const customApiEnabled = isVoiceCloneConfigFlagEnabled(cfg.enableCustomApi);
+
+    if (isVoiceCloneConfigFlagEnabled(cfg.disableTts)) {
+        return window.t
+            ? window.t('voice.vllmCloneTtsDisabledWarning', { provider: providerLabel })
+            : `The current TTS setting is "${providerLabel}", but TTS is globally disabled. The sample will still be saved locally; enable TTS and configure vLLM-Omni before previewing or using this voice.`;
+    }
+    if (!customApiEnabled) {
+        return window.t
+            ? window.t('voice.vllmCloneCustomApiDisabledWarning', { provider: providerLabel })
+            : `The current TTS setting is "${providerLabel}" and Custom API is disabled. The sample will still be saved locally, but enable Custom API and switch TTS to vLLM-Omni before previewing or using this voice.`;
+    }
+    if (configuredProvider !== 'vllm_omni') {
+        return window.t
+            ? window.t('voice.vllmCloneInactiveProviderWarning', { provider: providerLabel })
+            : `The current TTS setting is "${providerLabel}", not vLLM-Omni. The sample will still be saved locally, but switch TTS to vLLM-Omni before previewing or using this voice.`;
+    }
+    return '';
+}
+
+function appendVllmOmniCloneConfigurationWarning(resultDiv, warning) {
+    if (!resultDiv || !warning) return;
+    const warningEl = document.createElement('span');
+    warningEl.className = 'vllm-omni-clone-configuration-warning';
+    warningEl.style.color = 'var(--warning-color, #a66d00)';
+    warningEl.style.fontSize = '0.9em';
+    warningEl.textContent = warning;
+    resultDiv.appendChild(document.createElement('br'));
+    resultDiv.appendChild(warningEl);
+}
+
 function hasVoiceCloneProviderApi(provider) {
     if (provider === 'vllm_omni') return true;
     if (voiceCloneApiConfigState.isLocalTts) return true;
@@ -1730,12 +1795,14 @@ function setFormDisabled(disabled) {
     const refLanguage = document.getElementById('refLanguage');
     const prefix = document.getElementById('prefix');
     const voiceProvider = document.getElementById('voiceProvider');
+    const vllmRefText = document.getElementById('vllmRefText');
     if (audioFile) audioFile.disabled = disabled;
     if (directLinkUrl) directLinkUrl.disabled = disabled;
     if (voiceDesignPrompt) voiceDesignPrompt.disabled = disabled;
     if (refLanguage) refLanguage.disabled = disabled;
     if (prefix) prefix.disabled = disabled;
     if (voiceProvider) voiceProvider.disabled = disabled;
+    if (vllmRefText) vllmRefText.disabled = disabled;
     // 禁用所有按钮
     const buttons = document.querySelectorAll('button');
     if (buttons && buttons.length > 0) {
@@ -1897,11 +1964,27 @@ async function registerVoice() {
         }
     }
 
+    // Lock the form before refreshing configuration. The refresh can retry for
+    // several seconds, and keeping inputs active would allow concurrent uploads
+    // or a request assembled from values edited during that wait.
     setFormDisabled(true);
+
+    let vllmOmniConfigurationWarning = '';
+    if (currentVoiceSource === 'clone' && provider === 'vllm_omni') {
+        // This is informational only: an inline vLLM-Omni clone can be saved
+        // locally before its TTS endpoint is configured. Refresh the setting so
+        // the notice reflects the active TTS route instead of a stale page cache.
+        await ensureVoiceCloneApiConfigState({ force: true });
+        vllmOmniConfigurationWarning = getVllmOmniCloneConfigurationWarning(
+            voiceCloneApiConfigState.cfg
+        );
+    }
+
     resultDiv.textContent = currentVoiceSource === 'design'
         ? (window.t ? window.t('voice.generatingVoice') : 'Generating voice, please wait...')
         : (window.t ? window.t('voice.registering') : '正在注册声音，请稍后！');
     resultDiv.className = 'result';
+    appendVllmOmniCloneConfigurationWarning(resultDiv, vllmOmniConfigurationWarning);
 
     // 根据克隆方式选择API端点和参数
     let requestOptions;
@@ -2002,12 +2085,14 @@ async function registerVoice() {
                     copyHint.style.color = '#666';
                     copyHint.textContent = window.t ? window.t('voice.pleaseCopyVoiceId') : '请复制上面的voice_id手动保存';
                     resultDiv.appendChild(copyHint);
+                    appendVllmOmniCloneConfigurationWarning(resultDiv, vllmOmniConfigurationWarning);
                     
                     setFormDisabled(false);
                     return;
                 } else {
                     resultDiv.textContent = window.t ? window.t('voice.registerSuccess', { voiceId: data.voice_id }) : '注册成功！voice_id: ' + data.voice_id;
                 }
+                appendVllmOmniCloneConfigurationWarning(resultDiv, vllmOmniConfigurationWarning);
                 // 刷新音色列表
                 setTimeout(() => {
                     if (typeof loadVoices === 'function') {

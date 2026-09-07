@@ -69,7 +69,9 @@ Manager 和智能体服务器构造时这些开关均为关闭。首次真实 `g
 _CHANNEL_PRIORITY = ["qwenpaw", "browser_use", "computer_use"]
 ```
 
-`qwenpaw` 映射到 OpenClaw 适配器。用户插件单独判断，不属于 `_CHANNEL_PRIORITY`。
+`qwenpaw` 映射到 `OpenClawAdapter`。它是面向兼容接口的适配器，连接外部 QwenPaw 服务；N.E.K.O 不提供该服务进程，也不保证它具有所需的模型和工具权限。只有配置的健康检查返回 ready 后，该渠道才会成为候选。用户插件单独判断，不属于 `_CHANNEL_PRIORITY`。
+
+QwenPaw 的 `/clear`、`/new`、`/stop` 和 `/daemon approve` 使用独立的魔法命令识别路径；普通请求仍要经过可用性检查和非插件渠道的统一评估。
 
 用户插件路由先执行确定性的筛选（`brain/plugin_filter.py`），再由 LLM 选择插件入口，并严格校验 `plugin_id`、`entry_id` 和参数。插件入口元数据可覆盖执行超时，否则使用项目默认值。
 
@@ -78,8 +80,15 @@ _CHANNEL_PRIORITY = ["qwenpaw", "browser_use", "computer_use"]
 - 分析与分派串行执行，避免几乎同时发生的 turn-end 事件创建重复任务。
 - Computer Use 有显式队列，同一时间只运行一个桌面控制任务。Browser 和远程 Agent 适配器各自维护活动任务保护。
 - 取消时先把 registry 条目标记为 `cancelled` 并取消包装任务，再在后台启动 provider 特定的清理。迟到的 provider 结果不得覆盖该终态。
+- 取消 QwenPaw 任务时只会向外部服务转发停止请求，属于尽力而为的协作式取消。本地状态为 `cancelled`，并不能证明外部服务尚未执行不可逆操作。
 - 完成、失败和取消的 registry 条目保留五分钟；清理最多每分钟执行一次。
 - 用户插件可以返回 `deferred: true`。任务保持 `running`，直到调用 `/api/agent/tasks/{task_id}/complete`，或一小时 deferred 超时将其标记失败。
+
+## 纠正反馈
+
+`POST /api/agent/tasks/{task_id}/correction` 只接受已经进入终态的 Browser Use 或 Computer Use 任务，并且只能把其中一个工具纠正为另一个。执行器会将经过裁剪和脱敏的事件写入当前配置目录的 `correction_memory.json`，最多保留 300 条。该文件既不是角色记忆，也不是插件的 `bus.memory`。
+
+后续统一渠道评估前，系统通过轻量关键词匹配选取最多 3 条相关事件。QwenPaw、用户插件和具体插件入口 ID 目前没有同类纠正通道。
 
 ## 实现映射
 

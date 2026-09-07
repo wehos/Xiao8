@@ -148,6 +148,11 @@
             this.idleActivityVersion = 0;
             this.idleScheduleSequence = 0;
             this.lastIdleDelayMs = 0;
+            // 外部功能（目前是点歌台）直接占用同一个 VRMA mixer 时，语义动作运行时
+            // 必须暂停待机轮换和对话动作，否则仍保持 rest 状态的旧定时器会在
+            // 18-38 秒后把正在播放的整曲舞蹈覆盖掉。Map 中的 token 用来防止旧的
+            // 异步播放请求在新请求接管后误释放占用。
+            this.externalPlaybackOwners = new Map();
             this.busy = false;
             this.sequence = 0;
             this.lastByIntent = new Map();
@@ -165,6 +170,9 @@
                 restEntries: 0,
                 idleSchedules: 0,
                 idleSwitches: 0,
+                externalPlaybackHolds: 0,
+                externalPlaybackReleases: 0,
+                externalPlaybackBlocks: 0,
                 heldAfterAction: 0,
                 cancelled: 0
             };
@@ -640,7 +648,8 @@
 
         _scheduleIdleSwitch(generation, seed, mode, allowBusy) {
             this._clearIdleSwitch();
-            if (generation !== this.queueGeneration || (!allowBusy && this.busy)
+            if (this.externalPlaybackOwners.size > 0
+                || generation !== this.queueGeneration || (!allowBusy && this.busy)
                 || this.state.posture !== 'stand' || this.state.phase !== 'rest'
                 || !this.state.restAsset) return false;
 
@@ -667,6 +676,7 @@
                 this.idleSwitchTimer = null;
                 if (generation !== this.queueGeneration
                     || activityVersion !== this.idleActivityVersion
+                    || this.externalPlaybackOwners.size > 0
                     || this.busy || this.state.posture !== 'stand'
                     || this.state.phase !== 'rest') return;
                 this.metrics.idleSwitches += 1;
@@ -700,9 +710,69 @@
             );
         }
 
+        holdExternalPlayback(owner, options) {
+            const settings = options || {};
+            const ownerKey = String(owner || 'external');
+            const token = Object.prototype.hasOwnProperty.call(settings, 'token')
+                ? settings.token : null;
+
+            this.externalPlaybackOwners.set(ownerKey, token);
+            this.idleActivityVersion += 1;
+            this._clearIdleSwitch();
+            this.queueGeneration += 1;
+            this._releaseWaiters();
+            this.queue = Promise.resolve();
+            this.busy = false;
+            this.state.phase = 'external';
+            this.state.currentAsset = null;
+            this.metrics.externalPlaybackHolds += 1;
+            emit('neko-motion-playback', {
+                status: 'external-held',
+                owner: ownerKey
+            });
+            return true;
+        }
+
+        async releaseExternalPlayback(owner, options) {
+            const settings = options || {};
+            const ownerKey = String(owner || 'external');
+            if (!this.externalPlaybackOwners.has(ownerKey)) return false;
+            const hasToken = Object.prototype.hasOwnProperty.call(settings, 'token');
+            const heldToken = this.externalPlaybackOwners.get(ownerKey);
+            if ((hasToken && heldToken !== settings.token)
+                || (!hasToken && heldToken !== null)) {
+                return false;
+            }
+
+            this.externalPlaybackOwners.delete(ownerKey);
+            this.metrics.externalPlaybackReleases += 1;
+            if (this.externalPlaybackOwners.size > 0) return true;
+
+            this.queueGeneration += 1;
+            this._releaseWaiters();
+            this.queue = Promise.resolve();
+            this.busy = false;
+            const generation = this.queueGeneration;
+            if (settings.resume === false) {
+                this.state.phase = 'boot';
+                this.state.currentAsset = null;
+                return true;
+            }
+
+            return this._resumeBase(
+                generation,
+                'external-release:' + ownerKey,
+                settings.scheduleNext !== false
+            );
+        }
+
         async enterRest(options) {
             const settings = options || {};
             this._clearIdleSwitch();
+            if (this.externalPlaybackOwners.size > 0) {
+                this.metrics.externalPlaybackBlocks += 1;
+                return false;
+            }
             if (settings.idleActivityVersion === undefined) {
                 this.idleActivityVersion += 1;
             } else if (settings.idleActivityVersion !== this.idleActivityVersion) {
@@ -761,6 +831,10 @@
 
         async _resumeBase(generation, seed, scheduleNext) {
             if (generation !== this.queueGeneration) return false;
+            if (this.externalPlaybackOwners.size > 0) {
+                this.metrics.externalPlaybackBlocks += 1;
+                return false;
+            }
             if (this.state.posture !== 'stand' && this.state.poseAsset) {
                 this.state.phase = 'pose';
                 const played = await this._playAsset(this.state.poseAsset, generation, {
@@ -994,12 +1068,19 @@
         }
 
         enqueuePlan(plan, context) {
+            if (this.externalPlaybackOwners.size > 0) {
+                this.metrics.externalPlaybackBlocks += 1;
+                return Promise.resolve(false);
+            }
             const items = Array.isArray(plan) ? plan.slice(0, 3) : [];
             if (!items.length) return Promise.resolve(false);
             const generation = this.queueGeneration || this.beginPlan();
             const seed = context && context.seed || Date.now();
             this.sequence += 1;
             const task = async () => {
+                // hold/cancel 会替换 this.queue，但旧 Promise 已排进微任务队列的 task
+                // 仍可能晚到；必须在写 busy 前先验世代，避免把已清零的状态重新置真。
+                if (generation !== this.queueGeneration) return false;
                 this.busy = true;
                 let succeeded = true;
                 for (let index = 0; index < items.length; index += 1) {
@@ -1031,6 +1112,10 @@
         }
 
         playPlan(plan, context) {
+            if (this.externalPlaybackOwners.size > 0) {
+                this.metrics.externalPlaybackBlocks += 1;
+                return Promise.resolve(false);
+            }
             this.beginPlan();
             return this.enqueuePlan(plan, context);
         }
@@ -1076,6 +1161,7 @@
                 poseAsset: this.state.poseAsset && this.state.poseAsset.id || null,
                 poseStyle: this.state.poseStyle,
                 busy: this.busy,
+                externalPlaybackOwners: Array.from(this.externalPlaybackOwners.keys()),
                 assets: this.assets.length,
                 cachedAssets: 0,
                 idleTimerPending: !!this.idleSwitchTimer,

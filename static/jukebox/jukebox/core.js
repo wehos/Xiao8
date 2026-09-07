@@ -137,6 +137,9 @@ Object.assign(window.Jukebox, {
     // 「欠着一次待机恢复」：stopVMD(true) 把舞蹈停掉却跳过恢复时置真，
     // 由真正接上动画或真正回到静止的那一方清账。见 transport.js 的 settleIdleRestore。
     idleRestorePending: false,
+    // 记录实际取得的 NekoMotion owner token；模型热切换不会刷新页面，释放时不能
+    // 依赖当前 modelType 判断这段占用最初属于谁。
+    vrmMotionRuntimeToken: null,
     controlOwnerChannel: null,
     controlOwnerHeartbeatTimer: null,
     // 拥有者是否已经能真的执行指令（曲库拉完、播放器建好）。宣告归属要尽早，

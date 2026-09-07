@@ -69,7 +69,9 @@ For non-plugin channels, the first executable result in this order wins:
 _CHANNEL_PRIORITY = ["qwenpaw", "browser_use", "computer_use"]
 ```
 
-`qwenpaw` maps to the OpenClaw adapter. User plugins are assessed separately and are not an item in `_CHANNEL_PRIORITY`.
+`qwenpaw` maps to `OpenClawAdapter`, a compatibility-facing adapter for an external QwenPaw service. N.E.K.O does not ship that service process or guarantee its model and tool permissions. The channel becomes a candidate only after the configured health check reports ready. User plugins are assessed separately and are not an item in `_CHANNEL_PRIORITY`.
+
+QwenPaw commands `/clear`, `/new`, `/stop`, and `/daemon approve` use a dedicated magic-command classification path. Ordinary requests still go through availability checks and the shared non-plugin assessment.
 
 User-plugin routing first performs deterministic filtering (`brain/plugin_filter.py`), then asks the LLM to select a plugin entry with validated `plugin_id`, `entry_id`, and arguments. Plugin execution timeouts come from entry metadata when present, with the project default as fallback.
 
@@ -78,8 +80,15 @@ User-plugin routing first performs deterministic filtering (`brain/plugin_filter
 - Analyze-and-dispatch work is serialized to prevent near-simultaneous turn-end events from creating duplicate tasks.
 - Computer Use has an explicit queue and runs one desktop-control task at a time. Browser and remote-agent adapters maintain their own active-task guards.
 - Cancelling a task first marks the registry entry `cancelled` and cancels its wrapper task, then starts provider-specific teardown in the background. Late provider results must not overwrite that terminal state.
+- QwenPaw cancellation forwards a stop request to the external service and is cooperative and best effort. A local `cancelled` state does not prove that the service had not already performed an irreversible action.
 - Completed, failed, and cancelled registry entries are retained for five minutes and cleaned at most once per minute.
 - A user plugin may return `deferred: true`. The task remains `running` until `/api/agent/tasks/{task_id}/complete` is called or the one-hour deferred timeout marks it failed.
+
+## Correction feedback
+
+`POST /api/agent/tasks/{task_id}/correction` accepts feedback only after a Browser Use or Computer Use task reaches a terminal state, and only to correct one of those tools to the other. The executor writes redacted and truncated events to `correction_memory.json` in the active configuration directory, retaining at most 300 entries. This file is separate from character memory and plugin `bus.memory`.
+
+Before later unified channel assessments, lightweight keyword matching selects at most three relevant events. There is currently no equivalent correction path for QwenPaw, user plugins, or a specific plugin entry ID.
 
 ## Implementation map
 

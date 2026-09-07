@@ -55,16 +55,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(autouse=True)
-def _disable_galgame_rapidocr_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No-op RapidOcrBackend.warmup_async so tests don't oversubscribe cores via daemon ONNX threads."""
-    try:
-        from plugin.plugins.galgame_plugin.ocr_reader import RapidOcrBackend
-    except Exception:
-        return
-    monkeypatch.setattr(RapidOcrBackend, "warmup_async", lambda self, logger=None: None)
-
-
-@pytest.fixture(autouse=True)
 def _isolate_plugin_runtime_root(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -125,11 +115,6 @@ def plugin_test_app() -> FastAPI:
     app.include_router(metrics_router)
     app.include_router(runs_router)
     return app
-
-
-@pytest.fixture(scope="session")
-def galgame_i18n_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "plugins/galgame_plugin/i18n"
 
 
 @pytest.fixture

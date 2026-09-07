@@ -1,0 +1,3979 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.add_trusted_group.description",
+        "default": "把一个 QQ 群加入信任群聊列表，并可设置群等级和回复概率。"
+      },
+      "event_key": "qq_auto_reply.add_trusted_group",
+      "event_type": "plugin_entry",
+      "id": "add_trusted_group",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "level": {
+            "default": "normal",
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "open_reply_probability": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.add_trusted_group.name",
+        "default": "添加信任群聊"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.add_trusted_user.description",
+        "default": "把一个 QQ 号加入信任用户列表，并可设置权限、昵称和转发概率。"
+      },
+      "event_key": "qq_auto_reply.add_trusted_user",
+      "event_type": "plugin_entry",
+      "id": "add_trusted_user",
+      "input_schema": {
+        "properties": {
+          "level": {
+            "default": "trusted",
+            "type": "string"
+          },
+          "nickname": {
+            "default": "",
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.add_trusted_user.name",
+        "default": "添加信任用户"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.adjust_group_attention.description",
+        "default": "给指定群手动增减注意力分数，正数为加分、负数为减分。"
+      },
+      "event_key": "qq_auto_reply.adjust_group_attention",
+      "event_type": "plugin_entry",
+      "id": "adjust_group_attention",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "type": "number"
+          },
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "delta"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.adjust_group_attention.name",
+        "default": "手动调整群注意力"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bind_identity_account.description",
+        "default": "把一个群内 ID 的信赖度账本并入已有身份。只能由人触发，系统不会自动合并任何身份。"
+      },
+      "event_key": "qq_auto_reply.bind_identity_account",
+      "event_type": "plugin_entry",
+      "id": "bind_identity_account",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "target_user_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "target_user_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bind_identity_account.name",
+        "default": "合并到已有身份"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.configure_onebot_nl.description",
+        "default": "通过自然语言描述来设置或修改 OneBot 的 WebSocket 地址和 Access Token。例如：设置地址为 ws://0.0.0.0:6199 token 为 abc123、把 OneBot 地址改成 ws://192.168.1.1:3001、清空 token"
+      },
+      "event_key": "qq_auto_reply.configure_onebot_nl",
+      "event_type": "plugin_entry",
+      "id": "configure_onebot_nl",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "description": "自然语言指令",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.configure_onebot_nl.name",
+        "default": "用自然语言配置 OneBot 连接"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "",
+      "event_key": "qq_auto_reply.delete_group_prompt",
+      "event_type": "plugin_entry",
+      "id": "delete_group_prompt",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "delete_group_prompt",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ensure_napcat.description",
+        "default": "启动 NapCat 外部进程并等待 OneBot 就绪（不连接 WebSocket）。"
+      },
+      "event_key": "qq_auto_reply.ensure_napcat",
+      "event_type": "plugin_entry",
+      "id": "ensure_napcat",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.ensure_napcat.name",
+        "default": "启动 NapCat 进程"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.forget_group_memory.description",
+        "default": "删除指定群聊的全部长期记忆（facts/reflections/persona）。幂等，重试安全。"
+      },
+      "event_key": "qq_auto_reply.forget_group_memory",
+      "event_type": "plugin_entry",
+      "id": "forget_group_memory",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.forget_group_memory.name",
+        "default": "清除群记忆"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_attention_state.description",
+        "default": "返回所有群聊的注意力分数和焦点状态。"
+      },
+      "event_key": "qq_auto_reply.get_attention_state",
+      "event_type": "plugin_entry",
+      "id": "get_attention_state",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_attention_state.name",
+        "default": "获取注意力状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_backlog_summary.description",
+        "default": "查看当前哪些群还有待处理消息，以及每个群的大致积压情况。"
+      },
+      "event_key": "qq_auto_reply.get_backlog_summary",
+      "event_type": "plugin_entry",
+      "id": "get_backlog_summary",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_backlog_summary.name",
+        "default": "读取待审阅摘要"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "",
+      "event_key": "qq_auto_reply.get_buffer_state",
+      "event_type": "plugin_entry",
+      "id": "get_buffer_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "get_buffer_state",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_dashboard_state.description",
+        "default": "读取 QQ 插件当前的运行状态、登录状态、联系人数量、配置项和引导进度。"
+      },
+      "event_key": "qq_auto_reply.get_dashboard_state",
+      "event_type": "plugin_entry",
+      "id": "get_dashboard_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_dashboard_state.name",
+        "default": "获取控制面板状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_group_backlog_detail.description",
+        "default": "查看这个群当前每条待处理消息的详细内容，方便逐条回复或处理。"
+      },
+      "event_key": "qq_auto_reply.get_group_backlog_detail",
+      "event_type": "plugin_entry",
+      "id": "get_group_backlog_detail",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_group_backlog_detail.name",
+        "default": "读取群聊待审阅详情"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "",
+      "event_key": "qq_auto_reply.get_group_prompts",
+      "event_type": "plugin_entry",
+      "id": "get_group_prompts",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "get_group_prompts",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_napcat_webui.description",
+        "default": "从 NapCat 日志提取 WebUI 登录地址和 token。"
+      },
+      "event_key": "qq_auto_reply.get_napcat_webui",
+      "event_type": "plugin_entry",
+      "id": "get_napcat_webui",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_napcat_webui.name",
+        "default": "获取 NapCat WebUI 地址"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_prompt_editor_state.description",
+        "default": "返回当前语言下的各层提示词元数据和配置，供提示词编辑器使用。"
+      },
+      "event_key": "qq_auto_reply.get_prompt_editor_state",
+      "event_type": "plugin_entry",
+      "id": "get_prompt_editor_state",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_prompt_editor_state.name",
+        "default": "获取提示词编辑器状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_recent_logs.description",
+        "default": "返回 QQ 插件文件日志的最近 N 行。"
+      },
+      "event_key": "qq_auto_reply.get_recent_logs",
+      "event_type": "plugin_entry",
+      "id": "get_recent_logs",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_recent_logs.name",
+        "default": "获取最近日志"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_user_profiles.description",
+        "default": "读取当前缓存的用户画像列表，包含身份信息和从长期记忆中提取的事实摘要。"
+      },
+      "event_key": "qq_auto_reply.get_user_profiles",
+      "event_type": "plugin_entry",
+      "id": "get_user_profiles",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_user_profiles.name",
+        "default": "获取用户画像"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.init_config.description",
+        "default": "在第一次使用 QQ 插件、完成引导或缺少配置文件时，创建一份新的 QQ 配置。"
+      },
+      "event_key": "qq_auto_reply.init_config",
+      "event_type": "plugin_entry",
+      "id": "init_config",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "guide_step_config_done": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.init_config.name",
+        "default": "初始化 QQ 配置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.list_identity_claims.description",
+        "default": "列出开放平台上出现过、但还不在信任用户名册里的群内 ID，以及可供人工合并的已有身份候选。"
+      },
+      "event_key": "qq_auto_reply.list_identity_claims",
+      "event_type": "plugin_entry",
+      "id": "list_identity_claims",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.list_identity_claims.name",
+        "default": "列出未认领的群内 ID"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.list_stickers.description",
+        "default": "读取 sticker.json 并返回所有已注册的表情包。"
+      },
+      "event_key": "qq_auto_reply.list_stickers",
+      "event_type": "plugin_entry",
+      "id": "list_stickers",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.list_stickers.name",
+        "default": "列出表情包"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.mark_group_backlog_reviewed.description",
+        "default": "把这个群当前所有待处理消息标记为已处理，不再继续显示为未审阅。"
+      },
+      "event_key": "qq_auto_reply.mark_group_backlog_reviewed",
+      "event_type": "plugin_entry",
+      "id": "mark_group_backlog_reviewed",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.mark_group_backlog_reviewed.name",
+        "default": "标记群聊已处理"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.pick_directory.description",
+        "default": "打开系统原生目录选择对话框，返回选中目录的绝对路径。"
+      },
+      "event_key": "qq_auto_reply.pick_directory",
+      "event_type": "plugin_entry",
+      "id": "pick_directory",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.pick_directory.name",
+        "default": "选择目录"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.refresh_actual_contacts.description",
+        "default": "重新从 OneBot 拉取 QQ 好友和群聊列表，用于更新联系人显示。"
+      },
+      "event_key": "qq_auto_reply.refresh_actual_contacts",
+      "event_type": "plugin_entry",
+      "id": "refresh_actual_contacts",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.refresh_actual_contacts.name",
+        "default": "刷新实际联系人列表"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.register_sticker.description",
+        "default": "将一张图片注册为表情包，写入 sticker.json。需要提供图片文件的相对路径和描述。"
+      },
+      "event_key": "qq_auto_reply.register_sticker",
+      "event_type": "plugin_entry",
+      "id": "register_sticker",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "desc": {
+            "description": "表情包描述，LLM 通过描述选择使用哪个表情包",
+            "type": "string"
+          },
+          "image_path": {
+            "description": "图片文件名，放在 data/sticker/ 目录下",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_path",
+          "desc"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.register_sticker.name",
+        "default": "注册表情包"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.remove_trusted_group.description",
+        "default": "把一个 QQ 群从信任群聊列表中移除，不再按信任群聊处理。"
+      },
+      "event_key": "qq_auto_reply.remove_trusted_group",
+      "event_type": "plugin_entry",
+      "id": "remove_trusted_group",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.remove_trusted_group.name",
+        "default": "移除信任群聊"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.remove_trusted_user.description",
+        "default": "把一个 QQ 号从信任用户列表中移除，不再按信任用户处理。"
+      },
+      "event_key": "qq_auto_reply.remove_trusted_user",
+      "event_type": "plugin_entry",
+      "id": "remove_trusted_user",
+      "input_schema": {
+        "properties": {
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.remove_trusted_user.name",
+        "default": "移除信任用户"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.reset_prompt_override.description",
+        "default": "删除某个提示词层的自定义覆盖值，恢复默认。"
+      },
+      "event_key": "qq_auto_reply.reset_prompt_override",
+      "event_type": "plugin_entry",
+      "id": "reset_prompt_override",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "layer_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "layer_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.reset_prompt_override.name",
+        "default": "重置提示词覆盖"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "",
+      "event_key": "qq_auto_reply.save_group_prompt",
+      "event_type": "plugin_entry",
+      "id": "save_group_prompt",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "save_group_prompt",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_proactive_topics.description",
+        "default": "保存主动发言话题列表，每行一个话题。"
+      },
+      "event_key": "qq_auto_reply.save_proactive_topics",
+      "event_type": "plugin_entry",
+      "id": "save_proactive_topics",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.save_proactive_topics.name",
+        "default": "保存主动发言话题"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_prompt_override.description",
+        "default": "保存某个提示词层的自定义覆盖值到 business_config。"
+      },
+      "event_key": "qq_auto_reply.save_prompt_override",
+      "event_type": "plugin_entry",
+      "id": "save_prompt_override",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "layer_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "layer_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.save_prompt_override.name",
+        "default": "保存提示词覆盖"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_settings.description",
+        "default": "保存 QQ 插件当前的 OneBot 地址、Token、NapCat 路径、回复概率和 backlog 标签等设置。"
+      },
+      "event_key": "qq_auto_reply.save_settings",
+      "event_type": "plugin_entry",
+      "id": "save_settings",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_cross_group_context": {
+            "type": "boolean"
+          },
+          "backlog_labels": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "group_member_memory_enabled": {
+            "type": "boolean"
+          },
+          "group_memory_enabled": {
+            "type": "boolean"
+          },
+          "guide_step_config_done": {
+            "type": "boolean"
+          },
+          "guide_step_napcat_done": {
+            "type": "boolean"
+          },
+          "guide_step_runtime_done": {
+            "type": "boolean"
+          },
+          "napcat_directory": {
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "onebot_url": {
+            "type": "string"
+          },
+          "private_participant_memory_enabled": {
+            "type": "boolean"
+          },
+          "qq_connection_mode": {
+            "enum": [
+              "napcat",
+              "napcat_forward",
+              "open_platform"
+            ],
+            "type": "string"
+          },
+          "qq_open_app_id": {
+            "type": "string"
+          },
+          "qq_open_client_secret": {
+            "type": "string"
+          },
+          "qq_open_identity_probe_enabled": {
+            "type": "boolean"
+          },
+          "reply_mode": {
+            "enum": [
+              "text",
+              "voice",
+              "both"
+            ],
+            "type": "string"
+          },
+          "retroactive_review_max_messages": {
+            "type": "integer"
+          },
+          "retroactive_review_max_reply": {
+            "type": "integer"
+          },
+          "show_napcat_window": {
+            "type": "boolean"
+          },
+          "show_onboarding": {
+            "type": "boolean"
+          },
+          "strategy_mode": {
+            "enum": [
+              "neko_dynamic",
+              "neko_scene"
+            ],
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "truth_reply_probability": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.save_settings.name",
+        "default": "保存 QQ 自动回复设置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_backlog_reply_direct.description",
+        "default": "把你填写的内容直接回复到这条 QQ 消息，并在发送后把对应群聊标记为已处理。"
+      },
+      "event_key": "qq_auto_reply.send_backlog_reply_direct",
+      "event_type": "plugin_entry",
+      "id": "send_backlog_reply_direct",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "original_message": {
+            "type": "string"
+          },
+          "reply_text": {
+            "type": "string"
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "target_id",
+          "original_message",
+          "reply_text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.send_backlog_reply_direct.name",
+        "default": "发送这条回复"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_group_proactive_message.description",
+        "default": "根据你提供的内容生成一条新的 QQ 群消息，并直接发送到指定群聊。"
+      },
+      "event_key": "qq_auto_reply.send_group_proactive_message",
+      "event_type": "plugin_entry",
+      "id": "send_group_proactive_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {
+        "timeout": 90
+      },
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.send_group_proactive_message.name",
+        "default": "主动发送群聊消息"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_private_proactive_message.description",
+        "default": "根据你提供的内容生成一条新的 QQ 私聊消息，并直接发送给指定用户。"
+      },
+      "event_key": "qq_auto_reply.send_private_proactive_message",
+      "event_type": "plugin_entry",
+      "id": "send_private_proactive_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {
+        "timeout": 90
+      },
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.send_private_proactive_message.name",
+        "default": "主动发送私聊消息"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_user_nickname.description",
+        "default": "修改这个信任用户在回复里显示的昵称或称呼。"
+      },
+      "event_key": "qq_auto_reply.set_user_nickname",
+      "event_type": "plugin_entry",
+      "id": "set_user_nickname",
+      "input_schema": {
+        "properties": {
+          "nickname": {
+            "default": "",
+            "type": "string"
+          },
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.set_user_nickname.name",
+        "default": "设置用户昵称"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_auto_reply.description",
+        "default": "开始监听 QQ 消息，并按当前配置自动回复或转发。"
+      },
+      "event_key": "qq_auto_reply.start_auto_reply",
+      "event_type": "plugin_entry",
+      "id": "start_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.start_auto_reply.name",
+        "default": "启动自动回复"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.stop_auto_reply.description",
+        "default": "停止监听 QQ 消息，不再继续自动回复或转发。"
+      },
+      "event_key": "qq_auto_reply.stop_auto_reply",
+      "event_type": "plugin_entry",
+      "id": "stop_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.stop_auto_reply.name",
+        "default": "停止自动回复"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.sync_qrcode.description",
+        "default": "重新读取 NapCat 当前生成的 QQ 登录二维码，并更新到插件界面。"
+      },
+      "event_key": "qq_auto_reply.sync_qrcode",
+      "event_type": "plugin_entry",
+      "id": "sync_qrcode",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.sync_qrcode.name",
+        "default": "刷新二维码"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.unbind_identity_account.description",
+        "default": "把一个群内 ID 从它被合并进的身份里拆回独立身份。误合并的唯一回滚方式。"
+      },
+      "event_key": "qq_auto_reply.unbind_identity_account",
+      "event_type": "plugin_entry",
+      "id": "unbind_identity_account",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.unbind_identity_account.name",
+        "default": "撤销合并"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.upload_sticker.description",
+        "default": "上传一张图片 base64 数据，自动保存到 data/sticker/ 目录并注册到 sticker.json。"
+      },
+      "event_key": "qq_auto_reply.upload_sticker",
+      "event_type": "plugin_entry",
+      "id": "upload_sticker",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "data_base64": {
+            "description": "图片 base64 编码数据",
+            "type": "string"
+          },
+          "desc": {
+            "description": "表情包描述",
+            "type": "string"
+          },
+          "filename": {
+            "description": "文件名（如 cat.png）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "data_base64",
+          "desc"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {
+        "timeout": 30
+      },
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.upload_sticker.name",
+        "default": "上传表情包"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "add_trusted_group": "add_trusted_group",
+    "add_trusted_user": "add_trusted_user",
+    "adjust_group_attention": "adjust_group_attention",
+    "bind_identity_account": "bind_identity_account",
+    "configure_onebot_nl": "configure_onebot_nl",
+    "delete_group_prompt": "delete_group_prompt",
+    "ensure_napcat": "ensure_napcat",
+    "forget_group_memory": "forget_group_memory",
+    "get_attention_state": "get_attention_state",
+    "get_backlog_summary": "get_backlog_summary",
+    "get_buffer_state": "get_buffer_state",
+    "get_dashboard_state": "get_dashboard_state",
+    "get_group_backlog_detail": "get_group_backlog_detail",
+    "get_group_prompts": "get_group_prompts",
+    "get_napcat_webui": "get_napcat_webui",
+    "get_prompt_editor_state": "get_prompt_editor_state",
+    "get_recent_logs": "get_recent_logs",
+    "get_user_profiles": "get_user_profiles",
+    "init_config": "init_config",
+    "list_identity_claims": "list_identity_claims",
+    "list_stickers": "list_stickers",
+    "mark_group_backlog_reviewed": "mark_group_backlog_reviewed",
+    "pick_directory": "pick_directory",
+    "refresh_actual_contacts": "refresh_actual_contacts",
+    "register_sticker": "register_sticker",
+    "remove_trusted_group": "remove_trusted_group",
+    "remove_trusted_user": "remove_trusted_user",
+    "reset_prompt_override": "reset_prompt_override",
+    "save_group_prompt": "save_group_prompt",
+    "save_proactive_topics": "save_proactive_topics",
+    "save_prompt_override": "save_prompt_override",
+    "save_settings": "save_settings",
+    "send_backlog_reply_direct": "send_backlog_reply_direct",
+    "send_group_proactive_message": "send_group_proactive_message",
+    "send_private_proactive_message": "send_private_proactive_message",
+    "set_user_nickname": "set_user_nickname",
+    "start_auto_reply": "start_auto_reply",
+    "stop_auto_reply": "stop_auto_reply",
+    "sync_qrcode": "sync_qrcode",
+    "unbind_identity_account": "unbind_identity_account",
+    "upload_sticker": "upload_sticker"
+  },
+  "handlers": {
+    "qq_auto_reply.add_trusted_group": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.add_trusted_group.description",
+        "default": "把一个 QQ 群加入信任群聊列表，并可设置群等级和回复概率。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_trusted_group",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "level": {
+            "default": "normal",
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "open_reply_probability": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.add_trusted_group.name",
+        "default": "添加信任群聊"
+      }
+    },
+    "qq_auto_reply.add_trusted_user": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.add_trusted_user.description",
+        "default": "把一个 QQ 号加入信任用户列表，并可设置权限、昵称和转发概率。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_trusted_user",
+      "input_schema": {
+        "properties": {
+          "level": {
+            "default": "trusted",
+            "type": "string"
+          },
+          "nickname": {
+            "default": "",
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.add_trusted_user.name",
+        "default": "添加信任用户"
+      }
+    },
+    "qq_auto_reply.adjust_group_attention": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.adjust_group_attention.description",
+        "default": "给指定群手动增减注意力分数，正数为加分、负数为减分。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "adjust_group_attention",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "type": "number"
+          },
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "delta"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.adjust_group_attention.name",
+        "default": "手动调整群注意力"
+      }
+    },
+    "qq_auto_reply.bind_identity_account": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bind_identity_account.description",
+        "default": "把一个群内 ID 的信赖度账本并入已有身份。只能由人触发，系统不会自动合并任何身份。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bind_identity_account",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "target_user_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "target_user_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bind_identity_account.name",
+        "default": "合并到已有身份"
+      }
+    },
+    "qq_auto_reply.configure_onebot_nl": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.configure_onebot_nl.description",
+        "default": "通过自然语言描述来设置或修改 OneBot 的 WebSocket 地址和 Access Token。例如：设置地址为 ws://0.0.0.0:6199 token 为 abc123、把 OneBot 地址改成 ws://192.168.1.1:3001、清空 token"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "configure_onebot_nl",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "description": "自然语言指令",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.configure_onebot_nl.name",
+        "default": "用自然语言配置 OneBot 连接"
+      }
+    },
+    "qq_auto_reply.delete_group_prompt": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "delete_group_prompt",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "delete_group_prompt"
+    },
+    "qq_auto_reply.ensure_napcat": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ensure_napcat.description",
+        "default": "启动 NapCat 外部进程并等待 OneBot 就绪（不连接 WebSocket）。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ensure_napcat",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ensure_napcat.name",
+        "default": "启动 NapCat 进程"
+      }
+    },
+    "qq_auto_reply.forget_group_memory": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.forget_group_memory.description",
+        "default": "删除指定群聊的全部长期记忆（facts/reflections/persona）。幂等，重试安全。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "forget_group_memory",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.forget_group_memory.name",
+        "default": "清除群记忆"
+      }
+    },
+    "qq_auto_reply.get_attention_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_attention_state.description",
+        "default": "返回所有群聊的注意力分数和焦点状态。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_attention_state",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_attention_state.name",
+        "default": "获取注意力状态"
+      }
+    },
+    "qq_auto_reply.get_backlog_summary": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_backlog_summary.description",
+        "default": "查看当前哪些群还有待处理消息，以及每个群的大致积压情况。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_backlog_summary",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_backlog_summary.name",
+        "default": "读取待审阅摘要"
+      }
+    },
+    "qq_auto_reply.get_buffer_state": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_buffer_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "get_buffer_state"
+    },
+    "qq_auto_reply.get_dashboard_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_dashboard_state.description",
+        "default": "读取 QQ 插件当前的运行状态、登录状态、联系人数量、配置项和引导进度。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_dashboard_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_dashboard_state.name",
+        "default": "获取控制面板状态"
+      }
+    },
+    "qq_auto_reply.get_group_backlog_detail": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_group_backlog_detail.description",
+        "default": "查看这个群当前每条待处理消息的详细内容，方便逐条回复或处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_group_backlog_detail",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_group_backlog_detail.name",
+        "default": "读取群聊待审阅详情"
+      }
+    },
+    "qq_auto_reply.get_group_prompts": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_group_prompts",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "get_group_prompts"
+    },
+    "qq_auto_reply.get_napcat_webui": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_napcat_webui.description",
+        "default": "从 NapCat 日志提取 WebUI 登录地址和 token。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_napcat_webui",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_napcat_webui.name",
+        "default": "获取 NapCat WebUI 地址"
+      }
+    },
+    "qq_auto_reply.get_prompt_editor_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_prompt_editor_state.description",
+        "default": "返回当前语言下的各层提示词元数据和配置，供提示词编辑器使用。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_prompt_editor_state",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_prompt_editor_state.name",
+        "default": "获取提示词编辑器状态"
+      }
+    },
+    "qq_auto_reply.get_recent_logs": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_recent_logs.description",
+        "default": "返回 QQ 插件文件日志的最近 N 行。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_recent_logs",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_recent_logs.name",
+        "default": "获取最近日志"
+      }
+    },
+    "qq_auto_reply.get_user_profiles": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_user_profiles.description",
+        "default": "读取当前缓存的用户画像列表，包含身份信息和从长期记忆中提取的事实摘要。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_user_profiles",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_user_profiles.name",
+        "default": "获取用户画像"
+      }
+    },
+    "qq_auto_reply.init_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.init_config.description",
+        "default": "在第一次使用 QQ 插件、完成引导或缺少配置文件时，创建一份新的 QQ 配置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "init_config",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "guide_step_config_done": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.init_config.name",
+        "default": "初始化 QQ 配置"
+      }
+    },
+    "qq_auto_reply.list_identity_claims": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.list_identity_claims.description",
+        "default": "列出开放平台上出现过、但还不在信任用户名册里的群内 ID，以及可供人工合并的已有身份候选。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_identity_claims",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.list_identity_claims.name",
+        "default": "列出未认领的群内 ID"
+      }
+    },
+    "qq_auto_reply.list_stickers": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.list_stickers.description",
+        "default": "读取 sticker.json 并返回所有已注册的表情包。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_stickers",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.list_stickers.name",
+        "default": "列出表情包"
+      }
+    },
+    "qq_auto_reply.mark_group_backlog_reviewed": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.mark_group_backlog_reviewed.description",
+        "default": "把这个群当前所有待处理消息标记为已处理，不再继续显示为未审阅。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "mark_group_backlog_reviewed",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.mark_group_backlog_reviewed.name",
+        "default": "标记群聊已处理"
+      }
+    },
+    "qq_auto_reply.pick_directory": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.pick_directory.description",
+        "default": "打开系统原生目录选择对话框，返回选中目录的绝对路径。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "pick_directory",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.pick_directory.name",
+        "default": "选择目录"
+      }
+    },
+    "qq_auto_reply.refresh_actual_contacts": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.refresh_actual_contacts.description",
+        "default": "重新从 OneBot 拉取 QQ 好友和群聊列表，用于更新联系人显示。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "refresh_actual_contacts",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.refresh_actual_contacts.name",
+        "default": "刷新实际联系人列表"
+      }
+    },
+    "qq_auto_reply.register_sticker": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.register_sticker.description",
+        "default": "将一张图片注册为表情包，写入 sticker.json。需要提供图片文件的相对路径和描述。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "register_sticker",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "desc": {
+            "description": "表情包描述，LLM 通过描述选择使用哪个表情包",
+            "type": "string"
+          },
+          "image_path": {
+            "description": "图片文件名，放在 data/sticker/ 目录下",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_path",
+          "desc"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.register_sticker.name",
+        "default": "注册表情包"
+      }
+    },
+    "qq_auto_reply.remove_trusted_group": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.remove_trusted_group.description",
+        "default": "把一个 QQ 群从信任群聊列表中移除，不再按信任群聊处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_trusted_group",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.remove_trusted_group.name",
+        "default": "移除信任群聊"
+      }
+    },
+    "qq_auto_reply.remove_trusted_user": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.remove_trusted_user.description",
+        "default": "把一个 QQ 号从信任用户列表中移除，不再按信任用户处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_trusted_user",
+      "input_schema": {
+        "properties": {
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.remove_trusted_user.name",
+        "default": "移除信任用户"
+      }
+    },
+    "qq_auto_reply.reset_prompt_override": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.reset_prompt_override.description",
+        "default": "删除某个提示词层的自定义覆盖值，恢复默认。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "reset_prompt_override",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "layer_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "layer_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.reset_prompt_override.name",
+        "default": "重置提示词覆盖"
+      }
+    },
+    "qq_auto_reply.save_group_prompt": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_group_prompt",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "save_group_prompt"
+    },
+    "qq_auto_reply.save_proactive_topics": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_proactive_topics.description",
+        "default": "保存主动发言话题列表，每行一个话题。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_proactive_topics",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_proactive_topics.name",
+        "default": "保存主动发言话题"
+      }
+    },
+    "qq_auto_reply.save_prompt_override": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_prompt_override.description",
+        "default": "保存某个提示词层的自定义覆盖值到 business_config。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_prompt_override",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "layer_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "layer_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_prompt_override.name",
+        "default": "保存提示词覆盖"
+      }
+    },
+    "qq_auto_reply.save_settings": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_settings.description",
+        "default": "保存 QQ 插件当前的 OneBot 地址、Token、NapCat 路径、回复概率和 backlog 标签等设置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_settings",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_cross_group_context": {
+            "type": "boolean"
+          },
+          "backlog_labels": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "group_member_memory_enabled": {
+            "type": "boolean"
+          },
+          "group_memory_enabled": {
+            "type": "boolean"
+          },
+          "guide_step_config_done": {
+            "type": "boolean"
+          },
+          "guide_step_napcat_done": {
+            "type": "boolean"
+          },
+          "guide_step_runtime_done": {
+            "type": "boolean"
+          },
+          "napcat_directory": {
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "onebot_url": {
+            "type": "string"
+          },
+          "private_participant_memory_enabled": {
+            "type": "boolean"
+          },
+          "qq_connection_mode": {
+            "enum": [
+              "napcat",
+              "napcat_forward",
+              "open_platform"
+            ],
+            "type": "string"
+          },
+          "qq_open_app_id": {
+            "type": "string"
+          },
+          "qq_open_client_secret": {
+            "type": "string"
+          },
+          "qq_open_identity_probe_enabled": {
+            "type": "boolean"
+          },
+          "reply_mode": {
+            "enum": [
+              "text",
+              "voice",
+              "both"
+            ],
+            "type": "string"
+          },
+          "retroactive_review_max_messages": {
+            "type": "integer"
+          },
+          "retroactive_review_max_reply": {
+            "type": "integer"
+          },
+          "show_napcat_window": {
+            "type": "boolean"
+          },
+          "show_onboarding": {
+            "type": "boolean"
+          },
+          "strategy_mode": {
+            "enum": [
+              "neko_dynamic",
+              "neko_scene"
+            ],
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "truth_reply_probability": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_settings.name",
+        "default": "保存 QQ 自动回复设置"
+      }
+    },
+    "qq_auto_reply.send_backlog_reply_direct": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_backlog_reply_direct.description",
+        "default": "把你填写的内容直接回复到这条 QQ 消息，并在发送后把对应群聊标记为已处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_backlog_reply_direct",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "original_message": {
+            "type": "string"
+          },
+          "reply_text": {
+            "type": "string"
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "target_id",
+          "original_message",
+          "reply_text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.send_backlog_reply_direct.name",
+        "default": "发送这条回复"
+      }
+    },
+    "qq_auto_reply.send_group_proactive_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_group_proactive_message.description",
+        "default": "根据你提供的内容生成一条新的 QQ 群消息，并直接发送到指定群聊。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_group_proactive_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {
+        "timeout": 90
+      },
+      "name": {
+        "$i18n": "entries.send_group_proactive_message.name",
+        "default": "主动发送群聊消息"
+      }
+    },
+    "qq_auto_reply.send_private_proactive_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_private_proactive_message.description",
+        "default": "根据你提供的内容生成一条新的 QQ 私聊消息，并直接发送给指定用户。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_private_proactive_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {
+        "timeout": 90
+      },
+      "name": {
+        "$i18n": "entries.send_private_proactive_message.name",
+        "default": "主动发送私聊消息"
+      }
+    },
+    "qq_auto_reply.set_user_nickname": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_user_nickname.description",
+        "default": "修改这个信任用户在回复里显示的昵称或称呼。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_user_nickname",
+      "input_schema": {
+        "properties": {
+          "nickname": {
+            "default": "",
+            "type": "string"
+          },
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_user_nickname.name",
+        "default": "设置用户昵称"
+      }
+    },
+    "qq_auto_reply.start_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_auto_reply.description",
+        "default": "开始监听 QQ 消息，并按当前配置自动回复或转发。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "start_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.start_auto_reply.name",
+        "default": "启动自动回复"
+      }
+    },
+    "qq_auto_reply.stop_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.stop_auto_reply.description",
+        "default": "停止监听 QQ 消息，不再继续自动回复或转发。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "stop_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.stop_auto_reply.name",
+        "default": "停止自动回复"
+      }
+    },
+    "qq_auto_reply.sync_qrcode": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.sync_qrcode.description",
+        "default": "重新读取 NapCat 当前生成的 QQ 登录二维码，并更新到插件界面。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "sync_qrcode",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.sync_qrcode.name",
+        "default": "刷新二维码"
+      }
+    },
+    "qq_auto_reply.unbind_identity_account": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.unbind_identity_account.description",
+        "default": "把一个群内 ID 从它被合并进的身份里拆回独立身份。误合并的唯一回滚方式。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "unbind_identity_account",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.unbind_identity_account.name",
+        "default": "撤销合并"
+      }
+    },
+    "qq_auto_reply.upload_sticker": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.upload_sticker.description",
+        "default": "上传一张图片 base64 数据，自动保存到 data/sticker/ 目录并注册到 sticker.json。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "upload_sticker",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "data_base64": {
+            "description": "图片 base64 编码数据",
+            "type": "string"
+          },
+          "desc": {
+            "description": "表情包描述",
+            "type": "string"
+          },
+          "filename": {
+            "description": "文件名（如 cat.png）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "data_base64",
+          "desc"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {
+        "timeout": 30
+      },
+      "name": {
+        "$i18n": "entries.upload_sticker.name",
+        "default": "上传表情包"
+      }
+    },
+    "qq_auto_reply:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "qq_auto_reply:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "qq_auto_reply:plugin_entry:add_trusted_group": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.add_trusted_group.description",
+        "default": "把一个 QQ 群加入信任群聊列表，并可设置群等级和回复概率。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_trusted_group",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "level": {
+            "default": "normal",
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "open_reply_probability": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.add_trusted_group.name",
+        "default": "添加信任群聊"
+      }
+    },
+    "qq_auto_reply:plugin_entry:add_trusted_user": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.add_trusted_user.description",
+        "default": "把一个 QQ 号加入信任用户列表，并可设置权限、昵称和转发概率。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_trusted_user",
+      "input_schema": {
+        "properties": {
+          "level": {
+            "default": "trusted",
+            "type": "string"
+          },
+          "nickname": {
+            "default": "",
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.add_trusted_user.name",
+        "default": "添加信任用户"
+      }
+    },
+    "qq_auto_reply:plugin_entry:adjust_group_attention": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.adjust_group_attention.description",
+        "default": "给指定群手动增减注意力分数，正数为加分、负数为减分。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "adjust_group_attention",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "type": "number"
+          },
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "delta"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.adjust_group_attention.name",
+        "default": "手动调整群注意力"
+      }
+    },
+    "qq_auto_reply:plugin_entry:bind_identity_account": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bind_identity_account.description",
+        "default": "把一个群内 ID 的信赖度账本并入已有身份。只能由人触发，系统不会自动合并任何身份。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bind_identity_account",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "target_user_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "target_user_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bind_identity_account.name",
+        "default": "合并到已有身份"
+      }
+    },
+    "qq_auto_reply:plugin_entry:configure_onebot_nl": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.configure_onebot_nl.description",
+        "default": "通过自然语言描述来设置或修改 OneBot 的 WebSocket 地址和 Access Token。例如：设置地址为 ws://0.0.0.0:6199 token 为 abc123、把 OneBot 地址改成 ws://192.168.1.1:3001、清空 token"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "configure_onebot_nl",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "description": "自然语言指令",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.configure_onebot_nl.name",
+        "default": "用自然语言配置 OneBot 连接"
+      }
+    },
+    "qq_auto_reply:plugin_entry:delete_group_prompt": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "delete_group_prompt",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "delete_group_prompt"
+    },
+    "qq_auto_reply:plugin_entry:ensure_napcat": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ensure_napcat.description",
+        "default": "启动 NapCat 外部进程并等待 OneBot 就绪（不连接 WebSocket）。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ensure_napcat",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ensure_napcat.name",
+        "default": "启动 NapCat 进程"
+      }
+    },
+    "qq_auto_reply:plugin_entry:forget_group_memory": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.forget_group_memory.description",
+        "default": "删除指定群聊的全部长期记忆（facts/reflections/persona）。幂等，重试安全。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "forget_group_memory",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.forget_group_memory.name",
+        "default": "清除群记忆"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_attention_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_attention_state.description",
+        "default": "返回所有群聊的注意力分数和焦点状态。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_attention_state",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_attention_state.name",
+        "default": "获取注意力状态"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_backlog_summary": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_backlog_summary.description",
+        "default": "查看当前哪些群还有待处理消息，以及每个群的大致积压情况。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_backlog_summary",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_backlog_summary.name",
+        "default": "读取待审阅摘要"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_buffer_state": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_buffer_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "get_buffer_state"
+    },
+    "qq_auto_reply:plugin_entry:get_dashboard_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_dashboard_state.description",
+        "default": "读取 QQ 插件当前的运行状态、登录状态、联系人数量、配置项和引导进度。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_dashboard_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_dashboard_state.name",
+        "default": "获取控制面板状态"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_group_backlog_detail": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_group_backlog_detail.description",
+        "default": "查看这个群当前每条待处理消息的详细内容，方便逐条回复或处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_group_backlog_detail",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_group_backlog_detail.name",
+        "default": "读取群聊待审阅详情"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_group_prompts": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_group_prompts",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "get_group_prompts"
+    },
+    "qq_auto_reply:plugin_entry:get_napcat_webui": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_napcat_webui.description",
+        "default": "从 NapCat 日志提取 WebUI 登录地址和 token。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_napcat_webui",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_napcat_webui.name",
+        "default": "获取 NapCat WebUI 地址"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_prompt_editor_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_prompt_editor_state.description",
+        "default": "返回当前语言下的各层提示词元数据和配置，供提示词编辑器使用。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_prompt_editor_state",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_prompt_editor_state.name",
+        "default": "获取提示词编辑器状态"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_recent_logs": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_recent_logs.description",
+        "default": "返回 QQ 插件文件日志的最近 N 行。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_recent_logs",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_recent_logs.name",
+        "default": "获取最近日志"
+      }
+    },
+    "qq_auto_reply:plugin_entry:get_user_profiles": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_user_profiles.description",
+        "default": "读取当前缓存的用户画像列表，包含身份信息和从长期记忆中提取的事实摘要。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_user_profiles",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_user_profiles.name",
+        "default": "获取用户画像"
+      }
+    },
+    "qq_auto_reply:plugin_entry:init_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.init_config.description",
+        "default": "在第一次使用 QQ 插件、完成引导或缺少配置文件时，创建一份新的 QQ 配置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "init_config",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "guide_step_config_done": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.init_config.name",
+        "default": "初始化 QQ 配置"
+      }
+    },
+    "qq_auto_reply:plugin_entry:list_identity_claims": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.list_identity_claims.description",
+        "default": "列出开放平台上出现过、但还不在信任用户名册里的群内 ID，以及可供人工合并的已有身份候选。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_identity_claims",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.list_identity_claims.name",
+        "default": "列出未认领的群内 ID"
+      }
+    },
+    "qq_auto_reply:plugin_entry:list_stickers": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.list_stickers.description",
+        "default": "读取 sticker.json 并返回所有已注册的表情包。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_stickers",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.list_stickers.name",
+        "default": "列出表情包"
+      }
+    },
+    "qq_auto_reply:plugin_entry:mark_group_backlog_reviewed": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.mark_group_backlog_reviewed.description",
+        "default": "把这个群当前所有待处理消息标记为已处理，不再继续显示为未审阅。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "mark_group_backlog_reviewed",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.mark_group_backlog_reviewed.name",
+        "default": "标记群聊已处理"
+      }
+    },
+    "qq_auto_reply:plugin_entry:pick_directory": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.pick_directory.description",
+        "default": "打开系统原生目录选择对话框，返回选中目录的绝对路径。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "pick_directory",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.pick_directory.name",
+        "default": "选择目录"
+      }
+    },
+    "qq_auto_reply:plugin_entry:refresh_actual_contacts": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.refresh_actual_contacts.description",
+        "default": "重新从 OneBot 拉取 QQ 好友和群聊列表，用于更新联系人显示。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "refresh_actual_contacts",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.refresh_actual_contacts.name",
+        "default": "刷新实际联系人列表"
+      }
+    },
+    "qq_auto_reply:plugin_entry:register_sticker": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.register_sticker.description",
+        "default": "将一张图片注册为表情包，写入 sticker.json。需要提供图片文件的相对路径和描述。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "register_sticker",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "desc": {
+            "description": "表情包描述，LLM 通过描述选择使用哪个表情包",
+            "type": "string"
+          },
+          "image_path": {
+            "description": "图片文件名，放在 data/sticker/ 目录下",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_path",
+          "desc"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.register_sticker.name",
+        "default": "注册表情包"
+      }
+    },
+    "qq_auto_reply:plugin_entry:remove_trusted_group": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.remove_trusted_group.description",
+        "default": "把一个 QQ 群从信任群聊列表中移除，不再按信任群聊处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_trusted_group",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.remove_trusted_group.name",
+        "default": "移除信任群聊"
+      }
+    },
+    "qq_auto_reply:plugin_entry:remove_trusted_user": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.remove_trusted_user.description",
+        "default": "把一个 QQ 号从信任用户列表中移除，不再按信任用户处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_trusted_user",
+      "input_schema": {
+        "properties": {
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.remove_trusted_user.name",
+        "default": "移除信任用户"
+      }
+    },
+    "qq_auto_reply:plugin_entry:reset_prompt_override": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.reset_prompt_override.description",
+        "default": "删除某个提示词层的自定义覆盖值，恢复默认。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "reset_prompt_override",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "layer_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "layer_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.reset_prompt_override.name",
+        "default": "重置提示词覆盖"
+      }
+    },
+    "qq_auto_reply:plugin_entry:save_group_prompt": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_group_prompt",
+      "input_schema": {
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "save_group_prompt"
+    },
+    "qq_auto_reply:plugin_entry:save_proactive_topics": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_proactive_topics.description",
+        "default": "保存主动发言话题列表，每行一个话题。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_proactive_topics",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_proactive_topics.name",
+        "default": "保存主动发言话题"
+      }
+    },
+    "qq_auto_reply:plugin_entry:save_prompt_override": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_prompt_override.description",
+        "default": "保存某个提示词层的自定义覆盖值到 business_config。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_prompt_override",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "layer_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "layer_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_prompt_override.name",
+        "default": "保存提示词覆盖"
+      }
+    },
+    "qq_auto_reply:plugin_entry:save_settings": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_settings.description",
+        "default": "保存 QQ 插件当前的 OneBot 地址、Token、NapCat 路径、回复概率和 backlog 标签等设置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_settings",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_cross_group_context": {
+            "type": "boolean"
+          },
+          "backlog_labels": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "group_member_memory_enabled": {
+            "type": "boolean"
+          },
+          "group_memory_enabled": {
+            "type": "boolean"
+          },
+          "guide_step_config_done": {
+            "type": "boolean"
+          },
+          "guide_step_napcat_done": {
+            "type": "boolean"
+          },
+          "guide_step_runtime_done": {
+            "type": "boolean"
+          },
+          "napcat_directory": {
+            "type": "string"
+          },
+          "normal_relay_probability": {
+            "type": "number"
+          },
+          "onebot_url": {
+            "type": "string"
+          },
+          "private_participant_memory_enabled": {
+            "type": "boolean"
+          },
+          "qq_connection_mode": {
+            "enum": [
+              "napcat",
+              "napcat_forward",
+              "open_platform"
+            ],
+            "type": "string"
+          },
+          "qq_open_app_id": {
+            "type": "string"
+          },
+          "qq_open_client_secret": {
+            "type": "string"
+          },
+          "qq_open_identity_probe_enabled": {
+            "type": "boolean"
+          },
+          "reply_mode": {
+            "enum": [
+              "text",
+              "voice",
+              "both"
+            ],
+            "type": "string"
+          },
+          "retroactive_review_max_messages": {
+            "type": "integer"
+          },
+          "retroactive_review_max_reply": {
+            "type": "integer"
+          },
+          "show_napcat_window": {
+            "type": "boolean"
+          },
+          "show_onboarding": {
+            "type": "boolean"
+          },
+          "strategy_mode": {
+            "enum": [
+              "neko_dynamic",
+              "neko_scene"
+            ],
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "truth_reply_probability": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_settings.name",
+        "default": "保存 QQ 自动回复设置"
+      }
+    },
+    "qq_auto_reply:plugin_entry:send_backlog_reply_direct": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_backlog_reply_direct.description",
+        "default": "把你填写的内容直接回复到这条 QQ 消息，并在发送后把对应群聊标记为已处理。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_backlog_reply_direct",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "original_message": {
+            "type": "string"
+          },
+          "reply_text": {
+            "type": "string"
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "target_id",
+          "original_message",
+          "reply_text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.send_backlog_reply_direct.name",
+        "default": "发送这条回复"
+      }
+    },
+    "qq_auto_reply:plugin_entry:send_group_proactive_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_group_proactive_message.description",
+        "default": "根据你提供的内容生成一条新的 QQ 群消息，并直接发送到指定群聊。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_group_proactive_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {
+        "timeout": 90
+      },
+      "name": {
+        "$i18n": "entries.send_group_proactive_message.name",
+        "default": "主动发送群聊消息"
+      }
+    },
+    "qq_auto_reply:plugin_entry:send_private_proactive_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_private_proactive_message.description",
+        "default": "根据你提供的内容生成一条新的 QQ 私聊消息，并直接发送给指定用户。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_private_proactive_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {
+        "timeout": 90
+      },
+      "name": {
+        "$i18n": "entries.send_private_proactive_message.name",
+        "default": "主动发送私聊消息"
+      }
+    },
+    "qq_auto_reply:plugin_entry:set_user_nickname": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_user_nickname.description",
+        "default": "修改这个信任用户在回复里显示的昵称或称呼。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_user_nickname",
+      "input_schema": {
+        "properties": {
+          "nickname": {
+            "default": "",
+            "type": "string"
+          },
+          "qq_number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qq_number"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_user_nickname.name",
+        "default": "设置用户昵称"
+      }
+    },
+    "qq_auto_reply:plugin_entry:start_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_auto_reply.description",
+        "default": "开始监听 QQ 消息，并按当前配置自动回复或转发。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "start_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.start_auto_reply.name",
+        "default": "启动自动回复"
+      }
+    },
+    "qq_auto_reply:plugin_entry:stop_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.stop_auto_reply.description",
+        "default": "停止监听 QQ 消息，不再继续自动回复或转发。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "stop_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.stop_auto_reply.name",
+        "default": "停止自动回复"
+      }
+    },
+    "qq_auto_reply:plugin_entry:sync_qrcode": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.sync_qrcode.description",
+        "default": "重新读取 NapCat 当前生成的 QQ 登录二维码，并更新到插件界面。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "sync_qrcode",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.sync_qrcode.name",
+        "default": "刷新二维码"
+      }
+    },
+    "qq_auto_reply:plugin_entry:unbind_identity_account": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.unbind_identity_account.description",
+        "default": "把一个群内 ID 从它被合并进的身份里拆回独立身份。误合并的唯一回滚方式。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "unbind_identity_account",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.unbind_identity_account.name",
+        "default": "撤销合并"
+      }
+    },
+    "qq_auto_reply:plugin_entry:upload_sticker": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.upload_sticker.description",
+        "default": "上传一张图片 base64 数据，自动保存到 data/sticker/ 目录并注册到 sticker.json。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "upload_sticker",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "data_base64": {
+            "description": "图片 base64 编码数据",
+            "type": "string"
+          },
+          "desc": {
+            "description": "表情包描述",
+            "type": "string"
+          },
+          "filename": {
+            "description": "文件名（如 cat.png）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "data_base64",
+          "desc"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {
+        "timeout": 30
+      },
+      "name": {
+        "$i18n": "entries.upload_sticker.name",
+        "default": "上传表情包"
+      }
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 2470196,
+  "source_files": [
+    "__init__.py",
+    "attention_gate_service.py",
+    "attention_service.py",
+    "backlog_models.py",
+    "backlog_service.py",
+    "backlog_store.py",
+    "config_store.py",
+    "dashboard_service.py",
+    "debug_focus_shift_retro.py",
+    "debug_reply_buffer_summary.py",
+    "display_name_service.py",
+    "emoji.json",
+    "fatigue_service.py",
+    "feedback_classifier.py",
+    "group_permission.py",
+    "handler_runtime_service.py",
+    "i18n/en-US.json",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "memory_bridge.py",
+    "memory_tool_service.py",
+    "message_chain.py",
+    "message_dispatcher.py",
+    "napcat_service.py",
+    "permission.py",
+    "pipeline_models.py",
+    "plugin.toml",
+    "prompt_builder.py",
+    "prompt_fragment_templates.py",
+    "prompting.py",
+    "qq_client.py",
+    "qq_connection.py",
+    "qq_open_plat.py",
+    "quote",
+    "relay_service.py",
+    "reply_buffer_service.py",
+    "reply_context_node.py",
+    "reply_decision_node.py",
+    "reply_delivery_node.py",
+    "reply_generation_service.py",
+    "reply_model_node.py",
+    "reply_pipeline.py",
+    "reply_postprocess_node.py",
+    "reply_relay_node.py",
+    "runtime_ops_service.py",
+    "runtime_service.py",
+    "scene_prompt_templates.py",
+    "session.py",
+    "session_bootstrap_service.py",
+    "session_instruction_service.py",
+    "session_memory_service.py",
+    "session_runtime_service.py",
+    "settings_service.py",
+    "static/Tutorial/1.png",
+    "static/Tutorial/2.png",
+    "static/Tutorial/3.png",
+    "static/Tutorial/4.png",
+    "static/i18n.js",
+    "static/index.html",
+    "static/napcat.html",
+    "static/old.html",
+    "static/open_platform.html",
+    "static/script.js",
+    "static/style.css",
+    "static/ui-sse.js",
+    "summary_builder.py",
+    "targets.py",
+    "text",
+    "ui_api.py",
+    "voice_reply_service.py"
+  ],
+  "source_sha256": "d62a374ab006df2f7ef14fe35ea5863ae11fe7cebbe4d5028c53860b5981de4a"
+}

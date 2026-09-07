@@ -335,6 +335,7 @@ permissions = ["state:read"]
 | Prop | 类型 | 说明 |
 |------|------|------|
 | `plugin` | `Record<string, any>` | 插件元数据 |
+| `host` | `{ origin?: string }` | 可选的宿主 origin 元数据 |
 | `surface` | `Record<string, any>` | 当前 surface 元数据 |
 | `state` | 泛型 `State` | Python context 返回的状态 |
 | `stateSchema` | `JsonSchema \| null` | 可选状态 schema |
@@ -344,6 +345,7 @@ permissions = ["state:read"]
 | `warnings` | `Array<{ path, code, message }>` | UI 声明告警 |
 | `locale` | `string` | 当前 UI locale |
 | `t` | `(key, params?) => string` | 插件本地翻译函数 |
+| `i18n` | `HostedI18n` | locale、默认 locale 与插件本地消息目录 |
 | `api` | `HostedApi` | action/refresh bridge |
 | `useLocalState` | hook | iframe 内本地状态，刷新 context 后仍保留 |
 
@@ -351,12 +353,27 @@ permissions = ["state:read"]
 
 ```ts
 type HostedApi = {
-  call(actionId: string, args?: Record<string, any>): Promise<any>
+  call(
+    actionId: string,
+    args?: Record<string, any>,
+    options?: { timeoutMs?: number; signal?: AbortSignal; userInitiated?: boolean },
+  ): Promise<any>
+  parseDocument(
+    file: File,
+    options?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<ParsedHostedDocument>
   refresh(): Promise<any>
 }
 ```
 
 - `api.call()` 调用当前 surface 暴露的插件 entry。
+- `api.parseDocument()` 从用户选择的 PDF 或 DOCX 中提取文本和元数据。当前 surface 必须在 `plugin.toml` 中声明名称完全一致的 `document:parse` 权限：
+
+  ```toml
+  permissions = ["state:read", "document:parse"]
+  ```
+
+  请在真实用户操作的事件处理器中直接调用，例如文件输入框的 `onChange`、点击或拖放。Hosted UI 运行时会把这些处理器内的同步调用标记为用户发起；先执行无关异步工作、再调用会被拒绝。
 - `api.refresh()` 重新拉取 context 并重新渲染。
 - 如果 action 设置了 `refresh_context=false`，则不会自动刷新。
 
@@ -414,6 +431,8 @@ type HostedApi = {
 | `Tip` | 提示 |
 | `Warning` | 警告 |
 
+UI Kit 还包含布局、输入、反馈、媒体、产物、表单和导航组件。完整导出列表与精确签名以 `plugin/sdk/hosted-ui/index.d.ts` 为准。
+
 ## Hooks 快速参考
 
 | Hook | 用途 |
@@ -426,7 +445,8 @@ type HostedApi = {
 | `useDebounce` | 防抖派生值 |
 | `useDebouncedState` | state + 防抖 state |
 | `useI18n` | 翻译函数和当前 locale |
-| `useState`, `useEffect`, `useMemo`, `useCallback`, `useRef`, `useReducer` | 基础 runtime hooks |
+| `useElementSize`, `useScrollIntoView`, `useScrollToBottom`, `useClipboard` | 元素尺寸、滚动与剪贴板辅助 |
+| `useState`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useReducer` | 基础 runtime hooks |
 
 示例：
 

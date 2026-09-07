@@ -64,10 +64,30 @@ MAIN_SERVER_WARMUP: tuple[str, ...] = (
     "pyncm_async",
     "bs4",
     "bilibili_api",
+    # 21 条封禁话题模板的 compile（其中 4 条各约 51 KB 正则源码），实测
+    # 294-298 ms。原来在 config/prompts/prompts_directives 模块级做，坐在
+    # memory_server 的 eager 导入链上、也就是端口 bind 之前。改惰性之后在
+    # 这里预热，首次指令抽取不用等。
+    "config.prompts.prompts_directives:DIRECTIVE_PATTERNS",
 )
 
 _warmup_lock = threading.Lock()
 _warmup_started = False
+
+
+def _warm_one(name: str) -> None:
+    """Warm one entry: ``"module"``, or ``"module:attribute"``.
+
+    The attribute form is for lazily-evaluated heavyweights -- a batch of regex
+    compilations, say. Such a module is usually in ``sys.modules`` already,
+    dragged in by something else, with only the expensive part deferred to first
+    access; importing it again is a cache hit that runs no code, so warming it
+    would do nothing. The attribute has to actually be read.
+    """
+    module_name, _, attr = name.partition(":")
+    module = importlib.import_module(module_name)
+    if attr:
+        getattr(module, attr)
 
 
 def start_background_warmup(modules, *, label: str = "server") -> bool:
@@ -94,7 +114,7 @@ def start_background_warmup(modules, *, label: str = "server") -> bool:
         for name in module_list:
             start = time.monotonic()
             try:
-                importlib.import_module(name)
+                _warm_one(name)
                 loaded += 1
                 logger.debug(
                     "[warmup:%s] %s (%.0f ms)",

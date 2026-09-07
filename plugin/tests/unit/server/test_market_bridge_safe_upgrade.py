@@ -767,12 +767,13 @@ async def test_market_upgrade_holds_operation_lock_for_entire_replacement(
     acquire_attempts = 0
     original_acquire = operation_lock._PROCESS_LOCK.acquire
 
-    async def observed_acquire() -> None:
+    async def observed_acquire(deadline: float | None = None) -> None:
         nonlocal acquire_attempts
         acquire_attempts += 1
         if acquire_attempts == 2:
             second_waiting_for_lock.set()
-        await original_acquire()
+        # 截止期照原样转发。吞掉它的替身会让被测的等锁预算在这条路径上静默失效。
+        await original_acquire(deadline)
 
     monkeypatch.setattr(operation_lock._PROCESS_LOCK, "acquire", observed_acquire)
 

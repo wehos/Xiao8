@@ -68,12 +68,15 @@ auto_classify = true
 [plugin]
 id = "smart_notes"
 name = "智能笔记"
+version = "1.2.0"
 entry = "plugin.plugins.smart_notes:SmartNotesPlugin"
 ```
 
-这三个字段是**必填**的。`id` 必须符合 `^[A-Za-z0-9_-]+$` 且全局唯一。强烈建议让它与目录名一致：不一致时运行时仍可能加载，但 profile 查找和工具可能假定路径是 `<plugin.id>/plugin.toml`。`entry` 必须是 `module.path:ClassName`，并解析到 `NekoPluginBase` 子类；不能直接把 `PluginRouter` 当作启动类。
+支持的检查与发布流程要求这四个字段**必填**。旧的源码发现路径仍可能加载部分清单不完整、目录名与 ID 不一致的插件，但这不代表它们是有效的发布包。`id` 必须符合 `^[A-Za-z0-9_-]+$` 且全局唯一。打包和生产安装要求声明 ID、归档目录、执行目标目录与 entry 包路径保持一致，也不会创建带数字后缀的可执行副本。`entry` 必须是 `module.path:ClassName`，并解析到 `NekoPluginBase` 子类；不能直接把 `PluginRouter` 当作启动类。
 
 普通插件的 `type = "plugin"` 可省略，因为它是默认值。只有 Adapter 包才使用 `type = "adapter"`。已删除的 `extension` 类型和 `[plugin.host]` 表会被拒绝。
+
+不同版本之间应保持 `id` 不变。升级、重新安装和降级只替换可执行代码，会保留运行时的 `config`、`data` 与 `cache`；修改 `id` 会创建另一个插件身份。可选的 `previous_ids` 只用于阻止新旧身份同时安装，不是运行时别名，也不会迁移或删除旧数据。任何替换操作都必须由用户明确确认。
 
 ```toml
 description = "管理你的笔记：搜索、创建、整理，支持 AI 自动归类。"
@@ -95,7 +98,7 @@ Agent 第二阶段最终返回 `plugin_id` 和运行时 `entry_id`。两者都�
 version = "1.2.0"
 ```
 
-可选。用于版本管理和市场发布。
+检查与发布流程必填，用于版本管理和市场发布。
 
 ---
 
@@ -257,4 +260,4 @@ plugin/plugins/smart_notes/
 └── cache/                   ← 运行时缓存，self.cache_path() 指向这里
 ```
 
-必需的是 `plugin.toml` 和 `[plugin].entry` 指向的可导入 Python 模块。模块不一定非得是 `__init__.py`，只是这种布局最常见。
+必需的是 `plugin.toml` 和 `[plugin].entry` 指向的可导入 Python 模块。模块不一定非得是 `__init__.py`，只是这种布局最常见。安装包中的代码与这些可写状态分开存放。

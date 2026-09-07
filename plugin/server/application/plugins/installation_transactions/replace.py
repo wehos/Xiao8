@@ -75,6 +75,10 @@ async def _start_plugin(plugin_id: str) -> None:
         return
     from plugin.server.application.plugins.lifecycle_service import PluginLifecycleService
 
+    # 这里原本要显式清一次元数据扫描缓存：替换/回滚刚动过盘，而缓存键（路径 +
+    # mtime_ns + size）看不见目录外的依赖变化，回滚更可能把时间戳原样拷回来。
+    # 缓存没有了——刷新每次都重读盘上的 manifest 和 plugin.meta.json——所以这一步
+    # 连同它要防的那类陈旧结果一起消失了。
     try:
         await PluginLifecycleService().start_plugin(plugin_id)
         return
@@ -190,6 +194,9 @@ async def run_rollback(
     restored = True
     try:
         await restore_directory(backup_dir, target_dir)
+        # 回滚同样是"树变了"。而且它比升级更容易骗过指纹：备份是拷回去的，时间戳
+        # 完全可能原样保留。这条路不走上面那个 invalidate_cache 阶段，所以自己清。
+        await asyncio.to_thread(_evict_replaced_plugin_modules, plugin_id)
     except Exception as exc:
         restored = False
         logger.error(
@@ -260,6 +267,8 @@ def _notify_rollback_start(callback: Callable[[], None] | None) -> None:
 def _evict_replaced_plugin_modules(plugin_id: str) -> None:
     from plugin.core.host import evict_cached_plugin_modules
 
+    # 已导入的模块仍然要清：这个进程里可能残留着被换掉的那份代码。元数据扫描缓存
+    # 曾经也在这里一起清，现在没有那个缓存了。
     evict_cached_plugin_modules(plugin_id)
 
 

@@ -8,7 +8,7 @@
 from plugin.sdk.plugin import Ok, Err, SdkError
 
 @plugin_entry(id="process")
-def process(self, data: str, **_):
+async def process(self, data: str, **_):
     if not data:
         return Err(SdkError("data is required"))
 
@@ -35,7 +35,7 @@ class WellOrganizedPlugin(NekoPluginBase):
 
     # --- 生命周期 ---
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         return Ok({"status": "ready"})
 
     # --- 私有辅助方法 ---
@@ -49,7 +49,7 @@ class WellOrganizedPlugin(NekoPluginBase):
 
     # --- 公共入口点 ---
     @plugin_entry(id="process")
-    def process(self, data: str, **_):
+    async def process(self, data: str, **_):
         self._validate(data)
         return Ok({"result": self._do_work(data)})
 ```
@@ -66,7 +66,7 @@ class WellOrganizedPlugin(NekoPluginBase):
 | `error` | 需要关注的错误 |
 | `exception` | 带完整堆栈跟踪的错误 |
 
-不要把原始对话、用户输入的密钥或其他隐私敏感 payload 写进持久日志。如果临时诊断确实必须显示这类内容，只能走明确的 `print()` 路径，并在排查后删除；不得通过 `self.logger` 记录原始隐私内容。正常日志优先记录脱敏后的长度、ID 和错误类型。
+不要把原始对话、用户输入的密钥或其他隐私敏感 payload 写进日志或进程输出。正常诊断优先记录脱敏后的长度、ID 和错误类型；确实需要敏感内容才能复现时，应改用合成数据，而不是打印或记录原始 payload。
 
 ```python
 self.logger.debug(f"Processing item {item_id}")
@@ -82,7 +82,7 @@ self.logger.exception(f"Unexpected error in process()")
 
 ```python
 @plugin_entry(id="batch_job")
-def batch_job(self, items: list, **_):
+async def batch_job(self, items: list, **_):
     total = len(items)
     for i, item in enumerate(items):
         self._process(item)
@@ -113,7 +113,7 @@ def batch_job(self, items: list, **_):
         "required": ["email", "age"]
     }
 )
-def validated(self, email: str, age: int, **_):
+async def validated(self, email: str, age: int, **_):
     return Ok({"email": email, "age": age})
 
 # 方式 B：Pydantic 模型（自动生成 schema）
@@ -124,21 +124,22 @@ class UserInput(BaseModel):
     age: int = Field(..., ge=0, le=150)
 
 @plugin_entry(id="validated_v2", params=UserInput)
-def validated_v2(self, email: str, age: int, **_):
+async def validated_v2(self, email: str, age: int, **_):
     return Ok({"email": email, "age": age})
 ```
 
 ## 工作目录
 
-使用 `self.config_dir` 和 `self.data_path()` 代替硬编码路径：
+`self.plugin_dir` 只用于随包代码和只读资源。运行时配置由 `self.config` 管理；
+持久数据和缓存应写入宿主分配的状态根目录：
 
 ```python
-# 插件目录（plugin.toml 所在位置）
-config_file = self.config_dir / "config.json"
+# 可执行目录（plugin.toml 和随包资源所在位置）
+manifest_path = self.plugin_dir / "plugin.toml"
 
-# 数据目录（自动创建的子目录）
-db_path = self.data_path("cache.db")       # → <plugin_dir>/data/cache.db
-logs_dir = self.data_path("logs")          # → <plugin_dir>/data/logs/
+# 与可执行代码分离的状态目录
+db_path = self.data_path("cache.db")       # → <plugin-state-root>/data/cache.db
+preview_path = self.cache_path("preview.png")  # → <plugin-state-root>/cache/preview.png
 ```
 
 ## 跨插件调用的错误处理

@@ -129,7 +129,10 @@ def _include_optional_router(
 
 @asynccontextmanager
 async def plugin_server_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    _ = app
+    # 谁负责插件生命周期，由**建这个 app 的人**说了算，见
+    # build_plugin_server_app 的 manage_lifecycle。默认 False：没人明说就不起，
+    # 这个方向的错误是「独立服务器里插件不自启」——看得见、也没人受伤。
+    manage_lifecycle = bool(getattr(app.state, "manage_plugin_lifecycle", False))
 
     if _can_register_faulthandler_signal():
         try:
@@ -175,9 +178,15 @@ async def plugin_server_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     heartbeat_task = asyncio.create_task(_heartbeat(), name="server-heartbeat")
 
-    # When embedded inside agent_server, lifecycle is managed externally
-    # via the user_plugin_enabled flag — do NOT auto-start here.
-    if not _EMBEDDED_BY_AGENT:
+    # 内嵌进 agent_server 时，生命周期由外部按 user_plugin_enabled 开关管理，
+    # 这里绝不能自动起——起了就是把整轮插件元数据扫描拉回端口 bind 之前。
+    #
+    # 以前这个判断读的是模块级的 _EMBEDDED_BY_AGENT，也就是**import 那一刻**的
+    # NEKO_PLUGIN_HOSTED_BY_AGENT。它今天恰好是对的，只因为 agent_server 在第一次
+    # import 这个模块之前先设了环境变量——两件相隔很远、谁都没保证的事。任何人在
+    # 那之前先 import 到 plugin.server.http_app，这个常量就冻成 False，全量扫描
+    # **静默**回到启动路径，没有任何东西会红。
+    if manage_lifecycle:
         await lifecycle_startup()
 
     # Install-source lock subsystem: tracks plugin provenance (builtin/manual/
@@ -224,12 +233,29 @@ async def plugin_server_lifespan(app: FastAPI) -> AsyncIterator[None]:
                 type(exc).__name__,
                 str(exc),
             )
-        if not _EMBEDDED_BY_AGENT:
+        if manage_lifecycle:
             await lifecycle_shutdown()
 
 
-def build_plugin_server_app(title: str = "N.E.K.O User Plugin Server") -> FastAPI:
+def build_plugin_server_app(
+    title: str = "N.E.K.O User Plugin Server",
+    *,
+    manage_lifecycle: bool = False,
+) -> FastAPI:
+    """Build the plugin HTTP app.
+
+    ``manage_lifecycle`` says whether this app owns the plugin lifecycle — the
+    full metadata refresh plus autostart. Only the standalone entry point does;
+    when embedded in agent_server the lifecycle is driven externally by the
+    ``user_plugin_enabled`` flag.
+
+    It defaults to ``False`` on purpose. Getting it wrong in that direction means
+    "plugins do not autostart in the standalone server", which is visible the
+    moment anyone looks. The other direction puts a full plugin scan back on the
+    startup path before any port binds, and nothing reports it.
+    """
     app = FastAPI(title=title, lifespan=plugin_server_lifespan)
+    app.state.manage_plugin_lifecycle = manage_lifecycle
 
     @app.get("/api_key", include_in_schema=False)
     async def redirect_model_settings(request: Request) -> RedirectResponse:

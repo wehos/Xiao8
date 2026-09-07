@@ -1885,10 +1885,26 @@ def apply_port_strategy() -> bool | str:
     existing_owners_by_key: dict[str, list] = {}
     reserved: set[int] = set()
 
-    # 预先查询 Hyper-V 保留端口范围，避免重复子进程调用
-    excluded_ranges = get_hyperv_excluded_ranges()
-    if excluded_ranges:
-        print(f"[Launcher] Detected {len(excluded_ranges)} Hyper-V/WSL excluded port range(s)", flush=True)
+    # Hyper-V/WSL 保留端口范围只有端口**已经**绑不上时才用得到，而查询它要
+    # spawn 一个 `netsh interface ipv4 show excludedportrange` 子进程——本机实测
+    # 122 / 49 / 50 ms。原来它无条件跑在所有 bind 探测**之前**，也就是每一次正常
+    # 启动都白付一次子进程，而正常启动恰恰是没有端口冲突、结果用不上的那种。
+    #
+    # 改成用到时再查。仍然只查一次（结果缓存在闭包里），原来那句"避免重复子进程
+    # 调用"照旧成立；那行 Detected 日志跟着挪到真的查过之后，免得报一个没查过的
+    # 数字。
+    _excluded_ranges_cache: list[list[tuple[int, int]]] = []
+
+    def _excluded_ranges() -> list[tuple[int, int]]:
+        if not _excluded_ranges_cache:
+            ranges = get_hyperv_excluded_ranges()
+            _excluded_ranges_cache.append(ranges)
+            if ranges:
+                print(
+                    f"[Launcher] Detected {len(ranges)} Hyper-V/WSL excluded port range(s)",
+                    flush=True,
+                )
+        return _excluded_ranges_cache[0]
 
     for key in ("MEMORY_SERVER_PORT", "TOOL_SERVER_PORT", "MAIN_SERVER_PORT"):
         preferred = int(DEFAULT_PORTS[key])
@@ -1898,7 +1914,7 @@ def apply_port_strategy() -> bool | str:
             continue
 
         # 端口不可绑定，识别具体原因（同时获取 owners 避免重复查询）
-        reason, owners = _classify_port_conflict(preferred, excluded_ranges)
+        reason, owners = _classify_port_conflict(preferred, _excluded_ranges())
 
         if reason == "neko":
             # Defer the decision until all three public ports are inspected.

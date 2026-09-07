@@ -16,6 +16,78 @@
     return value.replace(/\.vrma(?=[?#]|$)/i, '.vrma.gz');
   }
 
+  function holdNekoMotionPlayback(token) {
+    var runtime = window.NekoMotion;
+    if (!runtime || typeof runtime.holdExternalPlayback !== 'function') return false;
+    var holdRequest;
+    try {
+      holdRequest = runtime.holdExternalPlayback('jukebox', { token: token });
+    } catch (error) {
+      console.warn('[Jukebox] VRM 动作运行时占用失败，继续使用底层播放器:', error);
+      return false;
+    }
+    return Promise.resolve(holdRequest).then(function(held) {
+      return held === true;
+    }).catch(function(error) {
+      console.warn('[Jukebox] VRM 动作运行时占用失败，继续使用底层播放器:', error);
+      return false;
+    });
+  }
+
+  function releaseNekoMotionPlayback(options) {
+    var runtime = window.NekoMotion;
+    if (!runtime || typeof runtime.releaseExternalPlayback !== 'function') return false;
+    var releaseRequest;
+    try {
+      releaseRequest = runtime.releaseExternalPlayback('jukebox', options || {});
+    } catch (error) {
+      console.warn('[Jukebox] VRM 动作运行时释放失败，回退直接恢复待机:', error);
+      return false;
+    }
+    return Promise.resolve(releaseRequest).then(function(released) {
+      return released === true;
+    }).catch(function(error) {
+      console.warn('[Jukebox] VRM 动作运行时释放失败，回退直接恢复待机:', error);
+      return false;
+    });
+  }
+
+  function releaseOwnedNekoMotionPlayback(state, options) {
+    var releaseOptions = Object.assign({}, options || {});
+    if (!Object.prototype.hasOwnProperty.call(releaseOptions, 'token') &&
+        state.vrmMotionRuntimeToken !== null) {
+      releaseOptions.token = state.vrmMotionRuntimeToken;
+    }
+    var releaseToken = Object.prototype.hasOwnProperty.call(releaseOptions, 'token')
+      ? releaseOptions.token
+      : null;
+    var releaseResult = releaseNekoMotionPlayback(releaseOptions);
+    if (releaseResult === false) return false;
+    return Promise.resolve(releaseResult).then(function(released) {
+      if (released === true && releaseToken !== null &&
+          state.vrmMotionRuntimeToken === releaseToken) {
+        state.vrmMotionRuntimeToken = null;
+      }
+      return released === true;
+    });
+  }
+
+  function beginNativeAnimationPlayback(facade) {
+    var state = facade.State;
+    // 先终止上一段动画（也会作废它仍在途的加载），再给新请求取号；否则
+    // stopVMD 推进世代时会把刚创建的这条请求一起误伤。
+    facade.stopVMD(true);
+    state.playRequestId += 1;
+    state.pendingAnimationRequestId = state.playRequestId;
+    return state.playRequestId;
+  }
+
+  function finishNativeAnimationPlayback(state, requestId) {
+    if (state.pendingAnimationRequestId === requestId) {
+      state.pendingAnimationRequestId = null;
+    }
+  }
+
   function ensureNativeJukeboxFacade() {
     if (window.Jukebox) return;
 
@@ -27,7 +99,9 @@
         isVMDPlaying: false,
         isPaused: false,
         savedIdleAnimationUrl: null,
-        playRequestId: 0
+        playRequestId: 0,
+        pendingAnimationRequestId: null,
+        vrmMotionRuntimeToken: null
       },
 
       toggle: function() {
@@ -60,14 +134,20 @@
         }
 
         var state = facade.State;
-        state.playRequestId += 1;
-        var playRequestId = state.playRequestId;
+        if (!state.savedIdleAnimationUrl && window.mmdManager.currentAnimationUrl) {
+          state.savedIdleAnimationUrl = window.mmdManager.currentAnimationUrl;
+        }
+        var playRequestId = beginNativeAnimationPlayback(facade);
 
         try {
-          if (!state.savedIdleAnimationUrl && window.mmdManager.currentAnimationUrl) {
-            state.savedIdleAnimationUrl = window.mmdManager.currentAnimationUrl;
+          if (state.vrmMotionRuntimeToken !== null) {
+            var releaseResult = releaseOwnedNekoMotionPlayback(state, {
+              resume: false,
+              scheduleNext: false
+            });
+            if (releaseResult !== false) await releaseResult;
+            if (playRequestId !== state.playRequestId) return;
           }
-          facade.stopVMD(true);
           if (typeof window.mmdManager.loadAnimation === 'function') {
             await window.mmdManager.loadAnimation(vmdPath);
           }
@@ -82,6 +162,11 @@
           state.isPlaying = true;
         } catch (error) {
           console.error('[Jukebox]', translate('Jukebox.vmdPlayFailed', 'VMD 播放失败'), error);
+          if (playRequestId === state.playRequestId) {
+            await facade.restoreIdleAnimation();
+          }
+        } finally {
+          finishNativeAnimationPlayback(state, playRequestId);
         }
       },
 
@@ -93,28 +178,78 @@
         }
 
         var state = facade.State;
-        state.playRequestId += 1;
-        var playRequestId = state.playRequestId;
+        var playRequestId = beginNativeAnimationPlayback(facade);
+        var motionRuntimeHeld = false;
 
         try {
-          facade.stopVMD(true);
+          // 同一个 owner 的新 token 会在运行时内原子替换旧 token。先释放再占用会在
+          // 冷启动时等待完整初始化，让接班舞蹈落后于已经开始的音频。
+          var holdResult = holdNekoMotionPlayback(playRequestId);
+          motionRuntimeHeld = holdResult === false ? false : await holdResult;
+          if (playRequestId !== state.playRequestId) {
+            if (motionRuntimeHeld) {
+              // stop/new play 已经决定后续姿势；旧请求这里只解锁，不能再抢着恢复。
+              await releaseNekoMotionPlayback({ token: playRequestId, resume: false });
+            }
+            return;
+          }
+          if (motionRuntimeHeld) state.vrmMotionRuntimeToken = playRequestId;
           var played = await window.vrmManager.playVRMAAnimation(vrmaPath, {
             loop: false,
             fadeInDuration: 0.5,
-            fadeOutDuration: 0.5
+            fadeOutDuration: 0.5,
+            shouldStart: function() {
+              return playRequestId === state.playRequestId;
+            }
           });
-          if (played !== true || playRequestId !== state.playRequestId) return;
+          if (played !== true || playRequestId !== state.playRequestId) {
+            if (motionRuntimeHeld) {
+              await releaseOwnedNekoMotionPlayback(state, { token: playRequestId, resume: true });
+            } else if (playRequestId === state.playRequestId) {
+              await facade.restoreIdleAnimation();
+            }
+            return;
+          }
           state.isVMDPlaying = true;
           state.isPaused = false;
           state.isPlaying = true;
         } catch (error) {
           console.error('[Jukebox] VRMA 播放失败:', error);
+          if (motionRuntimeHeld) {
+            await releaseOwnedNekoMotionPlayback(state, { token: playRequestId, resume: true });
+          } else if (playRequestId === state.playRequestId) {
+            await facade.restoreIdleAnimation();
+          }
+        } finally {
+          finishNativeAnimationPlayback(state, playRequestId);
         }
       },
 
       stopVMD: function(skipIdleRestore) {
         var state = facade.State;
-        if (!state.isVMDPlaying) return;
+        var pendingRequestId = state.pendingAnimationRequestId;
+        var cancelledPendingRequest = false;
+        if (pendingRequestId !== null) {
+          // isVMDPlaying 只在真正起播后才会置位；等待 loadAnimation 或
+          // holdExternalPlayback 时也必须能被停止。只有当前世代仍属于这条
+          // 在途请求时才推进，避免旧 finally 误取消后来接手的新请求。
+          if (pendingRequestId === state.playRequestId) {
+            state.playRequestId += 1;
+            cancelledPendingRequest = true;
+          }
+          state.pendingAnimationRequestId = null;
+        }
+        if (!state.isVMDPlaying) {
+          if (cancelledPendingRequest && facade.getModelType() === 'vrm' &&
+              window.vrmManager && typeof window.vrmManager.stopVRMAAnimation === 'function') {
+            // 底层 stop 会推进 VRMA 自己的加载世代，和 shouldStart 组成双重取消闸门。
+            window.vrmManager.stopVRMAAnimation();
+          }
+          if (cancelledPendingRequest && !skipIdleRestore) {
+            facade.restoreIdleAnimation();
+          }
+          return;
+        }
 
         var modelType = facade.getModelType();
         if (modelType === 'vrm') {
@@ -140,9 +275,24 @@
         state.playRequestId += 1;
         var restoreRequestId = state.playRequestId;
         var modelType = facade.getModelType();
+        var canResumeVrm = modelType === 'vrm' && window.vrmManager &&
+          typeof window.vrmManager.playVRMAAnimation === 'function';
+        var heldRuntimeToken = state.vrmMotionRuntimeToken;
+        var motionRuntimeRestored = false;
 
-        if (modelType === 'vrm' && window.vrmManager && typeof window.vrmManager.playVRMAAnimation === 'function') {
+        if (heldRuntimeToken !== null) {
+          var releaseResult = releaseOwnedNekoMotionPlayback(state, {
+            token: heldRuntimeToken,
+            resume: !!canResumeVrm,
+            scheduleNext: !!canResumeVrm
+          });
+          motionRuntimeRestored = releaseResult === false ? false : await releaseResult;
+          if (restoreRequestId !== state.playRequestId) return;
+        }
+
+        if (canResumeVrm) {
           try {
+            if (motionRuntimeRestored) return;
             var vrmIdleList = window.lanlan_config && window.lanlan_config.vrmIdleAnimations;
             var vrmIdleUrl = Array.isArray(vrmIdleList) && vrmIdleList.length > 0 ? vrmIdleList[0] : null;
             if (!vrmIdleUrl) {
@@ -163,6 +313,8 @@
           }
           return;
         }
+
+        if (modelType === 'vrm') return;
 
         if (!window.mmdManager) return;
 

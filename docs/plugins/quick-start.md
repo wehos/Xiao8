@@ -110,7 +110,7 @@ Unless the storage location or related environment variables have been changed, 
 
 The root `plugin.toml` is the plugin manifest. `config/plugin.toml` in user data is that user's runtime configuration. On first use, N.E.K.O copies `config.example.toml` to the runtime configuration path; it does not overwrite an existing configuration.
 
-When an end user installs a `.neko-plugin` package using the default paths, the installed code and runtime directories are together under `<user data root>/plugins/hello_world/`. This guide is about source development, so only edit `N.E.K.O/plugin/plugins/hello_world/`; N.E.K.O manages user data.
+Installed package code and writable runtime state are stored separately. This guide is about source development, so only edit `N.E.K.O/plugin/plugins/hello_world/`; N.E.K.O manages the installed and user-data locations.
 
 If the destination already exists, the CLI stops without overwriting it. Choose a new directory or inspect the existing one before continuing.
 

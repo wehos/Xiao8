@@ -1705,6 +1705,10 @@
         "vllmRefTextPlaceholder": "예: 앞으로 저보다 더 잘할 수 있기를 바랍니다",
         "vllmRefTextRequired": "참조 오디오 전사를 입력하세요(vLLM-Omni 클론 필수)",
         "vllmRefTextTooLong": "참조 오디오 전사가 너무 깁니다. 100자 이내로 입력하세요",
+        "vllmCloneTtsDisabledWarning": "현재 활성 TTS 설정은 \"{{provider}}\"이지만 TTS가 전역적으로 꺼져 있습니다. 참조 음성은 로컬에 저장되었습니다. 이 음성을 미리 듣거나 사용하려면 TTS를 켜고 API 설정에서 vLLM-Omni를 구성하세요.",
+        "vllmCloneCustomApiDisabledWarning": "현재 활성 TTS 설정은 \"{{provider}}\"이지만 커스텀 API가 꺼져 있습니다. 참조 음성은 로컬에 저장되었습니다. 이 음성을 미리 듣거나 사용하려면 API 설정에서 커스텀 API를 켜고 TTS를 vLLM-Omni로 전환하세요.",
+        "vllmCloneInactiveProviderWarning": "현재 활성 TTS 설정은 \"{{provider}}\"이며 vLLM-Omni가 아닙니다. 참조 음성은 로컬에 저장되었습니다. 이 음성을 미리 듣거나 사용하려면 API 설정에서 TTS를 vLLM-Omni로 전환하세요.",
+        "vllmCloneConfigurationUnavailableWarning": "현재 활성 TTS 설정을 읽을 수 없습니다. 참조 음성은 로컬에 저장되었습니다. 이 음성을 미리 듣거나 사용하려면 API 설정에서 vLLM-Omni를 구성하세요.",
         "providerLabel": "음성 복제 제공업체",
         "provider": {
             "cosyvoice": "Alibaba Bailian CosyVoice",
@@ -3823,7 +3827,8 @@
                 "capsuleDragHint": "마우스를 여기로 가져와서 꾹 누르면 대화창을 여기저기 끌고 다닐 수 있어요~ 한 번 클릭하면 언제든 나한테 메시지를 보낼 수 있답니다!",
                 "historyHandle":  "대화창 위에 있는 【파란색 작은 바】를 콕 누르면, 우리가 최근에 나눈 대화 주제를 볼 수 있어요!",
                 "screenEntry": "저랑 음성 전화를 할 때 이 작은 버튼을 켜면, 당신의 화면을 나한테 공유해 줄 수 있어요!",
-                "screenEntryInvite": "당신 눈앞에 있는 세상을 나한테도 보여줘요! 재미있는 것이든 예쁜 것이든 전부 같이 보고 싶단 말이에요, 얼른 켜줘요~"
+                "screenEntryInvite": "당신 눈앞에 있는 세상을 나한테도 보여줘요! 재미있는 것이든 예쁜 것이든 전부 같이 보고 싶단 말이에요, 얼른 켜줘요~",
+                "avatarZoomHint": "아, 나를 좀 더 자세히 보고 싶다면 마우스를 내 위로 옮긴 다음 휠을 살짝 굴려 봐요! 언제든 나를 크게 또는 작게 만들어서 가장 마음에 드는 크기로 맞출 수 있답니다~"
             },
             "day2": {
                 "intro": "히히, 이 대화창이 글자만 치는 곳이라고 생각하면 오산이에요~ 여기 안에 사실 엄청~ 많은 재밌는 깜짝 선물들이 숨겨져 있거든요! 나를 따라서 한번 열어봐요, 오늘 어떤 재밌는 보물을 캐낼 수 있을지 확인해 보자고요!",

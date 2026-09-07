@@ -19,6 +19,16 @@
 
       <el-button :loading="loading" data-yui-guide-id="log-refresh" @click="refreshLogs">{{ $t('common.refresh') }}</el-button>
 
+      <el-button data-yui-guide-id="log-export" @click="handleExportLog">
+        <el-icon><Download /></el-icon>
+        {{ $t('logs.exportLog') }}
+      </el-button>
+
+      <el-button v-if="canOpenDirectory" data-yui-guide-id="log-open-directory" @click="handleOpenDirectory">
+        <el-icon><Folder /></el-icon>
+        {{ $t('logs.openLogDirectory') }}
+      </el-button>
+
       <el-switch v-model="autoScroll" data-yui-guide-id="log-auto-scroll" :active-text="$t('logs.autoScroll')" />
     </div>
 
@@ -61,8 +71,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus'
+import { Download, Folder } from '@element-plus/icons-vue'
 import { useLogsStore } from '@/stores/logs'
 import { useLogStream } from '@/composables/useLogStream'
+import { getPluginLogDirectory, getPluginLogExportUrl } from '@/api/logs'
+import { openLocalPath } from '@/utils/openExternal'
+import { API_BASE_URL } from '@/utils/constants'
 
 const props = defineProps<{
   pluginId: string
@@ -72,6 +87,60 @@ const { t } = useI18n()
 const logsStore = useLogsStore()
 const pluginIdRef = toRef(props, 'pluginId')
 const { isConnected } = useLogStream(pluginIdRef)
+
+// 检测是否有桌面桥接（Electron 环境）
+// 只有在桌面环境中才能打开本地路径；即使后端是本地的，
+// 如果运行在浏览器中也无法调用系统文件管理器。
+const hasDesktopBridge = computed(() => {
+  const w = window as unknown as {
+    nekoHost?: { openPath?: unknown }
+    electronShell?: { openPath?: unknown; showItemInFolder?: unknown; openExternal?: unknown }
+  }
+  return !!(
+    (w.nekoHost && typeof w.nekoHost.openPath === 'function') ||
+    (w.electronShell && (
+      typeof w.electronShell.openPath === 'function' ||
+      typeof w.electronShell.showItemInFolder === 'function' ||
+      typeof w.electronShell.openExternal === 'function'
+    ))
+  )
+})
+
+// 检测后端是否为本地
+// 即使有桌面桥接，如果后端在远程机器上，返回的路径也是远程服务器的绝对路径，
+// 客户端无法打开或可能错误打开本地同名路径。
+const isLocalBackend = computed(() => {
+  const baseUrl = API_BASE_URL.replace(/\/$/, '')
+
+  let hostname: string
+  if (!baseUrl) {
+    // 空字符串表示通过 Vite 代理。从构建时注入的变量获取代理目标的 hostname。
+    // 生产环境中该变量未定义，默认为 'localhost'（但生产环境 baseUrl 不会为空）。
+    hostname = (typeof __VITE_PROXY_TARGET_HOSTNAME__ !== 'undefined'
+                ? __VITE_PROXY_TARGET_HOSTNAME__
+                : 'localhost').toLowerCase()
+  } else {
+    // 有明确的 API_BASE_URL，解析它来提取 hostname
+    try {
+      const url = new URL(baseUrl, window.location.origin)
+      hostname = url.hostname.toLowerCase()
+    } catch {
+      // URL 解析失败，视为非本地
+      return false
+    }
+  }
+
+  // 只允许回环地址：localhost, 127.0.0.1, 0.0.0.0, ::1
+  // 注意：URL 解析 IPv6 地址时会保留方括号，所以需要检查 [::1]
+  return hostname === 'localhost' ||
+         hostname === '127.0.0.1' ||
+         hostname === '0.0.0.0' ||
+         hostname === '::1' ||
+         hostname === '[::1]'
+})
+
+// 只有同时满足：有桌面桥接 AND 后端是本地时，才能安全打开目录
+const canOpenDirectory = computed(() => hasDesktopBridge.value && isLocalBackend.value)
 
 const levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 const levelFilter = ref('')
@@ -137,6 +206,57 @@ async function scrollToBottom() {
   if (logContainerRef.value) {
     logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
   }
+}
+
+async function handleExportLog() {
+  // 在开始导出前捕获 pluginId，防止用户在下载期间切换插件导致文件名错误
+  const pluginId = props.pluginId
+  let objectUrl = ''
+  try {
+    // 用 fetch 而不是直接 <a href> 触发下载：后者拿不到响应状态，
+    // 服务端返回 404（该插件没有日志）时也会弹成功提示。
+    const response = await fetch(getPluginLogExportUrl(pluginId))
+    if (!response.ok) {
+      ElMessage.error(response.status === 404 ? t('logs.noLogFileToExport') : t('logs.exportFailed'))
+      return
+    }
+    const blob = await response.blob()
+    objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = `${pluginId}_logs.zip`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    ElMessage.success(t('logs.exportSuccess'))
+  } catch (error) {
+    console.error('Failed to export log:', error)
+    ElMessage.error(t('logs.exportFailed'))
+  } finally {
+    // 延迟撤销 Blob URL，避免浏览器尚未解析 href 时就撤销导致下载失败
+    if (objectUrl) {
+      const urlToRevoke = objectUrl
+      setTimeout(() => URL.revokeObjectURL(urlToRevoke), 0)
+    }
+  }
+}
+
+function handleOpenDirectory() {
+  getPluginLogDirectory(props.pluginId)
+    .then((response) => {
+      if (!response.directory) {
+        ElMessage.warning(t('logs.noLogFileToExport'))
+        return
+      }
+      return openLocalPath(response.directory)
+    })
+    .then(() => {
+      // 成功打开目录，不显示任何消息
+    })
+    .catch((error) => {
+      console.error('Failed to open log directory:', error)
+      ElMessage.error(t('logs.openDirectoryFailed'))
+    })
 }
 
 watch(

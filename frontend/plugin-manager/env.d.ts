@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+// Vite 构建时注入的全局变量
+declare const __VITE_PROXY_TARGET_HOSTNAME__: string
+
 declare module 'element-plus/dist/locale/zh-cn.mjs'
 declare module 'element-plus/dist/locale/zh-tw.mjs'
 declare module 'element-plus/dist/locale/en.mjs'

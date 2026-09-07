@@ -281,6 +281,8 @@ I.mod = window.appInterpage;
     var modelManagerOverlapHidden = false;
     var modelManagerOverlapRefreshTimer = 0;
     var mainUIHideOwners = Object.create(null);
+    var deferredMainUIShowAfterModelReload = null;
+    var activeMMDReloadCanvasSessionId = '';
 
     function getMainUIHideOwner(options) {
         return String((options && (options.owner || options.reason)) || 'legacy-main-ui');
@@ -1217,6 +1219,7 @@ I.mod = window.appInterpage;
                         // 先隐藏 canvas，避免旧帧或加载中的模型透过半透明 overlay 露出。
                         markMMDCanvasLoadingSession(mmdCanvasShow, loadingSessionId);
                     }
+                    activeMMDReloadCanvasSessionId = loadingSessionId;
                     mmdRequestSessionId = loadingSessionId;
                     activeMmdLoadingSessionId = loadingSessionId;
                     window.MMDLoadingOverlay?.begin(loadingSessionId, { stage: 'engine' });
@@ -1299,6 +1302,7 @@ I.mod = window.appInterpage;
                         if (mmdRequestSessionId === loadingSessionId && isMMDLoadingSessionActive(mmdCanvasReady, loadingSessionId)) {
                             window.MMDLoadingOverlay?.end(loadingSessionId);
                             restoreMMDCanvasForLoadingSession(mmdCanvasReady, loadingSessionId);
+                            activeMMDReloadCanvasSessionId = '';
                             mmdRequestSessionId = '';
                             activeMmdLoadingSessionId = '';
                         }
@@ -1556,8 +1560,15 @@ I.mod = window.appInterpage;
             console.error('[Model] 模型热切换失败:', error);
             if (activeMmdLoadingSessionId) {
                 window.MMDLoadingOverlay?.fail(activeMmdLoadingSessionId, { detail: error?.message || String(error) });
+                var failedMmdCanvas = document.getElementById('mmd-canvas');
+                if (isMMDLoadingSessionActive(failedMmdCanvas, activeMmdLoadingSessionId)) {
+                    clearMMDCanvasLoadingSession(failedMmdCanvas);
+                }
                 if (mmdRequestSessionId === activeMmdLoadingSessionId) {
                     mmdRequestSessionId = '';
+                }
+                if (activeMMDReloadCanvasSessionId === activeMmdLoadingSessionId) {
+                    activeMMDReloadCanvasSessionId = '';
                 }
                 activeMmdLoadingSessionId = '';
             }
@@ -1602,6 +1613,7 @@ I.mod = window.appInterpage;
         } finally {
             // Clear in-flight flag
             window._modelReloadInFlight = false;
+            activeMMDReloadCanvasSessionId = '';
             if (reloadSucceeded) {
                 window._lastModelReloadKey = reloadKey;
                 window._lastModelReloadAt = Date.now();
@@ -1618,6 +1630,12 @@ I.mod = window.appInterpage;
             if (I.isMainUIHiddenByModelManager()) {
                 console.log('[Model] 主界面处于模型管理隐藏状态，模型重载完成后重新隐藏 UI');
                 I.handleHideMainUI({ preserveHiddenState: true });
+                deferredMainUIShowAfterModelReload = null;
+            } else if (deferredMainUIShowAfterModelReload) {
+                var deferredShowOptions = deferredMainUIShowAfterModelReload;
+                deferredMainUIShowAfterModelReload = null;
+                console.log('[Model] 执行热重载期间延后的主界面恢复');
+                I.handleShowMainUI(deferredShowOptions);
             }
 
             // Process any queued reload request
@@ -1947,7 +1965,17 @@ I.mod = window.appInterpage;
 
             var mmdCanvas = document.getElementById('mmd-canvas');
             if (mmdCanvas) {
-                clearMMDCanvasLoadingSession(mmdCanvas);
+                // 热重载期间再次收到 hide/show 是模型管理窗口生命周期的正常竞态。
+                // 此时只隐藏 Canvas，不清除会话 ID；否则重载收尾无法结束 overlay
+                // 和恢复 Canvas，最终会留下已加载但不可见的 MMD 模型。
+                var preserveMMDLoadingSession = !!activeMMDReloadCanvasSessionId
+                    && mmdCanvas.dataset.mmdLoadingSessionId === activeMMDReloadCanvasSessionId;
+                if (preserveMMDLoadingSession) {
+                    mmdCanvas.style.visibility = 'hidden';
+                    mmdCanvas.style.pointerEvents = 'none';
+                } else {
+                    clearMMDCanvasLoadingSession(mmdCanvas);
+                }
             }
 
             // Pause render loops to save resources
@@ -2022,6 +2050,7 @@ I.mod = window.appInterpage;
         // 错误地恢复旧模型类型的容器，导致需要切换两次才能成功。
         if (window._modelReloadInFlight) {
             console.log('[UI] 模型重载进行中，跳过显示主界面（避免覆盖正在切换的容器）');
+            deferredMainUIShowAfterModelReload = Object.assign({}, options);
             return;
         }
         console.log('[UI] 显示主界面并恢复渲染');

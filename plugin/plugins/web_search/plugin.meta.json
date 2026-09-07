@@ -1,0 +1,327 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": "搜索网络内容。自动根据用户地区选择搜索引擎（国内百度/海外DuckDuckGo）。重要：query 应保留用户原始语言（如中文问题就用中文搜索），不要翻译成英文，这样能获得更准确的本地化结果。",
+      "event_key": "web_search.search",
+      "event_type": "plugin_entry",
+      "id": "search",
+      "input_schema": {
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "搜索后端；auto 优先 AnySearch，anysearch 不跨引擎回退",
+            "enum": [
+              "auto",
+              "anysearch",
+              "baidu",
+              "duckduckgo"
+            ],
+            "type": "string"
+          },
+          "max_results": {
+            "default": 8,
+            "description": "最大结果数 (默认 8，最少 3)",
+            "type": "integer"
+          },
+          "query": {
+            "description": "搜索关键词（保留用户原始语言，不要翻译）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "网络搜索",
+      "return_message": "",
+      "timeout": 30.0
+    },
+    {
+      "auto_start": false,
+      "description": "搜索并返回适合 AI 阅读的纯文本摘要格式。重要：query 应保留用户原始语言，不要翻译。",
+      "event_key": "web_search.search_summary",
+      "event_type": "plugin_entry",
+      "id": "search_summary",
+      "input_schema": {
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "搜索后端；auto 优先 AnySearch，anysearch 不跨引擎回退",
+            "enum": [
+              "auto",
+              "anysearch",
+              "baidu",
+              "duckduckgo"
+            ],
+            "type": "string"
+          },
+          "max_results": {
+            "default": 5,
+            "description": "最大结果数（最少 3）",
+            "type": "integer"
+          },
+          "query": {
+            "description": "搜索关键词（保留用户原始语言，不要翻译）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "搜索摘要",
+      "return_message": "",
+      "timeout": 30.0
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "search": "search",
+    "search_summary": "search_summary"
+  },
+  "handlers": {
+    "web_search.search": {
+      "auto_start": false,
+      "description": "搜索网络内容。自动根据用户地区选择搜索引擎（国内百度/海外DuckDuckGo）。重要：query 应保留用户原始语言（如中文问题就用中文搜索），不要翻译成英文，这样能获得更准确的本地化结果。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "search",
+      "input_schema": {
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "搜索后端；auto 优先 AnySearch，anysearch 不跨引擎回退",
+            "enum": [
+              "auto",
+              "anysearch",
+              "baidu",
+              "duckduckgo"
+            ],
+            "type": "string"
+          },
+          "max_results": {
+            "default": 8,
+            "description": "最大结果数 (默认 8，最少 3)",
+            "type": "integer"
+          },
+          "query": {
+            "description": "搜索关键词（保留用户原始语言，不要翻译）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "网络搜索"
+    },
+    "web_search.search_summary": {
+      "auto_start": false,
+      "description": "搜索并返回适合 AI 阅读的纯文本摘要格式。重要：query 应保留用户原始语言，不要翻译。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "search_summary",
+      "input_schema": {
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "搜索后端；auto 优先 AnySearch，anysearch 不跨引擎回退",
+            "enum": [
+              "auto",
+              "anysearch",
+              "baidu",
+              "duckduckgo"
+            ],
+            "type": "string"
+          },
+          "max_results": {
+            "default": 5,
+            "description": "最大结果数（最少 3）",
+            "type": "integer"
+          },
+          "query": {
+            "description": "搜索关键词（保留用户原始语言，不要翻译）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "搜索摘要"
+    },
+    "web_search:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "web_search:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "web_search:plugin_entry:search": {
+      "auto_start": false,
+      "description": "搜索网络内容。自动根据用户地区选择搜索引擎（国内百度/海外DuckDuckGo）。重要：query 应保留用户原始语言（如中文问题就用中文搜索），不要翻译成英文，这样能获得更准确的本地化结果。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "search",
+      "input_schema": {
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "搜索后端；auto 优先 AnySearch，anysearch 不跨引擎回退",
+            "enum": [
+              "auto",
+              "anysearch",
+              "baidu",
+              "duckduckgo"
+            ],
+            "type": "string"
+          },
+          "max_results": {
+            "default": 8,
+            "description": "最大结果数 (默认 8，最少 3)",
+            "type": "integer"
+          },
+          "query": {
+            "description": "搜索关键词（保留用户原始语言，不要翻译）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "网络搜索"
+    },
+    "web_search:plugin_entry:search_summary": {
+      "auto_start": false,
+      "description": "搜索并返回适合 AI 阅读的纯文本摘要格式。重要：query 应保留用户原始语言，不要翻译。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "search_summary",
+      "input_schema": {
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "搜索后端；auto 优先 AnySearch，anysearch 不跨引擎回退",
+            "enum": [
+              "auto",
+              "anysearch",
+              "baidu",
+              "duckduckgo"
+            ],
+            "type": "string"
+          },
+          "max_results": {
+            "default": 5,
+            "description": "最大结果数（最少 3）",
+            "type": "integer"
+          },
+          "query": {
+            "description": "搜索关键词（保留用户原始语言，不要翻译）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "搜索摘要"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 72893,
+  "source_files": [
+    "__init__.py",
+    "_parsing.py",
+    "_resilience.py",
+    "config.example.toml",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml"
+  ],
+  "source_sha256": "9ab30c3874166d77129c717000783dec8da4cb64c562aad3bad48bbd7447c78a"
+}

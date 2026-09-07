@@ -22,6 +22,7 @@
         interrupt_resist_light_3: '最后警告一次喵！你要.mp3',
         interrupt_angry_exit: '人家已经忍你很久了！.mp3',
         takeover_return_control: '好啦好啦，不霸占你的.mp3',
+        day1_avatar_zoom_hint: 'day1-avatar-zoom-hint.mp3',
         day1_capsule_drag_hint: '把鼠标移到这里，长按.mp3',
         day1_history_handle: '戳一下聊天框上面的【.mp3',
         day1_screen_entry: '在跟我通语音电话的时.mp3',
@@ -50,6 +51,7 @@
         interrupt_resist_light_3: audioFilesForKey('interrupt_resist_light_3'),
         interrupt_angry_exit: audioFilesForKey('interrupt_angry_exit'),
         takeover_return_control: audioFilesForKey('takeover_return_control'),
+        day1_avatar_zoom_hint: audioFilesForKey('day1_avatar_zoom_hint'),
         day1_capsule_drag_hint: audioFilesForKey('day1_capsule_drag_hint'),
         day1_history_handle: audioFilesForKey('day1_history_handle'),
         day1_screen_entry: audioFilesForKey('day1_screen_entry'),
@@ -182,8 +184,31 @@
                     operation: 'day1-managed-scene:takeover_capture_cursor'
                 },
                 {
+                    id: 'day1_avatar_zoom_hint',
+                    timelinePlayback: true,
+                    timeline: [
+                        { at: 0, command: 'operation.run', operation: 'cleanup', blocking: true },
+                        { at: 0, command: 'chat.message' },
+                        { at: 0, command: 'emotion.set' }
+                    ],
+                    textKey: 'tutorial.avatarFloating.day1.avatarZoomHint',
+                    text: '对啦，如果想把我看得更清楚一点，就把鼠标移到我身上，轻轻滚动滚轮吧！这样就能随时把我放大或缩小，调到你最喜欢的大小啦~',
+                    voiceKey: 'day1_avatar_zoom_hint',
+                    emotion: 'happy',
+                    spotlight: false,
+                    cursorAction: 'none',
+                    operation: 'cleanup'
+                },
+                {
                     id: 'day1_takeover_return_control',
                     timelinePlayback: true,
+                    timeline: [
+                        { at: 0, command: 'operation.run', operation: 'cleanup', blocking: true },
+                        { at: 0, command: 'chat.message' },
+                        { at: 0, command: 'emotion.set' },
+                        { at: 0, command: 'spotlight.show', target: 'chat-capsule-input' },
+                        { at: 220, command: 'cursor.move', target: 'chat-capsule-input', action: 'move', durationMs: 900 }
+                    ],
                     textKey: 'tutorial.yuiGuide.lines.takeoverReturnControl',
                     voiceKey: 'takeover_return_control',
                     emotion: 'happy',

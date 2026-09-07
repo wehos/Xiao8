@@ -110,7 +110,7 @@ N.E.K.O/plugin/plugins/hello_world/       <- 開発者が編集するソース
 
 ソースルートの `plugin.toml` はプラグイン manifest です。ユーザーデータの `config/plugin.toml` は、そのユーザーが実際に使用する runtime config です。初回に N.E.K.O が `config.example.toml` を runtime config へコピーし、既存の設定は上書きしません。
 
-一般ユーザーが既定パスへ `.neko-plugin` パッケージをインストールした場合、インストール済みコードと runtime ディレクトリは `<ユーザーデータルート>/plugins/hello_world/` の下にまとまります。このガイドはソース開発用なので、編集するのは `N.E.K.O/plugin/plugins/hello_world/` だけです。
+インストール済みコードと、書き込み可能な実行時データは別々に保存されます。このガイドはソース開発用なので、編集するのは `N.E.K.O/plugin/plugins/hello_world/` だけです。インストール先とユーザーデータの保存先は N.E.K.O が管理します。
 
 対象ディレクトリがすでにある場合、CLI は上書きせず停止します。別の新しいディレクトリを選ぶか、既存ディレクトリの用途を確認してください。
 

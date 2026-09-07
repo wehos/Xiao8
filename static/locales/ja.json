@@ -1705,6 +1705,10 @@
         "vllmRefTextPlaceholder": "例：今後私よりさらに上手にできることを願っています",
         "vllmRefTextRequired": "参考音声の書き起こしを入力してください（vLLM-Omni クローンでは必須）",
         "vllmRefTextTooLong": "参考音声の書き起こしが長すぎます。100文字以内に収めてください",
+        "vllmCloneTtsDisabledWarning": "現在有効なTTS設定は「{{provider}}」ですが、TTSが全体で無効になっています。参照音声はローカルに保存されました。試聴または使用する前にTTSを有効にし、API設定でvLLM-Omniを構成してください。",
+        "vllmCloneCustomApiDisabledWarning": "現在有効なTTS設定は「{{provider}}」ですが、カスタムAPIが無効です。参照音声はローカルに保存されました。試聴または使用する前に、API設定でカスタムAPIを有効にし、TTSをvLLM-Omniに切り替えてください。",
+        "vllmCloneInactiveProviderWarning": "現在有効なTTS設定は「{{provider}}」であり、vLLM-Omniではありません。参照音声はローカルに保存されました。試聴または使用する前に、API設定でTTSをvLLM-Omniに切り替えてください。",
+        "vllmCloneConfigurationUnavailableWarning": "現在有効なTTS設定を読み取れませんでした。参照音声はローカルに保存されました。試聴または使用する前に、API設定でvLLM-Omniを設定してください。",
         "providerLabel": "音声クローンプロバイダー",
         "provider": {
             "cosyvoice": "Alibaba Bailian CosyVoice",
@@ -3823,7 +3827,8 @@
                 "capsuleDragHint": "マウスをここに持ってきて、長押しするとチャットボックスを引っ張ってどこにでも連れて行けるよ〜。ポチッとクリックすればいつでもメッセージを送れるからね！",
                 "historyHandle":  "チャットボックスの上にある【青い細いバー】をツンツンしてみてね。最近お話ししたトピックが見られるよ！",
                 "screenEntry": "私と通話している時に、この小さなボタンをピカッと光らせると、君の画面をシェアしてもらえるよ！",
-                "screenEntryInvite": "君の目の前の世界を私にも見せて！面白いものでも綺麗なものでも、全部君と一緒に見たいな。早くポチッとしてみて〜"
+                "screenEntryInvite": "君の目の前の世界を私にも見せて！面白いものでも綺麗なものでも、全部君と一緒に見たいな。早くポチッとしてみて〜",
+                "avatarZoomHint": "そうそう、もっとよく私を見たいときは、マウスを私の上に動かして、ホイールをそっと回してみてね！いつでも大きくしたり小さくしたりして、好きな大きさに調整できるよ〜"
             },
             "day2": {
                 "intro": "クスクス、このチャットボックスは文字を入力するだけだと思ったら大間違いだよ〜！実はこの中に、たーっくさんの楽しいサプライズが隠されてるんだ！私と一緒に開いてみて、今日はどんなお宝が掘り出せるか見てみようね！",

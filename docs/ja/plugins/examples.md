@@ -17,7 +17,7 @@ class GreeterPlugin(NekoPluginBase):
         self.greet_count = 0
 
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         self.logger.info("GreeterPlugin ready")
         return Ok({"status": "ready"})
 
@@ -32,7 +32,7 @@ class GreeterPlugin(NekoPluginBase):
             }
         }
     )
-    def greet(self, name: str = "World", **_):
+    async def greet(self, name: str = "World", **_):
         if not name.strip():
             return Err(SdkError("Name cannot be empty"))
 
@@ -133,7 +133,7 @@ class MonitoredPlugin(NekoPluginBase):
         self.call_stats: dict[str, int] = {}
 
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         return Ok({"status": "ready"})
 
     # --- フック ---
@@ -152,17 +152,17 @@ class MonitoredPlugin(NekoPluginBase):
     # --- エントリーポイント ---
 
     @plugin_entry(id="process", description="Process some data")
-    def process(self, data: str, **_):
+    async def process(self, data: str, **_):
         return Ok({"processed": data.upper()})
 
     @plugin_entry(id="stats", description="Get call statistics")
-    def stats(self, **_):
+    async def stats(self, **_):
         return Ok({"stats": dict(self.call_stats)})
 
     # --- タイマー ---
 
     @timer_interval(id="health_check", seconds=300, auto_start=True)
-    def health_check(self, **_):
+    async def health_check(self, **_):
         self.report_status({
             "status": "healthy",
             "uptime": time.time(),
@@ -234,7 +234,7 @@ class DynamicPlugin(NekoPluginBase):
         self.logger = ctx.logger
 
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         # 設定に基づいて実行時にエントリーを登録
         commands = self.metadata.get("commands", {})
         for cmd_id, cmd_config in commands.items():
@@ -247,13 +247,13 @@ class DynamicPlugin(NekoPluginBase):
         return Ok({"registered": list(commands.keys())})
 
     @plugin_entry(id="list_commands")
-    def list_commands(self, **_):
+    async def list_commands(self, **_):
         entries = self.list_entries()
         return Ok({"commands": [e["id"] for e in entries]})
 
     def _make_handler(self, config):
         template = config.get("template", "Executed: {cmd}")
-        def handler(cmd: str = "", **_):
+        async def handler(cmd: str = "", **_):
             return Ok({"output": template.format(cmd=cmd)})
         return handler
 ```

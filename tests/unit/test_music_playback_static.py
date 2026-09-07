@@ -209,18 +209,67 @@ def test_exact_http_allowlist_is_carried_without_enabling_http_proxy():
     assert "pluginHttpUrls" not in proxy_source
 
 
-def test_proactive_music_only_retries_candidate_specific_failures():
+def test_proactive_music_reuses_one_card_scope_and_only_shortens_intermediate_attempts():
     source = PROACTIVE_UI_PATH.read_text(encoding="utf-8")
+    player_source = MUSIC_UI_PATH.read_text(encoding="utf-8")
+    candidate_loop = source.split("var proactiveMusicFallbackDeadlineAt", 1)[1].split(
+        "// 【重构】统一处理链接", 1
+    )[0]
 
-    assert "for (var musicIndex = 0; musicIndex < musicLinks.length; musicIndex++)" in source
-    assert "window.dispatchMusicPlayDetailed(track, { source: 'proactive' })" in source
-    assert "if (dispatchResult.ok === true)" in source
-    assert "if (dispatchResult.canTryNextCandidate !== true)" in source
-    assert "音乐派发因非候选错误停止" in source
-    assert "音乐候选不可用，尝试下一条" in source
+    assert "const MUSIC_CANDIDATE_FALLBACK_BUDGET_MS = 10000" in source
+    assert "const MUSIC_CANDIDATE_ATTEMPT_TIMEOUT_MS = 3000" in source
+    assert "const MUSIC_MEDIA_LOAD_TIMEOUT_MS = 10000" in player_source
+    assert "var proactiveMusicCardScopeId = 'proactive:'" in source
+    assert "for (var musicIndex = 0; musicIndex < musicLinks.length; musicIndex++)" in candidate_loop
+    assert "var hasNextMusicCandidate = musicIndex < musicLinks.length - 1" in candidate_loop
+    assert "dispatchResult = await window.dispatchMusicPlayDetailed(track, {" in candidate_loop
+    assert "cardScopeId: proactiveMusicCardScopeId" in candidate_loop
+    assert "hasNextCandidate: hasNextMusicCandidate" in candidate_loop
+    assert "fallbackDeadlineAt: hasNextMusicCandidate" in candidate_loop
+    assert "? proactiveMusicFallbackDeadlineAt" in candidate_loop
+    assert "candidateTimeoutMs: hasNextMusicCandidate" in candidate_loop
+    assert "? MUSIC_CANDIDATE_ATTEMPT_TIMEOUT_MS" in candidate_loop
+    assert "if (dispatchResult.ok === true)" in candidate_loop
+    assert "if (dispatchResult.canTryNextCandidate !== true)" in candidate_loop
+    assert "音乐派发因非候选错误停止" in candidate_loop
+    assert "音乐候选不可用，尝试下一条" in candidate_loop
+    assert "finally {" in candidate_loop
+    assert "!dispatchedTrackUrl" in candidate_loop
+    assert "window.finalizeMusicCandidateCardFailure(lastAttemptedMusicTrack, {" in candidate_loop
+    assert "cardScopeId: proactiveMusicCardScopeId" in candidate_loop
     assert "musicLinks = normalizedLinks.filter" in source
     assert "name: musicLink.title || '未知曲目'" not in source
     assert "artist: musicLink.artist || '未知艺术家'" not in source
+
+
+def test_music_candidate_fallback_preserves_and_finalizes_only_the_matching_card_scope():
+    source = MUSIC_UI_PATH.read_text(encoding="utf-8")
+    scoped_card_source = source.split("const getMusicCardScopeKey", 1)[1].split(
+        "const getCandidateMediaReadyTimeoutMs", 1
+    )[0]
+    destroy_source = source.split("const destroyMusicPlayer = (", 1)[1].split(
+        "const getMusicPlayerInstance", 1
+    )[0]
+    update_card_source = source.split("const updateMusicCard = (state, track) => {", 1)[1].split(
+        "// --- 状态追踪", 1
+    )[0]
+
+    assert "String(options.source || 'music') + ':' + String(options.cardScopeId)" in scoped_card_source
+    assert "requestedScopeKey !== musicCardScopeKey" in scoped_card_source
+    assert "updateMusicCard('error', track)" in scoped_card_source
+    assert "musicCardMessageId = null" in scoped_card_source
+    assert "musicCardScopeKey = ''" in scoped_card_source
+    assert "preserveMusicCard = false" in destroy_source
+    assert "if (!preserveMusicCard || fullTeardown)" in destroy_source
+    assert "!['error', 'ended'].includes(musicCardState)" in destroy_source
+    assert destroy_source.index("!['error', 'ended'].includes(musicCardState)") < destroy_source.index(
+        "updateMusicCard('ended', currentPlayingTrack)"
+    )
+    assert update_card_source.index("musicCardState = state;") < update_card_source.index(
+        "const host = window.reactChatWindowHost;"
+    )
+    assert "shouldDeferCandidateFailureUi(playbackOptions, result.reason)" in source
+    assert "window.finalizeMusicCandidateCardFailure = finalizeScopedMusicCardFailure" in source
 
 
 def test_proactive_request_rechecks_music_state_before_search():
@@ -324,9 +373,34 @@ def test_music_player_reports_confirmed_state_to_backend():
     assert "reportMusicPlaybackState('playing', null, reportContext)" in player_source
     assert "reportMusicPlaybackState('ended', null, reportContext)" in player_source
     assert (
-        "reportMusicPlaybackState('error', null, reportContext, 'media_error')"
+        "function reportMusicPlaybackFailureIfNeeded(playbackContext, failureReason, deferFailureUi)"
         in player_source
     )
+    failure_helper = player_source.split(
+        "function reportMusicPlaybackFailureIfNeeded", 1
+    )[1].split("function getOwnedMusicPlaybackReportContext", 1)[0]
+    assert "playbackContext.lastReportedState === 'error'" in failure_helper
+    assert "!['playing', 'paused'].includes(playbackContext.lastReportedState)" in failure_helper
+    assert "reportMusicPlaybackState('error', null, playbackContext, failureReason)" in failure_helper
+    media_failure_source = player_source.split(
+        "const mediaResult = await mediaReadyPromise;", 1
+    )[1].split("playbackReportContext.mediaReady = true;", 1)[0]
+    media_report = media_failure_source.index("reportMusicPlaybackFailureIfNeeded(")
+    media_ui_gate = media_failure_source.index(
+        "if (!playbackReportContext.failureUiHandled && !deferFailureUi)"
+    )
+    assert media_report < media_ui_gate
+    assert "reportMusicPlaybackState(" not in media_failure_source
+
+    error_handler = player_source.split(
+        "boundPlayer.on('error', (err) => {", 1
+    )[1].split("// 进度条与播放按钮点击", 1)[0]
+    delayed_error_handler = error_handler.split("setTimeout(() => {", 1)[1]
+    error_report = delayed_error_handler.index("reportMusicPlaybackFailureIfNeeded(")
+    deferred_return = delayed_error_handler.index("if (deferFailureUi) return;")
+    error_ui_gate = delayed_error_handler.index("if (reportContext.failureUiHandled) return;")
+    assert error_report < deferred_return < error_ui_gate
+    assert "reportMusicPlaybackState(" not in delayed_error_handler
     assert "mediaResult.reason" in player_source
     assert "'player_error'" in player_source
     assert "localPlayer === boundPlayer && boundPlayer._latestToken === tokenAtEvent" in player_source

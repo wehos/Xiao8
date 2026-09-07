@@ -38,7 +38,7 @@ from utils.logger_config import get_module_logger
 
 logger = get_module_logger(__name__, "Main")
 
-_QWEN_REALTIME_TTS_MODEL = "qwen3-tts-flash-realtime-2025-11-27"
+_QWEN_REALTIME_TTS_MODEL = "qwen3-tts-flash-realtime"
 _DASHSCOPE_DEFAULT_REALTIME_WS_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
 
 def _resolve_qwen_realtime_tts_url() -> str:
@@ -59,7 +59,7 @@ def _resolve_qwen_realtime_tts_url() -> str:
 def qwen_realtime_tts_worker(request_queue, response_queue, audio_api_key, voice_id):
     """
     Qwen realtime TTS worker (for default voices)
-    Uses Aliyun's realtime TTS API (qwen3-tts-flash-2025-09-18)
+    Uses Aliyun's realtime TTS API (qwen3-tts-flash-realtime)
     
     Args:
         request_queue: multiprocess request queue receiving (speech_id, text) tuples

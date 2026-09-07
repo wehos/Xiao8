@@ -2285,6 +2285,7 @@ class _TransportMixin:
         step_timeout: float | None = None,
         still_ours: Callable[[], bool] | None = None,
         connection_still_ours: Callable[[], bool] | None = None,
+        carry_host_turn_forward: bool = False,
     ) -> None:
         """Tell the host this turn is over.
 
@@ -2441,6 +2442,15 @@ class _TransportMixin:
                 raise
             except Exception as exc:
                 logger.warning("turn-finished speech-id rotation failed: %s", exc)
+            else:
+                if carry_host_turn_forward and (
+                    connection_still_ours is None or connection_still_ours()
+                ):
+                    # Some no-VAD proxies omit the next response.created and
+                    # response id, so its terminal has no other turn owner.
+                    self._current_turn_host_id = self._read_host_turn_id()
+                    self._is_first_text_chunk = True
+                    self._is_first_transcript_chunk = True
 
     async def _on_arbiter_stuck_release(
         self, reason: str, response_id: str | None = None
@@ -3095,6 +3105,12 @@ class _TransportMixin:
                             else None
                         )
                     )
+                    response = event.get("response")
+                    response_status = (
+                        str(response.get("status") or "").strip().lower()
+                        if isinstance(response, dict)
+                        else ""
+                    )
                     finalize_response = (
                         self._response_arbiter.notify_response_terminal(event)
                     )
@@ -3134,6 +3150,8 @@ class _TransportMixin:
                     self._reset_per_turn_output_state()
                     await self._notify_turn_finished(
                         connection_still_ours=receive_owner_is_current,
+                        carry_host_turn_forward=response_status
+                        in {"", "completed", "success", "succeeded"},
                     )
                     if await retire_if_replaced():
                         return

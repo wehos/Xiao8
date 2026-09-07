@@ -546,7 +546,7 @@ function handleMessage(event: MessageEvent) {
   }
   if (data && typeof data === 'object' && data.type === 'neko-hosted-surface-open-path') {
     const path = typeof data.payload?.path === 'string' ? data.payload.path : ''
-    if (path) openLocalPath(path)
+    if (path) openLocalPath(path).catch(() => {}) // 宿主插件发起的打开请求，失败时静默处理
     return
   }
   if (data && typeof data === 'object' && data.type === 'neko-hosted-surface-cancel') {

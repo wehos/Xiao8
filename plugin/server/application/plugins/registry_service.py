@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
     import tomli as tomllib  # type: ignore[no-redef]
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Mapping
 
 from plugin.core.dependency import _topological_sort_plugins
 from plugin.core.entry_points import describe_plugin_entry_directory_mismatch
@@ -24,9 +25,16 @@ from plugin.core.registry import (
     _resolve_plugin_id_conflict,
     register_plugin,
 )
-from plugin.server.application.plugins.metadata_scanner import (
-    PluginMetadataScanError,
-    scan_plugin_metadata_isolated,
+from plugin.server.infrastructure.autostart_approvals import (
+    clear_autostart_pending,
+    is_autostart_approved,
+    mark_autostart_pending,
+)
+from plugin.server.infrastructure.packaged_metadata import (
+    PLACEHOLDER_INPUT_SCHEMA,
+    PackagedPluginMetadata,
+    entries_config_digest,
+    read_packaged_metadata,
 )
 from plugin.core.state import state
 from plugin.logging_config import get_logger
@@ -274,6 +282,31 @@ def _find_existing_runtime_plugin_id_by_config_path(
     return None
 
 
+def _declared_id_taken_by_another_plugin(
+    declared_plugin_id: str, config_path: Path
+) -> bool:
+    """Whether some *other* plugin is live under ``declared_plugin_id`` right now.
+
+    Reads the registry rather than the refresh's opening snapshot. That snapshot
+    is taken once per round and never updated, so two plugins declaring the same
+    id and first seen in the same round both looked unclaimed — the second one's
+    gate move would then take the first one's record and hand a never-started
+    plugin its autostart back (coderabbit).
+
+    "Other" is by config path: a plugin re-registering under its own id is not
+    competing with itself.
+    """
+    if not declared_plugin_id:
+        return False
+    resolved = _resolve_config_path(config_path)
+    with state.acquire_plugins_read_lock():
+        meta = state.plugins.get(declared_plugin_id)
+        if not isinstance(meta, dict):
+            return False
+        owner = _resolve_meta_config_path(meta)
+    return owner is not None and owner != resolved
+
+
 def _collect_plugin_contexts_from_roots_sync(
     roots: tuple[Path, ...],
 ) -> tuple[list[PluginContext], dict[str, PluginContext]]:
@@ -394,8 +427,55 @@ def _build_ordered_plugin_ids_sync(candidate_plugin_ids: set[str] | None = None)
     return ordered
 
 
-def _discover_registry_snapshot_sync(roots: tuple[Path, ...]) -> PluginDiscoverySnapshot:
+# 注册表刷新的互斥锁。
+#
+# 这里原本是一套"票号排序"：每次刷新开工前领号、发布前认号、号旧的整轮作废，外加
+# 按插件的号表、两张缓存盲区表和一个事务屏障，一共七个全局量。它存在的唯一理由是
+# 两次刷新可能重叠而完成顺序不定；而重叠之所以从偶然变成常态，是因为一次命中缓存
+# 的刷新 0.14s、一次冷扫描 3.3s，后开始的经常先结束。
+#
+# 刷新不再导入任何插件（只读盘上的 plugin.meta.json）之后，整轮刷新是毫秒级的纯
+# 读，那个不对称消失了。于是换回最朴素的做法：整段刷新互斥。从票号排序里长出来的
+# 那些缺陷——空手而归的 force 仍享最高优先级、carry-forward 拿的是开工前的快照、
+# force 不让位于真扫完的普通刷新、单插件刷新的目标分不到扫描预算——全部随之消失，
+# 因为它们都是"两次刷新重叠"的衍生物，不是各自独立的 bug。
+#
+# 可重入：refresh_plugin 和 refresh_registry 都在这把锁里跑，而安装类事务会先后
+# 调到它们两个。
+_REGISTRY_REFRESH_LOCK = threading.RLock()
+
+
+def _build_discovery_record_safely(
+    config_path: Path,
+    ctx: PluginContext,
+) -> tuple[PluginDiscoveryRecord | None, PluginDiscoveryFailure | None]:
+    """Build one record, turning any failure into a value.
+
+    Returned rather than raised because discovery order is load-bearing
+    downstream: ``_select_effective_records`` builds its group ordering from
+    first appearance, so one bad plugin must not shift the others.
+    """
+    try:
+        return _build_discovery_record_from_context(ctx), None
+    except Exception as exc:  # noqa: BLE001 - one bad plugin must not stop discovery
+        logger.warning(
+            "plugin discovery payload failed for {}: err_type={}, err={}",
+            config_path,
+            type(exc).__name__,
+            str(exc),
+        )
+        return None, PluginDiscoveryFailure(
+            plugin_id=ctx.pid or config_path.parent.name or None,
+            config_path=config_path,
+            error=str(exc),
+        )
+
+
+def _discover_registry_snapshot_sync(
+    roots: tuple[Path, ...],
+) -> PluginDiscoverySnapshot:
     processed_paths: set[Path] = set()
+    pending: list[tuple[Path, PluginContext]] = []
     records: list[PluginDiscoveryRecord] = []
     failures: list[PluginDiscoveryFailure] = []
     config_paths: set[Path] = set()
@@ -452,22 +532,17 @@ def _discover_registry_snapshot_sync(roots: tuple[Path, ...]) -> PluginDiscovery
                 )
                 continue
 
-            try:
-                records.append(_build_discovery_record_from_context(ctx))
-            except Exception as exc:
-                logger.warning(
-                    "plugin discovery payload failed for {}: err_type={}, err={}",
-                    config_path,
-                    type(exc).__name__,
-                    str(exc),
-                )
-                failures.append(
-                    PluginDiscoveryFailure(
-                        plugin_id=ctx.pid or config_path.parent.name or None,
-                        config_path=config_path,
-                        error=str(exc),
-                    )
-                )
+            pending.append((config_path, ctx))
+
+    # 曾经这里是一个线程池，因为每个插件都要起一个子进程 import 它。现在每一项
+    # 都只是读一份 JSON，串行走完就行——并行化一堆文件读没有意义，而线程池连带
+    # 需要总预算、单项超时、以及"预算耗尽算不算插件坏了"那一整套判据。
+    for config_path, ctx in pending:
+        record, failure = _build_discovery_record_safely(config_path, ctx)
+        if record is not None:
+            records.append(record)
+        elif failure is not None:
+            failures.append(failure)
 
     effective_records, shadowed = _select_effective_records(records, roots)
     return PluginDiscoverySnapshot(
@@ -476,6 +551,76 @@ def _discover_registry_snapshot_sync(roots: tuple[Path, ...]) -> PluginDiscovery
         config_paths={_resolve_config_path(record.config_path) for record in effective_records},
         shadowed=shadowed,
     )
+
+
+def _normalize_entry_input_schema(entry: Mapping[str, object]) -> dict[str, object]:
+    """Make "we do not know the parameters" explicit instead of an empty dict.
+
+    ⚠️ The placeholder must not carry a ``properties`` key, not even an empty
+    one. The plugin manager decides whether to render a generated form with
+    ``!!(schema?.properties && typeof schema.properties === 'object')`` and
+    ``!!{}`` is true in JavaScript, so an empty ``properties`` renders a form
+    with zero fields, submits ``{}``, and takes away the raw-JSON box the user
+    would otherwise get. An entry that really takes no parameters keeps the
+    ``properties: {}`` the packager derived and renders that empty form
+    correctly — the two cases must stay distinguishable.
+    """
+    result = dict(entry)
+    schema = result.get("input_schema")
+    if isinstance(schema, Mapping) and "properties" in schema:
+        return result
+    result["input_schema"] = dict(PLACEHOLDER_INPUT_SCHEMA)
+    return result
+
+
+def config_overrides_packaged_entries(
+    conf: object, pdata: object, packaged: PackagedPluginMetadata
+) -> bool:
+    """Whether this machine's configuration changed the plugin's entry table.
+
+    Packaging reads the staged ``plugin.toml``; it cannot see the user's runtime
+    configuration or the profile they activated. When those change ``entries``,
+    the packaged list describes a different plugin than the one this machine
+    would run (codex).
+
+    The comparison is against what the package was built from, not against the
+    mere presence of a table. Presence was wrong in both directions: a plugin
+    that declares ``entries`` in its own manifest looked permanently overridden
+    and lost its build-time schemas, and an overlay setting ``entries = []`` to
+    remove them looked like no overlay at all (codex).
+
+    Lives here rather than in the lifecycle service because both the discovery
+    preview and the start path need it, and the import only goes one way.
+    """
+    return entries_config_digest(conf, pdata) != packaged.entries_config_sha256
+
+
+def _packaged_entries_preview(
+    ctx: PluginContext, plugin_id: str
+) -> list[dict[str, object]]:
+    """One plugin's entry previews, read off disk — never by importing it.
+
+    Preference order: the schema derived on the author's machine at packaging
+    time, then whatever the manifest declares statically, then a placeholder
+    that says "unknown" rather than "none".
+    """
+    packaged = read_packaged_metadata(ctx.toml_path.parent)
+    if (
+        packaged is not None
+        and packaged.entries
+        and not config_overrides_packaged_entries(ctx.conf, ctx.pdata, packaged)
+    ):
+        return [_normalize_entry_input_schema(entry) for entry in packaged.entries]
+    # 没有打包期元数据时，manifest 里静态声明的 entries 仍是一条完整通路——它只是
+    # 拿不到从处理函数签名推出来的那部分 input_schema。这条通路一直都在：禁用的
+    # 插件走的就是它。
+    declared = _extract_entries_preview(
+        plugin_id,
+        cls=type("UnscannedPluginStub", (), {}),
+        conf=ctx.conf,
+        pdata=ctx.pdata,
+    )
+    return [_normalize_entry_input_schema(entry) for entry in declared]
 
 
 def _build_discovery_payload(
@@ -544,32 +689,7 @@ def _build_discovery_payload(
                         pdata=ctx.pdata,
                     )
                 else:
-                    try:
-                        module_path, class_name = ctx.entry.split(":", 1)
-                        isolated_metadata = scan_plugin_metadata_isolated(
-                            plugin_id=plugin_id,
-                            module_path=module_path,
-                            class_name=class_name,
-                            config_path=ctx.toml_path,
-                            conf=ctx.conf,
-                            pdata=ctx.pdata,
-                            python_requirement_paths=ctx.python_requirement_paths,
-                        )
-                        entries_preview = isolated_metadata.entries_preview
-                    except PluginMetadataScanError as exc:
-                        error_type = exc.error_type
-                        error_message = str(exc)
-                        error_phase = (
-                            "import_class"
-                            if exc.error_type == "AttributeError"
-                            else "import_module"
-                        )
-                        entries_preview = _extract_entries_preview(
-                            plugin_id,
-                            cls=type("FailedPluginStub", (), {}),
-                            conf=ctx.conf,
-                            pdata=ctx.pdata,
-                        )
+                    entries_preview = _packaged_entries_preview(ctx, plugin_id)
 
     plugin_meta = _build_plugin_meta(
         plugin_id,
@@ -593,6 +713,10 @@ def _build_discovery_payload(
         if isinstance(adapter_conf, dict):
             payload["adapter_mode"] = str(adapter_conf.get("mode", "hybrid") or "hybrid")
 
+    # 这里原本还有一条"瞬时扫描失败"的分支：扫描超时或预算耗尽时不进 failed 状态、
+    # 并把上一次扫出来的条目接回去（runtime_scan_deferred）。刷新不再扫描之后这两
+    # 件事都没有了——读一份 JSON 不会超时，也没有预算可耗尽，剩下的失败（依赖不满足、
+    # 入口目录不匹配、Python 依赖缺失）全都是关于这个插件本身的，本来就该进 failed。
     if error_type and error_message and error_phase:
         payload["runtime_load_state"] = "failed"
         payload["runtime_load_error_type"] = error_type
@@ -608,7 +732,9 @@ def _build_discovery_payload(
     return payload
 
 
-def _build_discovery_record_from_context(ctx: PluginContext) -> PluginDiscoveryRecord:
+def _build_discovery_record_from_context(
+    ctx: PluginContext,
+) -> PluginDiscoveryRecord:
     payload = _build_discovery_payload(ctx, plugin_id=ctx.pid)
     return PluginDiscoveryRecord(
         plugin_id=ctx.pid,
@@ -623,7 +749,22 @@ def _build_discovery_record_from_context(ctx: PluginContext) -> PluginDiscoveryR
 
 
 def _validate_plugin_runtime_source_sync(plugin_id: str, config_path: Path) -> None:
-    """Validate one selected source even when its manifest disables runtime loading."""
+    """Validate one selected source even when its manifest disables runtime loading.
+
+    This one *does* import the plugin, in the isolated worker, exactly once.
+    That is deliberate and is not the thing discovery gave up: the caller is a
+    user switching a plugin's source, for that one plugin, and the whole point
+    of the step is to find out whether the promoted copy actually loads before
+    committing to it. Rolling back on a broken source is only possible if
+    something tried it (see the builtin-override rollback path).
+
+    Discovery, by contrast, runs for every plugin on the machine whenever
+    anything refreshes, which is why it reads packaged metadata instead.
+    """
+    from plugin.server.application.plugins.metadata_scanner import (
+        PluginMetadataScanError,
+        scan_plugin_metadata_isolated,
+    )
 
     resolved_config_path = _resolve_config_path(config_path)
     ctx = _parse_single_plugin_config(resolved_config_path, set(), logger)
@@ -634,14 +775,37 @@ def _validate_plugin_runtime_source_sync(plugin_id: str, config_path: Path) -> N
         replace(ctx, enabled=True),
         plugin_id=plugin_id,
     )
-    if payload.get("runtime_load_state") != "failed":
-        return
-    error_type = str(payload.get("runtime_load_error_type") or "unknown")
-    error_phase = str(payload.get("runtime_load_error_phase") or "unknown")
-    raise RuntimeError(
-        "promoted plugin runtime validation failed "
-        f"({error_type} during {error_phase})"
-    )
+    if payload.get("runtime_load_state") == "failed":
+        error_type = str(payload.get("runtime_load_error_type") or "unknown")
+        error_phase = str(payload.get("runtime_load_error_phase") or "unknown")
+        raise RuntimeError(
+            "promoted plugin runtime validation failed "
+            f"({error_type} during {error_phase})"
+        )
+
+    entry = str(ctx.entry or "")
+    if ":" not in entry:
+        raise RuntimeError(
+            "promoted plugin runtime validation failed "
+            f"(malformed entry point {entry!r} during entry_validation)"
+        )
+    module_path, class_name = entry.split(":", 1)
+    try:
+        scan_plugin_metadata_isolated(
+            plugin_id=plugin_id,
+            module_path=module_path,
+            class_name=class_name,
+            config_path=resolved_config_path,
+            conf=ctx.conf,
+            pdata=ctx.pdata,
+            python_requirement_paths=ctx.python_requirement_paths,
+        )
+    except PluginMetadataScanError as exc:
+        phase = "import_class" if exc.error_type == "AttributeError" else "import_module"
+        raise RuntimeError(
+            "promoted plugin runtime validation failed "
+            f"({exc.error_type} during {phase})"
+        ) from exc
 
 
 def _apply_discovery_record_sync(
@@ -687,6 +851,14 @@ def _apply_discovery_record_sync(
             status_code=409,
             details={"plugin_id": record.plugin_id},
         )
+
+    _move_autostart_gate_to_runtime_id(
+        record.plugin_id,
+        runtime_plugin_id,
+        declared_id_is_taken=_declared_id_taken_by_another_plugin(
+            record.plugin_id, record.config_path
+        ),
+    )
 
     plugin_meta = _build_plugin_meta(
         runtime_plugin_id,
@@ -816,6 +988,67 @@ def _collect_missing_plugin_ids_sync(existing_snapshot: dict[str, dict[str, obje
     return missing_ids
 
 
+def _move_autostart_gate_to_runtime_id(
+    declared_plugin_id: str,
+    runtime_plugin_id: str,
+    *,
+    declared_id_is_taken: bool = False,
+) -> None:
+    """Re-key a pending approval when the registry renames a plugin.
+
+    The install gate can only write the id the manifest declares; the runtime id
+    is decided here, and a second plugin declaring an id that is already taken
+    gets a suffix (``demo`` -> ``demo_1``). The autostart check asks about the
+    runtime id, so the record written at install time missed it entirely and the
+    freshly installed code was free to start itself (codex).
+
+    Moving rather than copying: the store is keyed by id, so a copy would leave
+    a record under ``demo`` that belongs to nobody — it would hold back whichever
+    plugin owns that id (one it may have earned long ago), and clearing it by
+    starting that plugin would silently approve this one. After the move each
+    record belongs to exactly one runtime plugin.
+    """
+    if not declared_plugin_id or declared_plugin_id == runtime_plugin_id:
+        return
+    if is_autostart_approved(declared_plugin_id):
+        return
+    if not mark_autostart_pending(runtime_plugin_id):
+        # 记不上就不能把这条改名记录发布出去。留在声明 id 上等于没拦住：注册用的
+        # 和自启动筛选看的都是运行时 id，那边没有记录就是"已批准"，这份从没被启动
+        # 过的新代码会在下次开机自己跑起来（coderabbit）。抛出去，让这一个插件这轮
+        # 注册失败——刷新循环按记录逐个兜底，其它插件不受影响。
+        logger.error(
+            "could not move the pending approval from {} to its runtime id {}; "
+            "refusing to register the renamed plugin",
+            declared_plugin_id,
+            runtime_plugin_id,
+        )
+        raise ServerDomainError(
+            code="PLUGIN_AUTOSTART_GATE_UNAVAILABLE",
+            message=(
+                "cannot record the renamed plugin as awaiting approval; refusing "
+                "to register code that would autostart unapproved"
+            ),
+            status_code=500,
+            details={
+                "plugin_id": declared_plugin_id,
+                "runtime_plugin_id": runtime_plugin_id,
+            },
+        )
+    if declared_id_is_taken:
+        # 声明 id 已经是另一个插件的运行时 id，那条记录可能是**它**的——它自己也
+        # 可能是装上了还没被启动过的（codex）。搬走等于顺手批准了它。这种情况下
+        # 只复制：两个插件各有一条记录，都拦着，谁被启动谁的那条被清掉。
+        return
+    if not clear_autostart_pending(declared_plugin_id):
+        logger.error(
+            "pending approval moved to {} but the record under {} could not be "
+            "cleared; the plugin holding that id may need one manual start",
+            runtime_plugin_id,
+            declared_plugin_id,
+        )
+
+
 def _get_autostart_plugin_ids_sync() -> list[str]:
     candidates: set[str] = set()
     with state.acquire_plugins_read_lock():
@@ -830,15 +1063,29 @@ def _get_autostart_plugin_ids_sync() -> list[str]:
                 continue
             if raw_meta.get("runtime_source_missing") is True:
                 continue
+            if not is_autostart_approved(plugin_id):
+                # 装上和跑起来是两件事，只有后一件是用户做的。manifest 里的
+                # auto_start 默认为真，所以刚装上的插件会在下一次开机自己跑起来，
+                # 而用户从没启动过它。只有装上之后还没被用户启动过的插件会被拦，
+                # 存量插件没有记录、照常自启。
+                continue
             candidates.add(plugin_id)
     return _build_ordered_plugin_ids_sync(candidates)
 
 
 class PluginRegistryService:
     async def refresh_registry(self) -> dict[str, object]:
+        """Rebuild the registry from what is on disk.
+
+        There is no ``force`` any more because there is no cache to bypass: a
+        refresh reads each plugin's manifest and packaged metadata every time.
+        The flag used to mean "re-import the plugins instead of trusting the
+        memoised scan", and refreshing never imports anything now.
+        """
         return await asyncio.to_thread(self._refresh_registry_sync)
 
     async def refresh_plugin(self, plugin_id: str) -> dict[str, object]:
+        """Rebuild one plugin's registry entry from what is on disk."""
         return await asyncio.to_thread(self._refresh_plugin_sync, plugin_id)
 
     async def validate_plugin_runtime_source(
@@ -863,93 +1110,98 @@ class PluginRegistryService:
         roots = tuple(PLUGIN_CONFIG_ROOTS)
         _prepare_plugin_import_roots(roots, logger)
 
-        existing_snapshot = _get_registered_plugin_snapshot_sync()
-        running_ids = _list_running_plugin_ids_sync()
         added: list[str] = []
         updated: list[str] = []
         unchanged: list[str] = []
         refreshed_ids: set[str] = set()
-        snapshot = _discover_registry_snapshot_sync(roots)
-        failed = [
-            {
-                "plugin_id": item.plugin_id or "",
-                "config_path": str(item.config_path),
-                "error": item.error,
-            }
-            for item in snapshot.failures
-        ]
-
-        for record in snapshot.records:
-            try:
-                previous_runtime_plugin_id = _find_existing_runtime_plugin_id_by_config_path(
-                    record.config_path,
-                    existing_snapshot,
-                )
-                if record.meta_payload.get("shadowed_builtin_path"):
-                    # A valid user override always owns the declared ID. Clean
-                    # up aliases left by the legacy conflict renamer instead of
-                    # perpetuating ``study_companion_1``.
-                    previous_runtime_plugin_id = record.plugin_id
-                previous_plugin_id = previous_runtime_plugin_id or record.plugin_id
-                previous_managed = _select_managed_fields(existing_snapshot.get(previous_plugin_id, {}))
-                resolved_id, payload = _apply_discovery_record_sync(
-                    record,
-                    existing_snapshot=existing_snapshot,
-                    preferred_runtime_plugin_id=previous_runtime_plugin_id,
-                )
-                if record.meta_payload.get("shadowed_builtin_path"):
-                    _remove_config_path_aliases_sync(record.config_path, keep_plugin_id=resolved_id)
-                refreshed_ids.add(resolved_id)
-                current_managed = _select_managed_fields(payload)
-                if resolved_id not in existing_snapshot:
-                    added.append(resolved_id)
-                elif previous_managed == current_managed:
-                    unchanged.append(resolved_id)
-                else:
-                    updated.append(resolved_id)
-            except ServerDomainError as exc:
-                failed.append(
-                    {
-                        "plugin_id": record.plugin_id,
-                        "config_path": str(record.config_path),
-                        "error": exc.message,
-                    }
-                )
-            except Exception as exc:
-                logger.warning(
-                    "refresh_registry failed for plugin {}: err_type={}, err={}",
-                    record.plugin_id,
-                    type(exc).__name__,
-                    str(exc),
-                )
-                failed.append(
-                    {
-                        "plugin_id": record.plugin_id,
-                        "config_path": str(record.config_path),
-                        "error": str(exc),
-                    }
-                )
-
-        missing_ids = _collect_missing_plugin_ids_sync(existing_snapshot) - refreshed_ids
-        removed, removed_running = _remove_stale_plugin_metadata_sync(missing_ids, running_ids=running_ids)
-        return {
-            "success": not failed,
-            "added": added,
-            "updated": updated,
-            "removed": removed,
-            "removed_running": removed_running,
-            "unchanged": unchanged,
-            "failed": failed,
-            "shadowed": [
+        # 读盘、读现有快照、发布，全都在锁里。只把发布圈进来是不够的：两次重叠的
+        # 刷新可以各自在锁外读到同一份旧快照，然后先后进锁，后进的那次拿着过时的
+        # existing_snapshot 做增删对账，把前一次刚写进去的记录当成"多出来的"删掉
+        # （codex）。读盘现在只有毫秒级，圈进锁里不需要付什么代价。
+        with _REGISTRY_REFRESH_LOCK:
+            existing_snapshot = _get_registered_plugin_snapshot_sync()
+            running_ids = _list_running_plugin_ids_sync()
+            snapshot = _discover_registry_snapshot_sync(roots)
+            failed = [
                 {
-                    "plugin_id": record.plugin_id,
-                    "config_path": str(record.config_path),
-                    "source": _source_for_config_path(record.config_path),
+                    "plugin_id": item.plugin_id or "",
+                    "config_path": str(item.config_path),
+                    "error": item.error,
                 }
-                for record in snapshot.shadowed
-            ],
-            "scanned_count": len(snapshot.records) + len(snapshot.failures),
-        }
+                for item in snapshot.failures
+            ]
+
+            for record in snapshot.records:
+                try:
+                    previous_runtime_plugin_id = _find_existing_runtime_plugin_id_by_config_path(
+                        record.config_path,
+                        existing_snapshot,
+                    )
+                    if record.meta_payload.get("shadowed_builtin_path"):
+                        # A valid user override always owns the declared ID. Clean
+                        # up aliases left by the legacy conflict renamer instead of
+                        # perpetuating ``study_companion_1``.
+                        previous_runtime_plugin_id = record.plugin_id
+                    previous_plugin_id = previous_runtime_plugin_id or record.plugin_id
+                    previous_managed = _select_managed_fields(existing_snapshot.get(previous_plugin_id, {}))
+                    resolved_id, payload = _apply_discovery_record_sync(
+                        record,
+                        existing_snapshot=existing_snapshot,
+                        preferred_runtime_plugin_id=previous_runtime_plugin_id,
+                    )
+                    if record.meta_payload.get("shadowed_builtin_path"):
+                        _remove_config_path_aliases_sync(record.config_path, keep_plugin_id=resolved_id)
+                    refreshed_ids.add(resolved_id)
+                    current_managed = _select_managed_fields(payload)
+                    if resolved_id not in existing_snapshot:
+                        added.append(resolved_id)
+                    elif previous_managed == current_managed:
+                        unchanged.append(resolved_id)
+                    else:
+                        updated.append(resolved_id)
+                except ServerDomainError as exc:
+                    failed.append(
+                        {
+                            "plugin_id": record.plugin_id,
+                            "config_path": str(record.config_path),
+                            "error": exc.message,
+                        }
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "refresh_registry failed for plugin {}: err_type={}, err={}",
+                        record.plugin_id,
+                        type(exc).__name__,
+                        str(exc),
+                    )
+                    failed.append(
+                        {
+                            "plugin_id": record.plugin_id,
+                            "config_path": str(record.config_path),
+                            "error": str(exc),
+                        }
+                    )
+
+            missing_ids = _collect_missing_plugin_ids_sync(existing_snapshot) - refreshed_ids
+            removed, removed_running = _remove_stale_plugin_metadata_sync(missing_ids, running_ids=running_ids)
+            return {
+                "success": not failed,
+                "added": added,
+                "updated": updated,
+                "removed": removed,
+                "removed_running": removed_running,
+                "unchanged": unchanged,
+                "failed": failed,
+                "shadowed": [
+                    {
+                        "plugin_id": record.plugin_id,
+                        "config_path": str(record.config_path),
+                        "source": _source_for_config_path(record.config_path),
+                    }
+                    for record in snapshot.shadowed
+                ],
+                "scanned_count": len(snapshot.records) + len(snapshot.failures),
+            }
 
     def _refresh_plugin_sync(self, plugin_id: str) -> dict[str, object]:
         normalized_plugin_id = plugin_id.strip()
@@ -961,71 +1213,78 @@ class PluginRegistryService:
                 details={"plugin_id": plugin_id},
             )
 
-        roots = tuple(PLUGIN_CONFIG_ROOTS)
-        existing_snapshot = _get_registered_plugin_snapshot_sync()
-        _prepare_plugin_import_roots(roots, logger)
-        existing_config_path = _resolve_meta_config_path(existing_snapshot.get(normalized_plugin_id))
-        record: PluginDiscoveryRecord | None = None
-        if (
-            existing_config_path is not None
-            and existing_config_path.exists()
-            and not _config_path_belongs_to_roots(existing_config_path, roots)
-        ):
-            ctx = _parse_single_plugin_config(existing_config_path, set(), logger)
-            if ctx is not None:
-                record = _build_discovery_record_from_context(ctx)
-        else:
-            discovery = _discover_registry_snapshot_sync(roots)
-            record = next(
-                (
-                    item
-                    for item in discovery.records
-                    if existing_config_path is not None
-                    and _resolve_config_path(item.config_path) == existing_config_path
-                ),
-                None,
-            )
-            if record is None:
+        # 读盘、读现有快照、发布，全都在一次持锁里完成。单插件刷新原本只把发布
+        # 圈进锁里，existing_snapshot 在锁外就读走了——它决定 previous_runtime_
+        # plugin_id、previous_managed，以及要不要走 source_replacement。中间只要
+        # 有一次全量刷新发布完成，这份快照就已经过时（coderabbit / codex）。而
+        # start_plugin 调 refresh_plugin、reload_all_plugins 调 refresh_registry，
+        # 两条路同时发生并不罕见。
+        with _REGISTRY_REFRESH_LOCK:
+            roots = tuple(PLUGIN_CONFIG_ROOTS)
+            existing_snapshot = _get_registered_plugin_snapshot_sync()
+            _prepare_plugin_import_roots(roots, logger)
+            existing_config_path = _resolve_meta_config_path(existing_snapshot.get(normalized_plugin_id))
+            record: PluginDiscoveryRecord | None = None
+            if (
+                existing_config_path is not None
+                and existing_config_path.exists()
+                and not _config_path_belongs_to_roots(existing_config_path, roots)
+            ):
+                ctx = _parse_single_plugin_config(existing_config_path, set(), logger)
+                if ctx is not None:
+                    record = _build_discovery_record_from_context(ctx)
+            else:
+                discovery = _discover_registry_snapshot_sync(roots)
                 record = next(
-                    (item for item in discovery.records if item.plugin_id == normalized_plugin_id),
+                    (
+                        item
+                        for item in discovery.records
+                        if existing_config_path is not None
+                        and _resolve_config_path(item.config_path) == existing_config_path
+                    ),
                     None,
                 )
-        config_path = record.config_path if record is not None else None
-        if config_path is None:
-            raise ServerDomainError(
-                code="PLUGIN_CONFIG_NOT_FOUND",
-                message=f"Plugin '{normalized_plugin_id}' configuration not found",
-                status_code=404,
-                details={"plugin_id": normalized_plugin_id},
+                if record is None:
+                    record = next(
+                        (item for item in discovery.records if item.plugin_id == normalized_plugin_id),
+                        None,
+                    )
+            config_path = record.config_path if record is not None else None
+            if config_path is None:
+                raise ServerDomainError(
+                    code="PLUGIN_CONFIG_NOT_FOUND",
+                    message=f"Plugin '{normalized_plugin_id}' configuration not found",
+                    status_code=404,
+                    details={"plugin_id": normalized_plugin_id},
+                )
+
+            previous_runtime_plugin_id = _find_existing_runtime_plugin_id_by_config_path(
+                config_path,
+                existing_snapshot,
             )
+            if record.meta_payload.get("shadowed_builtin_path"):
+                previous_runtime_plugin_id = record.plugin_id
+            previous_plugin_id = previous_runtime_plugin_id or normalized_plugin_id
+            previous_managed = _select_managed_fields(existing_snapshot.get(previous_plugin_id, {}))
+            resolved_id, payload = _apply_discovery_record_sync(
+                record,
+                existing_snapshot=existing_snapshot,
+                preferred_runtime_plugin_id=previous_runtime_plugin_id,
+            )
+            if record.meta_payload.get("shadowed_builtin_path"):
+                _remove_config_path_aliases_sync(config_path, keep_plugin_id=resolved_id)
+            current_managed = _select_managed_fields(payload)
+            status = "added"
+            if previous_plugin_id in existing_snapshot:
+                status = "unchanged" if previous_managed == current_managed else "updated"
 
-        previous_runtime_plugin_id = _find_existing_runtime_plugin_id_by_config_path(
-            config_path,
-            existing_snapshot,
-        )
-        if record.meta_payload.get("shadowed_builtin_path"):
-            previous_runtime_plugin_id = record.plugin_id
-        previous_plugin_id = previous_runtime_plugin_id or normalized_plugin_id
-        previous_managed = _select_managed_fields(existing_snapshot.get(previous_plugin_id, {}))
-        resolved_id, payload = _apply_discovery_record_sync(
-            record,
-            existing_snapshot=existing_snapshot,
-            preferred_runtime_plugin_id=previous_runtime_plugin_id,
-        )
-        if record.meta_payload.get("shadowed_builtin_path"):
-            _remove_config_path_aliases_sync(config_path, keep_plugin_id=resolved_id)
-        current_managed = _select_managed_fields(payload)
-        status = "added"
-        if previous_plugin_id in existing_snapshot:
-            status = "unchanged" if previous_managed == current_managed else "updated"
-
-        return {
-            "success": True,
-            "plugin_id": resolved_id,
-            "original_plugin_id": normalized_plugin_id,
-            "status": status,
-            "config_path": str(config_path),
-        }
+            return {
+                "success": True,
+                "plugin_id": resolved_id,
+                "original_plugin_id": normalized_plugin_id,
+                "status": status,
+                "config_path": str(config_path),
+            }
 
     def _order_plugin_ids_sync(self, plugin_ids: list[str]) -> list[str]:
         return _build_ordered_plugin_ids_sync({plugin_id for plugin_id in plugin_ids if isinstance(plugin_id, str)})

@@ -648,7 +648,13 @@ export default {
     returnedLines: '返却行数',
     connected: '接続済み',
     disconnected: '未接続',
-    connectionFailed: 'ログストリームの接続に失敗しました'
+    connectionFailed: 'ログストリームの接続に失敗しました',
+    exportLog: 'ログアーカイブをエクスポート',
+    openLogDirectory: 'ログディレクトリを開く',
+    exportSuccess: 'ログのエクスポートに成功しました',
+    exportFailed: 'ログのエクスポートに失敗しました',
+    openDirectoryFailed: 'ディレクトリを開けませんでした',
+    noLogFileToExport: 'エクスポートするログファイルがありません'
   },
   runs: {
     title: '実行履歴',

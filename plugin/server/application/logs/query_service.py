@@ -8,7 +8,7 @@ from plugin.logging_config import get_logger
 from plugin.server.domain import IO_RUNTIME_ERRORS
 from plugin.server.domain.errors import ServerDomainError
 from plugin.utils.time_utils import now_iso
-from plugin.server.logs import get_plugin_log_files, get_plugin_logs
+from plugin.server.logs import get_plugin_log_files, get_plugin_logs, get_plugin_log_directory_path
 
 logger = get_logger("server.application.logs.query")
 
@@ -161,6 +161,46 @@ class LogQueryService:
             raise ServerDomainError(
                 code="PLUGIN_LOG_FILES_QUERY_FAILED",
                 message="Failed to get plugin log files",
+                status_code=500,
+                details={
+                    "plugin_id": plugin_id,
+                    "error_type": type(exc).__name__,
+                },
+            ) from exc
+
+    def get_plugin_log_directory(self, plugin_id: str) -> dict[str, object]:
+        try:
+            directory_path = get_plugin_log_directory_path(plugin_id)
+            return {
+                "plugin_id": plugin_id,
+                "directory": directory_path,
+                "time": now_iso(),
+            }
+        except ServerDomainError:
+            raise
+        except HTTPException as exc:
+            logger.warning(
+                "get_plugin_log_directory failed with HTTPException: plugin_id={}, status_code={}, detail={}",
+                plugin_id,
+                exc.status_code,
+                str(exc.detail),
+            )
+            raise ServerDomainError(
+                code="PLUGIN_LOG_DIRECTORY_QUERY_FAILED",
+                message=_detail_to_message(exc.detail, default_message="Failed to get plugin log directory"),
+                status_code=exc.status_code,
+                details={"plugin_id": plugin_id, "error_type": "HTTPException"},
+            ) from exc
+        except IO_RUNTIME_ERRORS as exc:
+            logger.error(
+                "get_plugin_log_directory failed: plugin_id={}, err_type={}, err={}",
+                plugin_id,
+                type(exc).__name__,
+                str(exc),
+            )
+            raise ServerDomainError(
+                code="PLUGIN_LOG_DIRECTORY_QUERY_FAILED",
+                message="Failed to get plugin log directory",
                 status_code=500,
                 details={
                     "plugin_id": plugin_id,

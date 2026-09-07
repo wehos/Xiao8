@@ -1,5 +1,9 @@
 # Adapter Gateway Core 规范（简版）
 
+> **状态：历史设计快照。** 本文记录 Adapter Gateway Core 落地前的分层与迁移设想，
+> 不再作为当前实现计划或公共 SDK 合同。当前契约以
+> `plugin/sdk/adapter/`、`plugin/sdk/hosted-ui/index.d.ts` 和公共插件文档为准。
+
 ## 1. 目标
 
 Adapter 作为 NEKO 插件系统的网关层，负责：

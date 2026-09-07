@@ -23,13 +23,31 @@ async function readMaintainerGuide() {
   )
 }
 
-test('scheduled and manually dispatched paid runs force a depth-100 AIO baseline', async () => {
-  const workflow = await readWorkflow()
+function topLevelMapping(source, key) {
+  const lines = source.split(/\r?\n/u)
+  const start = lines.findIndex((line) => line.startsWith(`${key}:`))
+  assert.notEqual(start, -1, `missing top-level ${key} mapping`)
 
-  assert.match(workflow, /cron: '15 0 \* \* \*'/)
-  assert.match(workflow, /github\.event_name == 'schedule' && 'paid'/)
-  assert.match(workflow, /\(github\.event_name == 'schedule' \|\| inputs\.run_mode == 'paid'\) && '100'/)
-  assert.match(workflow, /\(github\.event_name == 'schedule' \|\| inputs\.run_mode == 'paid'\) && 'true'/)
+  const block = [lines[start]]
+  for (const line of lines.slice(start + 1)) {
+    if (line && !/^\s/u.test(line)) break
+    block.push(line)
+  }
+
+  return block.join('\n').replace(/\s+#.*$/gmu, '')
+}
+
+test('paid baselines require manual dispatch and still force depth-100 AIO', async () => {
+  const workflow = await readWorkflow()
+  const triggers = topLevelMapping(workflow, 'on')
+
+  assert.doesNotMatch(triggers, /\bschedule\b/u)
+  assert.doesNotMatch(triggers, /\bcron\b/u)
+  assert.match(triggers, /\bworkflow_dispatch\b/u)
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch'/)
+  assert.match(workflow, /COLLECTION_KIND: \$\{\{ inputs\.run_mode \}\}/)
+  assert.match(workflow, /inputs\.run_mode == 'paid' && '100'/)
+  assert.match(workflow, /inputs\.run_mode == 'paid' && 'true'/)
   assert.doesNotMatch(workflow, /ENABLE_PAID_DATAFORSEO_SCHEDULE/)
 })
 
@@ -46,15 +64,16 @@ test('forks cannot run validation or paid report jobs', async () => {
   )
 })
 
-test('maintainer documentation cannot revive the obsolete paid-schedule kill switch', async () => {
+test('maintainer documentation keeps paid collection manual', async () => {
   const guide = await readMaintainerGuide()
 
-  assert.match(guide, /08:15 Asia\/Shanghai schedule always runs the paid baseline/)
+  assert.match(guide, /workflow has no `schedule` trigger/)
+  assert.match(guide, /paid baseline must be started manually/)
   assert.match(guide, /fixed-name `seo-geo-daily-report` diagnostic artifact/)
   assert.match(guide, /`seo-geo-daily-paid-baseline`/)
   assert.match(guide, /obsolete `ENABLE_PAID_DATAFORSEO_SCHEDULE` variable/)
   assert.doesNotMatch(guide, /set `ENABLE_PAID_DATAFORSEO_SCHEDULE=true`/)
-  assert.doesNotMatch(guide, /schedule is skipped unless/)
+  assert.doesNotMatch(guide, /schedule always runs the paid baseline/)
 })
 
 test('one run collects independent CN, online-English, and online-Chinese segments', async () => {

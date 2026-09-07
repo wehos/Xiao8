@@ -648,7 +648,13 @@ export default {
     returnedLines: '반환된 줄 수',
     connected: '연결됨',
     disconnected: '연결 안 됨',
-    connectionFailed: '로그 스트림 연결에 실패했습니다'
+    connectionFailed: '로그 스트림 연결에 실패했습니다',
+    exportLog: '로그 아카이브 내보내기',
+    openLogDirectory: '로그 디렉터리 열기',
+    exportSuccess: '로그를 성공적으로 내보냈습니다',
+    exportFailed: '로그 내보내기에 실패했습니다',
+    openDirectoryFailed: '디렉터리를 열지 못했습니다',
+    noLogFileToExport: '내보낼 로그 파일이 없습니다'
   },
   runs: {
     title: '실행 기록',

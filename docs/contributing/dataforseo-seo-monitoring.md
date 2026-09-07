@@ -11,16 +11,17 @@ It is not browser code and is never bundled into VitePress. DataForSEO credentia
 
 ## Safety and evidence contract
 
-DataForSEO bills by request, but the daily baseline is deliberately **not** hidden behind a cost-saving kill switch. A skipped run and a real zero are different facts:
+DataForSEO bills by request, so GitHub Actions never starts a paid run on a timer. A skipped run and a real zero are different facts:
 
 - pull requests run tests and three `dry-run` plans only; they receive no billing credentials;
 - manual workflow dispatch defaults to `dry-run` and sends no paid request;
-- the 08:15 Asia/Shanghai schedule always runs the paid baseline at SERP depth 100 with AI Overview loading enabled;
+- the workflow has no `schedule` trigger; routine free observation runs locally, outside GitHub Actions;
+- a paid baseline must be started manually and always uses SERP depth 100 with AI Overview loading enabled;
 - there is no `ENABLE_PAID_DATAFORSEO_SCHEDULE` variable; an old variable with that name has no effect and should be removed from repository settings;
 - SERP depth 100 may bill up to ten result pages per query;
 - each SERP request sets `max_crawl_pages` from that depth, making the displayed page count a hard crawl limit;
-- asynchronous AI Overview loading can add a charge to every SERP request and is intentionally included in the scheduled visibility baseline;
-- one scheduled run tracks 19 `.online` English queries, 8 `.cn` Chinese queries, and 3 `.online` Chinese documentation queries;
+- asynchronous AI Overview loading can add a charge to every SERP request and is intentionally included in a manually dispatched paid baseline;
+- one paid run tracks 19 `.online` English queries, 8 `.cn` Chinese queries, and 3 `.online` Chinese documentation queries;
 - explicit transient SERP API failures that report zero cost retry only the failed keyword, at most three attempts with backoff;
 - ambiguous network, response-body, or JSON failures are never retried automatically because the completed request may already have been billed;
 - a failed response reporting any nonzero cost is never retried automatically, preventing an accidental duplicate charge;
@@ -123,7 +124,7 @@ Use `--output <path>` for a different report path and `--config <path>` for an a
 6. Run `paid`; paid dispatches always force depth 100 and AIO on, even if the dry-run-only inputs were changed.
 7. Download the fixed-name `seo-geo-daily-report` diagnostic artifact. It always contains raw reports, all execution manifests, the unified JSON and the unified Markdown, including evidence from a failed gate.
 8. A successful paid run on `main` also uploads `seo-geo-daily-paid-baseline`. Only this gate-verified artifact is eligible for next-run rank/AIO comparisons; dry-runs, failed paid runs, and feature-branch runs cannot replace it.
-9. The daily 08:15 schedule is automatic after merge. Missing credentials, a missing core report, or a failed technical/content invariant makes the run fail after the diagnostic artifact has been uploaded.
+9. There is no automatic paid schedule. Start a paid baseline manually after reviewing the dry-run plan and budget; missing credentials, a missing core report, or a failed technical/content invariant makes it fail after the diagnostic artifact has been uploaded.
 
 Pull requests run the unit tests and committed-config dry-run only. They never receive DataForSEO secrets and never execute a paid request.
 

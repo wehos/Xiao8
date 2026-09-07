@@ -44,6 +44,7 @@ import httpx
 from ..shared_state import (
     get_config_manager,
 )
+from utils.config_manager import _as_bool
 from utils.audio import normalize_voice_clone_api_audio, validate_audio_file
 from utils.doubao_tts import (
     DOUBAO_TTS_DEFAULT_BASE_URL,
@@ -371,7 +372,10 @@ async def voice_clone(
     base_url = _local_voice_clone_tts_base_url(tts_config, core_config)
     is_local_tts = _is_local_voice_clone_tts_config(tts_config, core_config)
 
-    if is_local_tts:
+    # vLLM-Omni uses an inline reference sample and has no /speakers/register
+    # endpoint. Even when another active TTS provider is a local WS service,
+    # its generic registration route must not consume a vLLM-Omni clone.
+    if is_local_tts and provider != 'vllm_omni':
         # ==================== 本地 TTS 注册流程 ====================
         # MD5 + ref_language 去重：检查是否已有相同音频 + 相同语言注册过的音色
         existing = _config_manager.find_voice_by_audio_md5('__LOCAL_TTS__', audio_md5, ref_language)
@@ -524,9 +528,19 @@ async def voice_clone(
         # vLLM-Omni 是本地 self-hosted 服务，没有 API key、也没有远端音色注册接口。克隆走
         # 「内联参考音频」范式（对偶 MiMo）：参考音频 base64 + ref_text 整段落进 voice_storage
         # 的 voice_meta，每次合成时内联进 session.config 的 ref_audio/ref_text。桶名固定
-        # __VLLM_OMNI__（无 key 后缀，因本地服务无 key 可分桶）。base_url 取当前配置的
-        # ttsModelUrl（与 _vllm_omni_resolve 同源），仅存档备查，dispatch 仍按当前配置重解析。
-        base_url = (core_config.get('ttsModelUrl') or core_config.get('TTS_MODEL_URL') or '').strip()
+        # __VLLM_OMNI__（无 key 后缀，因本地服务无 key 可分桶）。只有当前真正启用了
+        # vLLM-Omni 时才保留端点快照；若 TTS 正在跟随辅助 API，保存那个地址会让将来的
+        # vLLM clone 固化到一个非 WebSocket TTS 端点。此时参考样本照常保存，之后用户切到
+        # vLLM-Omni 会读取新的当前端点。
+        vllm_omni_active = (
+            _as_bool(core_config.get('ENABLE_CUSTOM_API'), False)
+            and str(core_config.get('ttsModelProvider') or '').strip() == 'vllm_omni'
+        )
+        base_url = (
+            (core_config.get('ttsModelUrl') or core_config.get('TTS_MODEL_URL') or '').strip()
+            if vllm_omni_active
+            else ''
+        )
         storage_key = '__VLLM_OMNI__'
         provider_label = 'vLLM-Omni'
 
@@ -701,10 +715,11 @@ async def voice_clone(
                 'clone_sample_mime': 'audio/wav',
                 # 参考音频原文：vLLM-Omni 克隆要求 ref_text 与音频严格对应，作 session.config.ref_text。
                 'clone_ref_text': vllm_ref_text,
-                # base_url 存进 voice_meta（对偶 mimo_base_url）；dispatch 仍按当前配置重解析。
-                'vllm_omni_base_url': base_url or '',
                 'created_at': datetime.now().isoformat()
             }
+            # 仅存真正激活的 vLLM-Omni 端点快照；跟随辅助 API 时不污染克隆的运行地址。
+            if base_url:
+                voice_data['vllm_omni_base_url'] = base_url
 
         elif provider == 'doubao_tts':
             try:

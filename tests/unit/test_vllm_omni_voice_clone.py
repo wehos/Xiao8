@@ -22,11 +22,13 @@ fixed ``__VLLM_OMNI__`` partition and the api_key override is an empty string.
 """
 
 import base64
+import io
 import json
 import queue
 import threading
 import time
 from functools import partial
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -248,12 +250,16 @@ def _vllm_clone_meta(sample: bytes, **extra):
 class _CMBase:
     """A config_manager stand-in for dispatch tests."""
 
-    def __init__(self, voices, raw_json=None):
+    def __init__(self, voices, raw_json=None, core_config=None):
         self._voices = voices
         self._raw = raw_json or {}
+        self._core_config = {
+            "assistApi": "qwen", "TTS_PROVIDER": "", "GPTSOVITS_ENABLED": False,
+        }
+        self._core_config.update(core_config or {})
 
     def get_core_config(self):
-        return {"assistApi": "qwen", "TTS_PROVIDER": "", "GPTSOVITS_ENABLED": False}
+        return dict(self._core_config)
 
     def get_model_api_config(self, model_type):
         return {"is_custom": False}
@@ -312,6 +318,142 @@ def test_get_tts_worker_vllm_omni_clone_uses_stored_base_url(monkeypatch):
     )
     assert provider_key == "vllm_omni"
     assert worker.keywords["base_url"] == "ws://10.0.1.92:8091/v1"
+
+
+@pytest.mark.unit
+def test_get_tts_worker_vllm_omni_clone_uses_current_vllm_url_over_legacy_snapshot(monkeypatch):
+    """Switching to vLLM-Omni must repair clones saved while TTS followed another API."""
+    sample = (np.arange(64, dtype=np.int16)).tobytes()
+    cm = _CMBase(
+        {
+            "vllm-omni-clone-s": _vllm_clone_meta(
+                sample, vllm_omni_base_url="https://www.lanlan.tech/text/v1"
+            ),
+        },
+        raw_json={
+            "enableCustomApi": True,
+            "ttsModelProvider": "vllm_omni",
+            "ttsModelUrl": "ws://127.0.0.1:8091/v1",
+        },
+        core_config={"ENABLE_CUSTOM_API": True, "ttsModelProvider": "vllm_omni"},
+    )
+    monkeypatch.setattr(tts_client, "get_config_manager", lambda: cm)
+
+    worker, _, provider_key = tts_client.get_tts_worker(
+        core_api_type="qwen", has_custom_voice=True, voice_id="vllm-omni-clone-s",
+    )
+
+    assert provider_key == "vllm_omni"
+    assert worker.keywords["base_url"] == "ws://127.0.0.1:8091/v1"
+
+
+@pytest.mark.unit
+def test_get_tts_worker_vllm_omni_clone_uses_default_over_legacy_snapshot_when_selected(monkeypatch):
+    """An empty selected vLLM URL means its supported localhost default."""
+    sample = (np.arange(64, dtype=np.int16)).tobytes()
+    cm = _CMBase(
+        {
+            "vllm-omni-clone-s": _vllm_clone_meta(
+                sample, vllm_omni_base_url="https://www.lanlan.tech/text/v1"
+            ),
+        },
+        raw_json={
+            "enableCustomApi": True,
+            "ttsModelProvider": "vllm_omni",
+            "ttsModelUrl": "",
+        },
+        core_config={"ENABLE_CUSTOM_API": True, "ttsModelProvider": "vllm_omni"},
+    )
+    monkeypatch.setattr(tts_client, "get_config_manager", lambda: cm)
+
+    worker, _, provider_key = tts_client.get_tts_worker(
+        core_api_type="qwen", has_custom_voice=True, voice_id="vllm-omni-clone-s",
+    )
+
+    assert provider_key == "vllm_omni"
+    assert worker.keywords["base_url"] == "ws://localhost:8091/v1"
+
+
+@pytest.mark.unit
+def test_get_tts_worker_vllm_omni_clone_uses_selected_tts_model_url_alias(monkeypatch):
+    """The legacy TTS_MODEL_URL alias remains an active vLLM endpoint."""
+    sample = (np.arange(64, dtype=np.int16)).tobytes()
+    cm = _CMBase(
+        {
+            "vllm-omni-clone-s": _vllm_clone_meta(
+                sample, vllm_omni_base_url="https://www.lanlan.tech/text/v1"
+            ),
+        },
+        raw_json={
+            "enableCustomApi": True,
+            "ttsModelProvider": "vllm_omni",
+            "ttsModelUrl": "",
+            "TTS_MODEL_URL": "ws://127.0.0.1:8099/v1",
+        },
+        core_config={"ENABLE_CUSTOM_API": True, "ttsModelProvider": "vllm_omni"},
+    )
+    monkeypatch.setattr(tts_client, "get_config_manager", lambda: cm)
+
+    worker, _, provider_key = tts_client.get_tts_worker(
+        core_api_type="qwen", has_custom_voice=True, voice_id="vllm-omni-clone-s",
+    )
+
+    assert provider_key == "vllm_omni"
+    assert worker.keywords["base_url"] == "ws://127.0.0.1:8099/v1"
+
+
+@pytest.mark.unit
+async def test_vllm_omni_clone_bypasses_active_local_tts_registration(monkeypatch):
+    """A selected vLLM inline clone must never call another local provider's register API."""
+    from main_routers.characters_router import voice_cloning as voice_cloning_router
+
+    saved = {}
+
+    class _ConfigManager:
+        async def aget_core_config(self):
+            return {"ENABLE_CUSTOM_API": True, "ttsModelProvider": "follow_assist"}
+
+        async def aget_model_api_config(self, _model_type, core_config=None):
+            return {}
+
+        def get_tts_api_key(self, _provider):
+            return ""
+
+        def find_voice_by_audio_md5(self, *_args):
+            return None
+
+        def save_voice_for_api_key(self, storage_key, voice_id, voice_data):
+            saved.update(storage_key=storage_key, voice_id=voice_id, voice_data=voice_data)
+
+    async def fake_read_limited_stream(_file, _limit):
+        return io.BytesIO(b"reference audio")
+
+    def fake_normalize(_buffer, _filename):
+        return io.BytesIO(b"normalized audio"), "reference.wav", {
+            "original": {"sample_rate": 16000, "channels": 1},
+            "normalized": {"sample_rate": 16000},
+        }
+
+    def reject_local_registration(*_args, **_kwargs):
+        raise AssertionError("vLLM-Omni clones must not call /v1/speakers/register")
+
+    monkeypatch.setattr(voice_cloning_router, "get_config_manager", lambda: _ConfigManager())
+    monkeypatch.setattr(voice_cloning_router, "_read_limited_stream", fake_read_limited_stream)
+    monkeypatch.setattr(voice_cloning_router, "normalize_voice_clone_api_audio", fake_normalize)
+    monkeypatch.setattr(voice_cloning_router, "_is_local_voice_clone_tts_config", lambda *_args: True)
+    monkeypatch.setattr(voice_cloning_router.httpx, "AsyncClient", reject_local_registration)
+
+    response = await voice_cloning_router.voice_clone(
+        file=SimpleNamespace(filename="reference.wav"),
+        prefix="sample",
+        ref_language="ch",
+        provider="vllm_omni",
+        ref_text="参考音频原文",
+    )
+
+    assert response.status_code == 200
+    assert saved["storage_key"] == "__VLLM_OMNI__"
+    assert saved["voice_data"]["clone_ref_text"] == "参考音频原文"
 
 
 # ── registry: vllm_omni advertises both preset + clone capabilities ───────────

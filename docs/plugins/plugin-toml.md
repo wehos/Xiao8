@@ -68,12 +68,15 @@ auto_classify = true
 [plugin]
 id = "smart_notes"
 name = "Smart Notes"
+version = "1.2.0"
 entry = "plugin.plugins.smart_notes:SmartNotesPlugin"
 ```
 
-These three fields are **required**. `id` must match `^[A-Za-z0-9_-]+$` and must be unique. Keeping it equal to the folder name is strongly recommended: a mismatch can still load, but profile lookup and tooling may assume `<plugin.id>/plugin.toml`. `entry` must use `module.path:ClassName` and resolve to a `NekoPluginBase` subclass; a `PluginRouter` cannot be launched directly.
+These four fields are **required** by the supported check and release workflow. `id` must match `^[A-Za-z0-9_-]+$` and must be unique. Legacy source discovery can still load some incomplete manifests or folder/ID mismatches, but package build and production installation require the declared ID, archive directory, executable destination, and entry package to stay aligned; no suffixed executable copy is created. `entry` must use `module.path:ClassName` and resolve to a `NekoPluginBase` subclass; a `PluginRouter` cannot be launched directly.
 
 For a normal plugin, `type = "plugin"` is optional because it is the default. Use `type = "adapter"` only for an Adapter package. The removed `extension` type and `[plugin.host]` table are rejected.
+
+Keep `id` stable across releases. Upgrades, reinstalls, and downgrades replace executable code while preserving runtime `config`, `data`, and `cache`; changing `id` creates a different plugin identity. Optional `previous_ids` only prevents an old and new identity from being installed together. It is not a runtime alias and does not migrate or delete old data. Any replacement requires explicit user confirmation.
 
 ```toml
 description = "Manage your notes: search, create, organize, with AI-powered classification."
@@ -95,7 +98,7 @@ The Agent's final Stage 2 decision returns a `plugin_id` and runtime `entry_id`.
 version = "1.2.0"
 ```
 
-Optional. Used for version management and marketplace publishing.
+Required by the check and release workflow. Used for version management and marketplace publishing.
 
 ---
 
@@ -245,7 +248,15 @@ plugin/plugins/smart_notes/
 │   └── panel.tsx
 ├── docs/                    ← user guide (because [[plugin.ui.guide]] is configured)
 │   └── guide.md
-└── data/                    ← runtime data (auto-created, self.data_path() points here)
 ```
 
-Only `plugin.toml` and the importable Python module named by `[plugin].entry` are required. The module does not have to be `__init__.py`, although that is the common layout.
+Writable state is separate from the source or installed executable directory:
+
+```text
+<user data root>/plugins/smart_notes/
+├── config/plugin.toml      ← effective runtime configuration
+├── data/                   ← self.data_path()
+└── cache/                  ← self.cache_path()
+```
+
+Only `plugin.toml` and the importable Python module named by `[plugin].entry` are required. The module does not have to be `__init__.py`, although that is the common layout. Installed package code remains separate from this writable state.

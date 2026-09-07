@@ -199,7 +199,7 @@ test('day1 round scenes use timeline playback while specialized behavior delegat
         .map(scene => scene.id);
 
     // 修改原因：Day1 问候阶段和 Day2/Day4 日常开场一样，必须走显式 timeline 才能把胶囊高亮目标传给 spotlight。
-    assert.equal(timelineSceneIds.length, 9);
+    assert.equal(timelineSceneIds.length, 10);
     assert.equal(timelineSceneIds[0], 'day1_intro_activation');
     assert.equal(timelineSceneIds[1], 'day1_intro_greeting');
     assert.equal(timelineSceneIds[2], 'day1_capsule_drag_hint');
@@ -208,7 +208,8 @@ test('day1 round scenes use timeline playback while specialized behavior delegat
     assert.equal(timelineSceneIds[5], 'day1_screen_entry');
     assert.equal(timelineSceneIds[6], 'day1_screen_entry_invite');
     assert.equal(timelineSceneIds[7], 'day1_takeover_capture_cursor');
-    assert.equal(timelineSceneIds[8], 'day1_takeover_return_control');
+    assert.equal(timelineSceneIds[8], 'day1_avatar_zoom_hint');
+    assert.equal(timelineSceneIds[9], 'day1_takeover_return_control');
 });
 
 test('day1 activation delegates timing through timeline while greeting follows the daily capsule intro pattern', () => {

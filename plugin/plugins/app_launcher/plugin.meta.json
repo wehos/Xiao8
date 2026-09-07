@@ -1,0 +1,1487 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.add_app.description",
+        "default": "注册一个新的软件到启动器。name 是软件显示名称，path 是完整路径（支持 .exe、.lnk 快捷方式等），aliases 是可选的别名列表方便识别。"
+      },
+      "event_key": "app_launcher.add_app",
+      "event_type": "plugin_entry",
+      "id": "add_app",
+      "input_schema": {
+        "properties": {
+          "aliases": {
+            "description": {
+              "$i18n": "entry.add_app.param.aliases",
+              "default": "别名列表，方便猫娘识别，例如：[\"steam\", \"游戏平台\"]"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "autostart": {
+            "description": {
+              "$i18n": "entry.add_app.param.autostart",
+              "default": "是否设置开机自启（可选，默认 false，仅支持 .exe 文件）"
+            },
+            "type": "boolean"
+          },
+          "description": {
+            "description": {
+              "$i18n": "entry.add_app.param.description",
+              "default": "软件描述（可选）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.add_app.param.name",
+              "default": "软件名称，例如：Steam、Chrome、网易云音乐"
+            },
+            "type": "string"
+          },
+          "path": {
+            "description": {
+              "$i18n": "entry.add_app.param.path",
+              "default": "软件的完整路径，例如：C:\\Program Files (x86)\\Steam\\Steam.exe 或快捷方式路径"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "name",
+        "path",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "message": {},
+          "name": {},
+          "path": {}
+        },
+        "required": [
+          "app_id",
+          "name",
+          "path",
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.add_app.name",
+        "default": "添加软件"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.export_apps.description",
+        "default": "导出所有已注册软件的配置信息，方便备份或迁移。"
+      },
+      "event_key": "app_launcher.export_apps",
+      "event_type": "plugin_entry",
+      "id": "export_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "apps",
+        "count",
+        "export_data"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "apps": {},
+          "count": {},
+          "export_data": {}
+        },
+        "required": [
+          "apps",
+          "count",
+          "export_data"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.export_apps.name",
+        "default": "导出软件配置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_all_autostart_status.description",
+        "default": "获取所有已注册软件的开机自启状态列表。猫娘可以通过此功能了解哪些软件设置了开机自启。"
+      },
+      "event_key": "app_launcher.get_all_autostart_status",
+      "event_type": "plugin_entry",
+      "id": "get_all_autostart_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "autostart_apps",
+        "count",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "autostart_apps": {},
+          "count": {},
+          "message": {}
+        },
+        "required": [
+          "autostart_apps",
+          "count",
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.get_all_autostart_status.name",
+        "default": "获取所有软件开机自启状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_autostart_status.description",
+        "default": "获取指定软件的开机自启状态。猫娘可以通过此功能查询软件是否设置了开机自动启动。"
+      },
+      "event_key": "app_launcher.get_autostart_status",
+      "event_type": "plugin_entry",
+      "id": "get_autostart_status",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.get_autostart_status.param.app_id",
+              "default": "要查询的软件 ID"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "app_name",
+        "enabled",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "app_name": {},
+          "enabled": {},
+          "message": {}
+        },
+        "required": [
+          "app_id",
+          "app_name",
+          "enabled",
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.get_autostart_status.name",
+        "default": "获取开机自启状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_available_apps.description",
+        "default": "获取当前已注册且文件存在的软件列表，供猫娘了解可以打开哪些软件。返回软件名称、别名和开机自启状态。"
+      },
+      "event_key": "app_launcher.get_available_apps",
+      "event_type": "plugin_entry",
+      "id": "get_available_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "available_apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "available_apps": {},
+          "count": {}
+        },
+        "required": [
+          "available_apps",
+          "count"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.get_available_apps.name",
+        "default": "获取可用软件列表"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_categories.description",
+        "default": "获取所有可用的软件分类，用于组织和管理软件。"
+      },
+      "event_key": "app_launcher.get_categories",
+      "event_type": "plugin_entry",
+      "id": "get_categories",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "categories",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "categories": {},
+          "count": {}
+        },
+        "required": [
+          "categories",
+          "count"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.get_categories.name",
+        "default": "获取分类列表"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_recent_apps.description",
+        "default": "获取最近启动过的软件列表，方便快速访问常用软件。"
+      },
+      "event_key": "app_launcher.get_recent_apps",
+      "event_type": "plugin_entry",
+      "id": "get_recent_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "recent_apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {},
+          "recent_apps": {}
+        },
+        "required": [
+          "recent_apps",
+          "count"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.get_recent_apps.name",
+        "default": "获取最近使用记录"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.launch_app.description",
+        "default": "根据 app_id 或软件名称/别名启动对应的软件。优先使用 app_id 精确匹配，否则尝试名称/别名模糊匹配。"
+      },
+      "event_key": "app_launcher.launch_app",
+      "event_type": "plugin_entry",
+      "id": "launch_app",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.launch_app.param.app_id",
+              "default": "软件 ID（优先）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.launch_app.param.name",
+              "default": "软件名称或别名（当 app_id 未提供时使用）"
+            },
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "success",
+        "message",
+        "app_name"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_name": {},
+          "message": {},
+          "success": {}
+        },
+        "required": [
+          "success",
+          "message",
+          "app_name"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.launch_app.name",
+        "default": "启动软件"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.list_apps.description",
+        "default": "获取用户已注册的所有软件列表，包含名称、路径、别名、开机自启状态等信息。"
+      },
+      "event_key": "app_launcher.list_apps",
+      "event_type": "plugin_entry",
+      "id": "list_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "apps",
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "apps": {},
+          "count": {}
+        },
+        "required": [
+          "apps",
+          "count"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.list_apps.name",
+        "default": "列出已注册软件"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.remove_app.description",
+        "default": "根据 app_id 删除已注册的软件。"
+      },
+      "event_key": "app_launcher.remove_app",
+      "event_type": "plugin_entry",
+      "id": "remove_app",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.remove_app.param.app_id",
+              "default": "要删除的软件 ID"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "deleted",
+        "name"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {},
+          "name": {}
+        },
+        "required": [
+          "deleted",
+          "name"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.remove_app.name",
+        "default": "删除软件"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.set_autostart.description",
+        "default": "为已注册的软件设置开机自启功能。通过修改 Windows 注册表实现，支持开启或关闭。猫娘可以通过此功能帮主人设置软件开机自动启动。"
+      },
+      "event_key": "app_launcher.set_autostart",
+      "event_type": "plugin_entry",
+      "id": "set_autostart",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.set_autostart.param.app_id",
+              "default": "要设置的软件 ID"
+            },
+            "type": "string"
+          },
+          "enabled": {
+            "description": {
+              "$i18n": "entry.set_autostart.param.enabled",
+              "default": "True=开启开机自启, False=关闭开机自启"
+            },
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app_id",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "success",
+        "message",
+        "app_name",
+        "enabled"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_name": {},
+          "enabled": {},
+          "message": {},
+          "success": {}
+        },
+        "required": [
+          "success",
+          "message",
+          "app_name",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.set_autostart.name",
+        "default": "设置开机自启"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.update_app.description",
+        "default": "更新已注册软件的信息（名称、路径、别名、描述）。"
+      },
+      "event_key": "app_launcher.update_app",
+      "event_type": "plugin_entry",
+      "id": "update_app",
+      "input_schema": {
+        "properties": {
+          "aliases": {
+            "description": {
+              "$i18n": "entry.update_app.param.aliases",
+              "default": "新别名列表（可选，会覆盖原有）"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "app_id": {
+            "description": {
+              "$i18n": "entry.update_app.param.app_id",
+              "default": "要更新的软件 ID"
+            },
+            "type": "string"
+          },
+          "description": {
+            "description": {
+              "$i18n": "entry.update_app.param.description",
+              "default": "新描述（可选）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.update_app.param.name",
+              "default": "新名称（可选）"
+            },
+            "type": "string"
+          },
+          "path": {
+            "description": {
+              "$i18n": "entry.update_app.param.path",
+              "default": "新路径（可选）"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "app_id",
+        "name",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "app_id": {},
+          "message": {},
+          "name": {}
+        },
+        "required": [
+          "app_id",
+          "name",
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entry.update_app.name",
+        "default": "更新软件信息"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "add_app": "add_app",
+    "export_apps": "export_apps",
+    "get_all_autostart_status": "get_all_autostart_status",
+    "get_autostart_status": "get_autostart_status",
+    "get_available_apps": "get_available_apps",
+    "get_categories": "get_categories",
+    "get_recent_apps": "get_recent_apps",
+    "launch_app": "launch_app",
+    "list_apps": "list_apps",
+    "remove_app": "remove_app",
+    "set_autostart": "set_autostart",
+    "update_app": "update_app"
+  },
+  "handlers": {
+    "app_launcher.add_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.add_app.description",
+        "default": "注册一个新的软件到启动器。name 是软件显示名称，path 是完整路径（支持 .exe、.lnk 快捷方式等），aliases 是可选的别名列表方便识别。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_app",
+      "input_schema": {
+        "properties": {
+          "aliases": {
+            "description": {
+              "$i18n": "entry.add_app.param.aliases",
+              "default": "别名列表，方便猫娘识别，例如：[\"steam\", \"游戏平台\"]"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "autostart": {
+            "description": {
+              "$i18n": "entry.add_app.param.autostart",
+              "default": "是否设置开机自启（可选，默认 false，仅支持 .exe 文件）"
+            },
+            "type": "boolean"
+          },
+          "description": {
+            "description": {
+              "$i18n": "entry.add_app.param.description",
+              "default": "软件描述（可选）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.add_app.param.name",
+              "default": "软件名称，例如：Steam、Chrome、网易云音乐"
+            },
+            "type": "string"
+          },
+          "path": {
+            "description": {
+              "$i18n": "entry.add_app.param.path",
+              "default": "软件的完整路径，例如：C:\\Program Files (x86)\\Steam\\Steam.exe 或快捷方式路径"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.add_app.name",
+        "default": "添加软件"
+      }
+    },
+    "app_launcher.export_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.export_apps.description",
+        "default": "导出所有已注册软件的配置信息，方便备份或迁移。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "export_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.export_apps.name",
+        "default": "导出软件配置"
+      }
+    },
+    "app_launcher.get_all_autostart_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_all_autostart_status.description",
+        "default": "获取所有已注册软件的开机自启状态列表。猫娘可以通过此功能了解哪些软件设置了开机自启。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_all_autostart_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_all_autostart_status.name",
+        "default": "获取所有软件开机自启状态"
+      }
+    },
+    "app_launcher.get_autostart_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_autostart_status.description",
+        "default": "获取指定软件的开机自启状态。猫娘可以通过此功能查询软件是否设置了开机自动启动。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_autostart_status",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.get_autostart_status.param.app_id",
+              "default": "要查询的软件 ID"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_autostart_status.name",
+        "default": "获取开机自启状态"
+      }
+    },
+    "app_launcher.get_available_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_available_apps.description",
+        "default": "获取当前已注册且文件存在的软件列表，供猫娘了解可以打开哪些软件。返回软件名称、别名和开机自启状态。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_available_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_available_apps.name",
+        "default": "获取可用软件列表"
+      }
+    },
+    "app_launcher.get_categories": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_categories.description",
+        "default": "获取所有可用的软件分类，用于组织和管理软件。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_categories",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_categories.name",
+        "default": "获取分类列表"
+      }
+    },
+    "app_launcher.get_recent_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_recent_apps.description",
+        "default": "获取最近启动过的软件列表，方便快速访问常用软件。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_recent_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_recent_apps.name",
+        "default": "获取最近使用记录"
+      }
+    },
+    "app_launcher.launch_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.launch_app.description",
+        "default": "根据 app_id 或软件名称/别名启动对应的软件。优先使用 app_id 精确匹配，否则尝试名称/别名模糊匹配。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "launch_app",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.launch_app.param.app_id",
+              "default": "软件 ID（优先）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.launch_app.param.name",
+              "default": "软件名称或别名（当 app_id 未提供时使用）"
+            },
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.launch_app.name",
+        "default": "启动软件"
+      }
+    },
+    "app_launcher.list_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.list_apps.description",
+        "default": "获取用户已注册的所有软件列表，包含名称、路径、别名、开机自启状态等信息。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.list_apps.name",
+        "default": "列出已注册软件"
+      }
+    },
+    "app_launcher.remove_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.remove_app.description",
+        "default": "根据 app_id 删除已注册的软件。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_app",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.remove_app.param.app_id",
+              "default": "要删除的软件 ID"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.remove_app.name",
+        "default": "删除软件"
+      }
+    },
+    "app_launcher.set_autostart": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.set_autostart.description",
+        "default": "为已注册的软件设置开机自启功能。通过修改 Windows 注册表实现，支持开启或关闭。猫娘可以通过此功能帮主人设置软件开机自动启动。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_autostart",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.set_autostart.param.app_id",
+              "default": "要设置的软件 ID"
+            },
+            "type": "string"
+          },
+          "enabled": {
+            "description": {
+              "$i18n": "entry.set_autostart.param.enabled",
+              "default": "True=开启开机自启, False=关闭开机自启"
+            },
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app_id",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.set_autostart.name",
+        "default": "设置开机自启"
+      }
+    },
+    "app_launcher.update_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.update_app.description",
+        "default": "更新已注册软件的信息（名称、路径、别名、描述）。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "update_app",
+      "input_schema": {
+        "properties": {
+          "aliases": {
+            "description": {
+              "$i18n": "entry.update_app.param.aliases",
+              "default": "新别名列表（可选，会覆盖原有）"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "app_id": {
+            "description": {
+              "$i18n": "entry.update_app.param.app_id",
+              "default": "要更新的软件 ID"
+            },
+            "type": "string"
+          },
+          "description": {
+            "description": {
+              "$i18n": "entry.update_app.param.description",
+              "default": "新描述（可选）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.update_app.param.name",
+              "default": "新名称（可选）"
+            },
+            "type": "string"
+          },
+          "path": {
+            "description": {
+              "$i18n": "entry.update_app.param.path",
+              "default": "新路径（可选）"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.update_app.name",
+        "default": "更新软件信息"
+      }
+    },
+    "app_launcher:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "app_launcher:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "app_launcher:plugin_entry:add_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.add_app.description",
+        "default": "注册一个新的软件到启动器。name 是软件显示名称，path 是完整路径（支持 .exe、.lnk 快捷方式等），aliases 是可选的别名列表方便识别。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_app",
+      "input_schema": {
+        "properties": {
+          "aliases": {
+            "description": {
+              "$i18n": "entry.add_app.param.aliases",
+              "default": "别名列表，方便猫娘识别，例如：[\"steam\", \"游戏平台\"]"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "autostart": {
+            "description": {
+              "$i18n": "entry.add_app.param.autostart",
+              "default": "是否设置开机自启（可选，默认 false，仅支持 .exe 文件）"
+            },
+            "type": "boolean"
+          },
+          "description": {
+            "description": {
+              "$i18n": "entry.add_app.param.description",
+              "default": "软件描述（可选）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.add_app.param.name",
+              "default": "软件名称，例如：Steam、Chrome、网易云音乐"
+            },
+            "type": "string"
+          },
+          "path": {
+            "description": {
+              "$i18n": "entry.add_app.param.path",
+              "default": "软件的完整路径，例如：C:\\Program Files (x86)\\Steam\\Steam.exe 或快捷方式路径"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.add_app.name",
+        "default": "添加软件"
+      }
+    },
+    "app_launcher:plugin_entry:export_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.export_apps.description",
+        "default": "导出所有已注册软件的配置信息，方便备份或迁移。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "export_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.export_apps.name",
+        "default": "导出软件配置"
+      }
+    },
+    "app_launcher:plugin_entry:get_all_autostart_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_all_autostart_status.description",
+        "default": "获取所有已注册软件的开机自启状态列表。猫娘可以通过此功能了解哪些软件设置了开机自启。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_all_autostart_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_all_autostart_status.name",
+        "default": "获取所有软件开机自启状态"
+      }
+    },
+    "app_launcher:plugin_entry:get_autostart_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_autostart_status.description",
+        "default": "获取指定软件的开机自启状态。猫娘可以通过此功能查询软件是否设置了开机自动启动。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_autostart_status",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.get_autostart_status.param.app_id",
+              "default": "要查询的软件 ID"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_autostart_status.name",
+        "default": "获取开机自启状态"
+      }
+    },
+    "app_launcher:plugin_entry:get_available_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_available_apps.description",
+        "default": "获取当前已注册且文件存在的软件列表，供猫娘了解可以打开哪些软件。返回软件名称、别名和开机自启状态。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_available_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_available_apps.name",
+        "default": "获取可用软件列表"
+      }
+    },
+    "app_launcher:plugin_entry:get_categories": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_categories.description",
+        "default": "获取所有可用的软件分类，用于组织和管理软件。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_categories",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_categories.name",
+        "default": "获取分类列表"
+      }
+    },
+    "app_launcher:plugin_entry:get_recent_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.get_recent_apps.description",
+        "default": "获取最近启动过的软件列表，方便快速访问常用软件。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_recent_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.get_recent_apps.name",
+        "default": "获取最近使用记录"
+      }
+    },
+    "app_launcher:plugin_entry:launch_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.launch_app.description",
+        "default": "根据 app_id 或软件名称/别名启动对应的软件。优先使用 app_id 精确匹配，否则尝试名称/别名模糊匹配。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "launch_app",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.launch_app.param.app_id",
+              "default": "软件 ID（优先）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.launch_app.param.name",
+              "default": "软件名称或别名（当 app_id 未提供时使用）"
+            },
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.launch_app.name",
+        "default": "启动软件"
+      }
+    },
+    "app_launcher:plugin_entry:list_apps": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.list_apps.description",
+        "default": "获取用户已注册的所有软件列表，包含名称、路径、别名、开机自启状态等信息。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_apps",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.list_apps.name",
+        "default": "列出已注册软件"
+      }
+    },
+    "app_launcher:plugin_entry:remove_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.remove_app.description",
+        "default": "根据 app_id 删除已注册的软件。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_app",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.remove_app.param.app_id",
+              "default": "要删除的软件 ID"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.remove_app.name",
+        "default": "删除软件"
+      }
+    },
+    "app_launcher:plugin_entry:set_autostart": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.set_autostart.description",
+        "default": "为已注册的软件设置开机自启功能。通过修改 Windows 注册表实现，支持开启或关闭。猫娘可以通过此功能帮主人设置软件开机自动启动。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_autostart",
+      "input_schema": {
+        "properties": {
+          "app_id": {
+            "description": {
+              "$i18n": "entry.set_autostart.param.app_id",
+              "default": "要设置的软件 ID"
+            },
+            "type": "string"
+          },
+          "enabled": {
+            "description": {
+              "$i18n": "entry.set_autostart.param.enabled",
+              "default": "True=开启开机自启, False=关闭开机自启"
+            },
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app_id",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.set_autostart.name",
+        "default": "设置开机自启"
+      }
+    },
+    "app_launcher:plugin_entry:update_app": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entry.update_app.description",
+        "default": "更新已注册软件的信息（名称、路径、别名、描述）。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "update_app",
+      "input_schema": {
+        "properties": {
+          "aliases": {
+            "description": {
+              "$i18n": "entry.update_app.param.aliases",
+              "default": "新别名列表（可选，会覆盖原有）"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "app_id": {
+            "description": {
+              "$i18n": "entry.update_app.param.app_id",
+              "default": "要更新的软件 ID"
+            },
+            "type": "string"
+          },
+          "description": {
+            "description": {
+              "$i18n": "entry.update_app.param.description",
+              "default": "新描述（可选）"
+            },
+            "type": "string"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entry.update_app.param.name",
+              "default": "新名称（可选）"
+            },
+            "type": "string"
+          },
+          "path": {
+            "description": {
+              "$i18n": "entry.update_app.param.path",
+              "default": "新路径（可选）"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entry.update_app.name",
+        "default": "更新软件信息"
+      }
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 201717,
+  "source_files": [
+    "README.md",
+    "__init__.py",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml",
+    "static/index.html"
+  ],
+  "source_sha256": "3deaf14022b2893fe67e7c2c7d6805b44830115989568c831ed1abcf6e4e0469"
+}

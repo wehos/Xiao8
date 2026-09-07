@@ -1,0 +1,409 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": "聚合入口：根据 action 路由到 set_mode / set_settings / get_state，方便其他插件通过单一调用控制主动搭话。",
+      "event_key": "proactive_controller.command",
+      "event_type": "plugin_entry",
+      "id": "command",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "要执行的操作",
+            "enum": [
+              "set_mode",
+              "set_settings",
+              "get_state"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "action=set_mode 时的目标模式",
+            "type": "string"
+          },
+          "settings": {
+            "description": "action=set_settings 时的字段映射",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "主动搭话统一指令通道",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "返回当前模式（off/normal/focus/frequent/custom）以及主动搭话字段当前值。",
+      "event_key": "proactive_controller.get_state",
+      "event_type": "plugin_entry",
+      "id": "get_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "mode"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "mode": {}
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "读取主动搭话状态",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "套用一组主动搭话预设。可选模式：'off'（全关，默认首次启动值）、'normal'（推荐配置，所有源开启，间隔 15s/10s）、'focus'（低打扰，仅留搭话和个人动态，间隔 60s）、'frequent'（高频，全开，间隔 5s）。 注意：预设不会改变 proactiveVisionEnabled（隐私模式）—— 那是用户绝对控制权。",
+      "event_key": "proactive_controller.set_mode",
+      "event_type": "plugin_entry",
+      "id": "set_mode",
+      "input_schema": {
+        "properties": {
+          "mode": {
+            "description": "目标模式名称",
+            "enum": [
+              "off",
+              "normal",
+              "focus",
+              "frequent"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "mode"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "mode": {}
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "切换主动搭话模式",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "对主动搭话字段做部分更新。仅接受白名单内字段，未识别字段会被忽略。字段：proactive*Enabled（布尔），proactiveChatInterval/proactiveVisionInterval（秒，1~3600）。 注意：proactiveVisionEnabled（隐私模式）是用户绝对控制权，插件不能调整；试图传入会被拒绝。",
+      "event_key": "proactive_controller.set_settings",
+      "event_type": "plugin_entry",
+      "id": "set_settings",
+      "input_schema": {
+        "properties": {
+          "settings": {
+            "description": "要更新的字段映射；键名必须命中白名单（不含 proactiveVisionEnabled 隐私模式）。",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "细粒度调整主动搭话",
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "command": "command",
+    "get_state": "get_state",
+    "set_mode": "set_mode",
+    "set_settings": "set_settings"
+  },
+  "handlers": {
+    "proactive_controller.command": {
+      "auto_start": false,
+      "description": "聚合入口：根据 action 路由到 set_mode / set_settings / get_state，方便其他插件通过单一调用控制主动搭话。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "command",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "要执行的操作",
+            "enum": [
+              "set_mode",
+              "set_settings",
+              "get_state"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "action=set_mode 时的目标模式",
+            "type": "string"
+          },
+          "settings": {
+            "description": "action=set_settings 时的字段映射",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "主动搭话统一指令通道"
+    },
+    "proactive_controller.get_state": {
+      "auto_start": false,
+      "description": "返回当前模式（off/normal/focus/frequent/custom）以及主动搭话字段当前值。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "读取主动搭话状态"
+    },
+    "proactive_controller.set_mode": {
+      "auto_start": false,
+      "description": "套用一组主动搭话预设。可选模式：'off'（全关，默认首次启动值）、'normal'（推荐配置，所有源开启，间隔 15s/10s）、'focus'（低打扰，仅留搭话和个人动态，间隔 60s）、'frequent'（高频，全开，间隔 5s）。 注意：预设不会改变 proactiveVisionEnabled（隐私模式）—— 那是用户绝对控制权。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_mode",
+      "input_schema": {
+        "properties": {
+          "mode": {
+            "description": "目标模式名称",
+            "enum": [
+              "off",
+              "normal",
+              "focus",
+              "frequent"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "切换主动搭话模式"
+    },
+    "proactive_controller.set_settings": {
+      "auto_start": false,
+      "description": "对主动搭话字段做部分更新。仅接受白名单内字段，未识别字段会被忽略。字段：proactive*Enabled（布尔），proactiveChatInterval/proactiveVisionInterval（秒，1~3600）。 注意：proactiveVisionEnabled（隐私模式）是用户绝对控制权，插件不能调整；试图传入会被拒绝。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_settings",
+      "input_schema": {
+        "properties": {
+          "settings": {
+            "description": "要更新的字段映射；键名必须命中白名单（不含 proactiveVisionEnabled 隐私模式）。",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "细粒度调整主动搭话"
+    },
+    "proactive_controller:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "proactive_controller:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "proactive_controller:plugin_entry:command": {
+      "auto_start": false,
+      "description": "聚合入口：根据 action 路由到 set_mode / set_settings / get_state，方便其他插件通过单一调用控制主动搭话。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "command",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "要执行的操作",
+            "enum": [
+              "set_mode",
+              "set_settings",
+              "get_state"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "action=set_mode 时的目标模式",
+            "type": "string"
+          },
+          "settings": {
+            "description": "action=set_settings 时的字段映射",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "主动搭话统一指令通道"
+    },
+    "proactive_controller:plugin_entry:get_state": {
+      "auto_start": false,
+      "description": "返回当前模式（off/normal/focus/frequent/custom）以及主动搭话字段当前值。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "读取主动搭话状态"
+    },
+    "proactive_controller:plugin_entry:set_mode": {
+      "auto_start": false,
+      "description": "套用一组主动搭话预设。可选模式：'off'（全关，默认首次启动值）、'normal'（推荐配置，所有源开启，间隔 15s/10s）、'focus'（低打扰，仅留搭话和个人动态，间隔 60s）、'frequent'（高频，全开，间隔 5s）。 注意：预设不会改变 proactiveVisionEnabled（隐私模式）—— 那是用户绝对控制权。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_mode",
+      "input_schema": {
+        "properties": {
+          "mode": {
+            "description": "目标模式名称",
+            "enum": [
+              "off",
+              "normal",
+              "focus",
+              "frequent"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "切换主动搭话模式"
+    },
+    "proactive_controller:plugin_entry:set_settings": {
+      "auto_start": false,
+      "description": "对主动搭话字段做部分更新。仅接受白名单内字段，未识别字段会被忽略。字段：proactive*Enabled（布尔），proactiveChatInterval/proactiveVisionInterval（秒，1~3600）。 注意：proactiveVisionEnabled（隐私模式）是用户绝对控制权，插件不能调整；试图传入会被拒绝。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_settings",
+      "input_schema": {
+        "properties": {
+          "settings": {
+            "description": "要更新的字段映射；键名必须命中白名单（不含 proactiveVisionEnabled 隐私模式）。",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "细粒度调整主动搭话"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 15252,
+  "source_files": [
+    "__init__.py",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml"
+  ],
+  "source_sha256": "396138da6957adcb824f6205a6f9ab0efa206ef94aa6dd24b573edcf2ebf5571"
+}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import stat
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -9,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from plugin._types.models import RunCreateRequest
@@ -58,6 +60,7 @@ _INSTALL_KIND_LABELS = {
     "rapidocr_models": "RapidOCR Models",
     "tesseract": "Tesseract",
 }
+_LEGACY_READ_ONLY_INSTALL_KINDS = {("study_companion", "tesseract")}
 
 
 async def _run_blocking(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -67,9 +70,12 @@ async def _run_blocking(func: Callable[..., Any], *args: Any, **kwargs: Any) -> 
     )
 
 
-def _get_plugin_registration(plugin_id: str) -> InstallPluginRegistration:
+async def _get_plugin_registration(plugin_id: str) -> InstallPluginRegistration:
     try:
-        registration = install_registry.get_install_plugin_registration(plugin_id)
+        registration = await _run_blocking(
+            install_registry.get_install_plugin_registration,
+            plugin_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Plugin has no install API") from exc
     if registration is None:
@@ -77,12 +83,7 @@ def _get_plugin_registration(plugin_id: str) -> InstallPluginRegistration:
     return registration
 
 
-def _ensure_has_install(plugin_id: str) -> None:
-    _get_plugin_registration(plugin_id)
-
-
-def _ensure_tutorial_enabled(plugin_id: str) -> None:
-    registration = _get_plugin_registration(plugin_id)
+def _ensure_tutorial_enabled(registration: InstallPluginRegistration) -> None:
     if not registration.tutorial_enabled:
         raise HTTPException(status_code=404, detail=f"Plugin '{registration.plugin_id}' has no tutorial API")
 
@@ -93,7 +94,7 @@ class InstallStartPayload(BaseModel):
 
 @router.get("/plugin/{plugin_id}/ui-api/locale")
 async def get_plugin_ui_locale(plugin_id: str) -> JSONResponse:
-    _get_plugin_registration(plugin_id)
+    await _get_plugin_registration(plugin_id)
     try:
         from utils.language_utils import get_global_language_full
 
@@ -106,23 +107,74 @@ async def get_plugin_ui_locale(plugin_id: str) -> JSONResponse:
 
 @router.get("/plugin/{plugin_id}/ui-api/i18n/ui/{locale}.json")
 async def get_plugin_ui_i18n(plugin_id: str, locale: str) -> Response:
-    registration = _get_plugin_registration(plugin_id)
-    if registration.ui_i18n_dir is None:
+    registration = await _get_plugin_registration(plugin_id)
+    if registration.ui_i18n_dir is None or registration.config_path is None:
         return Response(status_code=404)
     normalized = str(locale or "").strip()
     if ".." in normalized or "/" in normalized or "\\" in normalized:
         return Response(status_code=404)
     if normalized not in _ALLOWED_UI_LOCALES:
         return Response(status_code=404)
-    base_dir = registration.ui_i18n_dir.resolve()
-    file = (base_dir / f"{normalized}.json").resolve()
+
+    payload = await _run_blocking(
+        _read_ui_locale_payload,
+        registration.config_path.parent,
+        registration.ui_i18n_dir,
+        normalized,
+    )
+    if payload is None:
+        return Response(status_code=404)
+    return Response(content=payload, media_type="application/json")
+
+
+def _read_ui_locale_payload(
+    plugin_root: Path,
+    base_path: Path,
+    locale: str,
+) -> bytes | None:
+    """Read one locale through a verified handle so path swaps cannot escape."""
+
+    file_descriptor = -1
     try:
-        file.relative_to(base_dir)
-    except ValueError:
-        return Response(status_code=404)
-    if not await _run_blocking(file.is_file):
-        return Response(status_code=404)
-    return FileResponse(file)
+        if not plugin_root.is_absolute():
+            return None
+        base_dir = base_path.resolve(strict=True)
+        base_dir.relative_to(plugin_root)
+        if not base_dir.is_dir():
+            return None
+        candidate = base_dir / f"{locale}.json"
+        open_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        file_descriptor = os.open(candidate, open_flags)
+
+        opened_metadata = os.fstat(file_descriptor)
+        current_metadata = os.stat(candidate, follow_symlinks=False)
+        reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if (
+            not stat.S_ISREG(opened_metadata.st_mode)
+            or not stat.S_ISREG(current_metadata.st_mode)
+            or bool(getattr(current_metadata, "st_file_attributes", 0) & reparse_attribute)
+            or not os.path.samestat(opened_metadata, current_metadata)
+        ):
+            return None
+
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(plugin_root)
+        if not os.path.samestat(opened_metadata, resolved.stat()):
+            return None
+
+        with os.fdopen(file_descriptor, "rb") as file_obj:
+            file_descriptor = -1
+            return file_obj.read()
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return None
+    finally:
+        if file_descriptor >= 0:
+            os.close(file_descriptor)
 
 
 def _normalize_ui_locale(locale: str) -> str:
@@ -146,8 +198,12 @@ def _normalize_ui_locale(locale: str) -> str:
     return "zh-CN"
 
 
-def _get_install_kind_spec(kind: str, *, plugin_id: str) -> dict[str, Any]:
-    registration = _get_plugin_registration(plugin_id)
+def _get_install_kind_spec(
+    kind: str,
+    *,
+    registration: InstallPluginRegistration,
+    allow_legacy_read: bool = False,
+) -> dict[str, Any]:
     normalized = str(kind or "").strip().lower()
     # rapidocr + dxcam used to live here as runtime-pip-install entries; both
     # are now bundled into the main program. textractor still needs runtime
@@ -156,6 +212,8 @@ def _get_install_kind_spec(kind: str, *, plugin_id: str) -> dict[str, Any]:
     spec = registration.install_kinds.get(normalized)
     if spec is None:
         label = _INSTALL_KIND_LABELS.get(normalized, normalized or str(kind))
+        if allow_legacy_read and (registration.plugin_id, normalized) in _LEGACY_READ_ONLY_INSTALL_KINDS:
+            return {"kind": normalized, "label": label}
         raise HTTPException(
             status_code=404,
             detail=f"{label} install is not supported by {registration.plugin_id}",
@@ -462,8 +520,8 @@ async def _start_install_task(
     payload: InstallStartPayload,
     request: Request,
 ) -> JSONResponse:
-    _ensure_has_install(plugin_id)
-    spec = _get_install_kind_spec(kind, plugin_id=plugin_id)
+    registration = await _get_plugin_registration(plugin_id)
+    spec = _get_install_kind_spec(kind, registration=registration)
     try:
         client_host = request.client.host if request.client is not None else None
         args: dict[str, object] = {"force": bool(payload.force)}
@@ -531,8 +589,12 @@ async def _start_install_task(
 
 
 async def _latest_install_task_payload(*, plugin_id: str, kind: str) -> JSONResponse:
-    _ensure_has_install(plugin_id)
-    spec = _get_install_kind_spec(kind, plugin_id=plugin_id)
+    registration = await _get_plugin_registration(plugin_id)
+    spec = _get_install_kind_spec(
+        kind,
+        registration=registration,
+        allow_legacy_read=True,
+    )
     payload = await _run_blocking(
         load_latest_install_task_state,
         kind=spec["kind"],
@@ -553,8 +615,12 @@ async def _latest_install_task_payload(*, plugin_id: str, kind: str) -> JSONResp
 
 
 async def _get_install_task_payload(*, plugin_id: str, kind: str, task_id: str) -> JSONResponse:
-    _ensure_has_install(plugin_id)
-    spec = _get_install_kind_spec(kind, plugin_id=plugin_id)
+    registration = await _get_plugin_registration(plugin_id)
+    spec = _get_install_kind_spec(
+        kind,
+        registration=registration,
+        allow_legacy_read=True,
+    )
     return JSONResponse(
         await _run_blocking(
             _resolve_install_task_payload,
@@ -573,8 +639,12 @@ async def _install_stream_response(
     task_id: str,
     request: Request,
 ) -> StreamingResponse:
-    _ensure_has_install(plugin_id)
-    spec = _get_install_kind_spec(kind, plugin_id=plugin_id)
+    registration = await _get_plugin_registration(plugin_id)
+    spec = _get_install_kind_spec(
+        kind,
+        registration=registration,
+        allow_legacy_read=True,
+    )
     await _run_blocking(
         _resolve_install_task_payload,
         task_id,
@@ -776,9 +846,148 @@ _tutorial_store_instance: Path | None = None
 _tutorial_store_instances: dict[str, Path] = {}
 _tutorial_store_lock = threading.RLock()
 _tutorial_migrated_paths: set[Path] = set()
+_GALGAME_TUTORIAL_MIGRATION_RETRY_COOLDOWN_SECONDS = 60.0
+_galgame_tutorial_migration_retry_after: dict[Path, float] = {}
 
 
-def _run_tutorial_migrations(store_path: Path, *, plugin_id: str) -> None:
+def _read_legacy_galgame_tutorial_progress(
+    legacy_store_path: Path,
+) -> dict[str, Any] | None:
+    raw = json.loads(legacy_store_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("galgame store json root is not an object")
+    progress = raw.get("tutorial_progress")
+    return dict(progress) if isinstance(progress, dict) else None
+
+
+def _load_legacy_galgame_tutorial_progress(
+    registration: InstallPluginRegistration,
+) -> tuple[dict[str, Any] | None, Path | None]:
+    runtime_store_path = (
+        resolve_runtime_data_root()
+        / "plugins"
+        / "galgame_plugin"
+        / "data"
+        / "galgame_store.json"
+    )
+    if runtime_store_path.is_file():
+        try:
+            progress = _read_legacy_galgame_tutorial_progress(runtime_store_path)
+        except Exception:  # noqa: BLE001 - corrupt legacy data must not break the API.
+            logger.warning(
+                "failed to read legacy galgame tutorial progress from {}; trying backup",
+                runtime_store_path,
+                exc_info=True,
+            )
+            backup_path = runtime_store_path.with_name(
+                f"{runtime_store_path.name}.bak"
+            )
+            if backup_path.is_file():
+                try:
+                    progress = _read_legacy_galgame_tutorial_progress(backup_path)
+                except Exception:  # noqa: BLE001 - fall through to selected source.
+                    logger.warning(
+                        "failed to recover legacy galgame tutorial progress from {}",
+                        backup_path,
+                        exc_info=True,
+                    )
+                else:
+                    if progress is not None:
+                        return progress, backup_path
+        else:
+            if progress is not None:
+                return progress, runtime_store_path
+
+    config_path = registration.config_path
+    if config_path is None:
+        return None, None
+    selected_store_path = config_path.parent / "data" / "galgame_store.json"
+    if selected_store_path == runtime_store_path or not selected_store_path.is_file():
+        return None, None
+    try:
+        progress = _read_legacy_galgame_tutorial_progress(selected_store_path)
+    except Exception:  # noqa: BLE001 - corrupt legacy data must not break the API.
+        logger.warning(
+            "failed to read selected-source galgame tutorial progress from {}",
+            selected_store_path,
+            exc_info=True,
+        )
+        return None, None
+    if progress is None:
+        return None, None
+    return progress, selected_store_path
+
+
+def _write_migrated_tutorial_progress(
+    store_path: Path,
+    progress: dict[str, Any],
+) -> bool:
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = store_path.with_name(
+        f".{store_path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    try:
+        with tmp_path.open("w", encoding="utf-8") as tmp_file:
+            json.dump(progress, tmp_file, ensure_ascii=False, sort_keys=True, indent=2)
+            tmp_file.write("\n")
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        if store_path.exists():
+            return False
+        os.replace(tmp_path, store_path)
+        return True
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _migrate_legacy_galgame_tutorial_progress(
+    store_path: Path,
+    *,
+    registration: InstallPluginRegistration | None,
+) -> None:
+    with _tutorial_store_lock:
+        if registration is None or registration.plugin_id != "galgame_plugin":
+            return
+        if store_path.exists():
+            _galgame_tutorial_migration_retry_after.pop(store_path, None)
+            return
+        if time.monotonic() < _galgame_tutorial_migration_retry_after.get(store_path, 0.0):
+            return
+        try:
+            progress, source_path = _load_legacy_galgame_tutorial_progress(registration)
+            if progress is None or source_path is None:
+                return
+            if _write_migrated_tutorial_progress(store_path, progress):
+                logger.info(
+                    "galgame tutorial progress migrated from legacy store: {} -> {}",
+                    source_path,
+                    store_path,
+                )
+        except Exception:  # noqa: BLE001 - migration is best effort and must not break the API.
+            logger.warning(
+                "galgame tutorial progress migration failed for {}",
+                store_path,
+                exc_info=True,
+            )
+        finally:
+            if store_path.exists():
+                _galgame_tutorial_migration_retry_after.pop(store_path, None)
+            else:
+                _galgame_tutorial_migration_retry_after[store_path] = (
+                    time.monotonic() + _GALGAME_TUTORIAL_MIGRATION_RETRY_COOLDOWN_SECONDS
+                )
+
+
+def _run_tutorial_migrations(
+    store_path: Path,
+    *,
+    plugin_id: str,
+    registration: InstallPluginRegistration | None = None,
+) -> None:
+    _migrate_legacy_galgame_tutorial_progress(
+        store_path,
+        registration=registration,
+    )
     if store_path in _tutorial_migrated_paths:
         return
     for hook in install_registry.tutorial_migration_hooks_for(plugin_id):
@@ -786,24 +995,33 @@ def _run_tutorial_migrations(store_path: Path, *, plugin_id: str) -> None:
     _tutorial_migrated_paths.add(store_path)
 
 
-def _tutorial_store(plugin_id: str = "") -> Path:
+def _tutorial_store(
+    plugin_id: str = "",
+    registration: InstallPluginRegistration | None = None,
+) -> Path:
     global _tutorial_store_instance
     normalized_plugin_id = _normalize_registered_plugin_id(plugin_id) if plugin_id else ""
     with _tutorial_store_lock:
         if not normalized_plugin_id and _tutorial_store_instance is not None:
-            return _tutorial_store_instance
-        existing = _tutorial_store_instances.get(normalized_plugin_id)
-        if existing is not None:
-            return existing
-        store_dir = resolve_runtime_data_root() / "server" / "plugin_install"
-        if normalized_plugin_id:
-            store_dir = store_dir / normalized_plugin_id
-        store_path = store_dir / "tutorial_progress.json"
-        _run_tutorial_migrations(store_path, plugin_id=normalized_plugin_id)
-        if normalized_plugin_id:
-            _tutorial_store_instances[normalized_plugin_id] = store_path
+            store_path = _tutorial_store_instance
         else:
-            _tutorial_store_instance = store_path
+            existing = _tutorial_store_instances.get(normalized_plugin_id)
+            if existing is not None:
+                store_path = existing
+            else:
+                store_dir = resolve_runtime_data_root() / "server" / "plugin_install"
+                if normalized_plugin_id:
+                    store_dir = store_dir / normalized_plugin_id
+                store_path = store_dir / "tutorial_progress.json"
+                if normalized_plugin_id:
+                    _tutorial_store_instances[normalized_plugin_id] = store_path
+                else:
+                    _tutorial_store_instance = store_path
+        _run_tutorial_migrations(
+            store_path,
+            plugin_id=normalized_plugin_id,
+            registration=registration,
+        )
         return store_path
 
 
@@ -815,8 +1033,11 @@ class TutorialProgressPayload(BaseModel):
     completed_at: float = 0.0
 
 
-def _read_tutorial_progress(plugin_id: str = "") -> dict[str, Any] | None:
-    store_path = _tutorial_store(plugin_id)
+def _read_tutorial_progress(
+    plugin_id: str = "",
+    registration: InstallPluginRegistration | None = None,
+) -> dict[str, Any] | None:
+    store_path = _tutorial_store(plugin_id, registration)
     if not store_path.is_file():
         return None
     try:
@@ -829,8 +1050,12 @@ def _read_tutorial_progress(plugin_id: str = "") -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else None
 
 
-def _write_tutorial_progress(progress: dict[str, Any], plugin_id: str = "") -> None:
-    store_path = _tutorial_store(plugin_id)
+def _write_tutorial_progress(
+    progress: dict[str, Any],
+    plugin_id: str = "",
+    registration: InstallPluginRegistration | None = None,
+) -> None:
+    store_path = _tutorial_store(plugin_id, registration)
     store_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = store_path.with_suffix(store_path.suffix + ".tmp")
     try:
@@ -873,9 +1098,10 @@ def _normalize_tutorial_progress(raw: dict[str, Any] | None) -> dict[str, Any]:
 
 @router.get("/plugin/{plugin_id}/ui-api/tutorial/status")
 async def get_tutorial_status(plugin_id: str) -> JSONResponse:
-    _ensure_tutorial_enabled(plugin_id)
+    registration = await _get_plugin_registration(plugin_id)
+    _ensure_tutorial_enabled(registration)
     try:
-        raw = await _run_blocking(_read_tutorial_progress, plugin_id)
+        raw = await _run_blocking(_read_tutorial_progress, plugin_id, registration)
     except Exception:
         logger.error("tutorial progress status read failed", exc_info=True)
         return JSONResponse(
@@ -890,10 +1116,13 @@ async def save_tutorial_progress(
     plugin_id: str,
     body: TutorialProgressPayload,
 ) -> JSONResponse:
-    _ensure_tutorial_enabled(plugin_id)
+    registration = await _get_plugin_registration(plugin_id)
+    _ensure_tutorial_enabled(registration)
     payload = body.model_dump(exclude_unset=True)
     try:
-        current = _normalize_tutorial_progress(await _run_blocking(_read_tutorial_progress, plugin_id))
+        current = _normalize_tutorial_progress(
+            await _run_blocking(_read_tutorial_progress, plugin_id, registration)
+        )
     except Exception:
         logger.error("tutorial progress save aborted after read failure", exc_info=True)
         return JSONResponse(
@@ -916,7 +1145,12 @@ async def save_tutorial_progress(
     if not current["completed"] and not current["skipped"]:
         current["completed_at"] = _TUTORIAL_DEFAULTS["completed_at"]
     try:
-        await _run_blocking(_write_tutorial_progress, current, plugin_id)
+        await _run_blocking(
+            _write_tutorial_progress,
+            current,
+            plugin_id,
+            registration,
+        )
     except Exception:
         logger.warning("tutorial progress save failed", exc_info=True)
         return JSONResponse(

@@ -541,18 +541,20 @@ VRMManager.prototype._startUIUpdateLoop = function() {
     let lastMobileUpdate = 0;
     const MOBILE_UPDATE_INTERVAL = 100;
 
-    // 空闲低频模式下改用 ~33ms 定时器转一次性 rAF：一次性 rAF 不形成连续
-    // vsync 链，Blink 主帧调度随渲染循环一起降到地板频率。否则本循环单独
-    // 就能把 BeginMainFrame 顶回显示器刷新率，渲染侧的空闲化收益归零。
+    // 定时器驱动模式下本循环也改走定时器、周期跟随渲染 tick（活动态=配置帧率、空闲=地板 30）：
+    // 不排 rAF，Blink 主帧调度才能随渲染循环一起降下来；否则本循环单独就能把
+    // BeginMainFrame 顶回显示器刷新率，渲染侧的收益归零。定时器到点直接调 update，
+    // 不再转一次性 rAF——那会再等一个 vsync，按钮位置比模型慢半拍。
     const scheduleNext = () => {
         if (this._uiUpdateLoopId === null || this._uiUpdateLoopId === undefined) return;
         if (this._idleTickMode) {
             if (this._uiLoopIdleTimeout) clearTimeout(this._uiLoopIdleTimeout);
+            const tickFps = Number(this._idleTickFps) > 0 ? Number(this._idleTickFps) : 30;
             this._uiLoopIdleTimeout = setTimeout(() => {
                 this._uiLoopIdleTimeout = null;
                 if (this._uiUpdateLoopId === null || this._uiUpdateLoopId === undefined) return;
-                this._uiUpdateLoopId = requestAnimationFrame(update);
-            }, 33);
+                update();
+            }, Math.max(4, Math.round(1000 / tickFps)));
             return;
         }
         this._uiUpdateLoopId = requestAnimationFrame(update);

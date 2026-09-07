@@ -1,6 +1,6 @@
 # N.E.K.O SEO / GEO 日报文件夹
 
-本目录保存日报契约与可审计样本；生产日报不会直接提交到 Git，而是由 `SEO GEO Daily Report` GitHub Actions 每天生成 Markdown + JSON artifact，并在 Actions Summary 中展示 Markdown。
+本目录保存日报契约与可审计样本；生产日报不会直接提交到 Git。免费日报在维护者本机运行；需要刷新付费排名基线时，由维护者审查请求计划与预算后手动触发 `SEO GEO Daily Report`，生成 Markdown + JSON artifact，并在 Actions Summary 中展示 Markdown。
 
 ## 文件
 

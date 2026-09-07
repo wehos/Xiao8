@@ -1,0 +1,476 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": "排期一个备忘提醒（异步，不会立即触发）。调用成功仅表示排期完成，到时间后系统会自动推送提醒消息，请勿在排期完成时就提醒用户。\ntime 格式: 'now'(立即) / 绝对时间 '2026-03-07 09:00' / 仅时间 '07:00' / 相对偏移 '15s' '30m' '2h' '1d'（纯数字+单位，不要加 'every' 'in' 等词）。\nrepeat 格式: 'once' | 'daily' | 'weekly' | 'hourly' | 自定义间隔如 '10s' '90m' '2h'（纯数字+单位）。错误示例: 'every 10s'、'10 seconds'。正确示例: '10s'。\nmax_count: 重复触发的最大次数。例如 repeat='15s' + max_count=5 表示每15秒触发一次，共触发5次后自动删除。",
+      "event_key": "memo_reminder.add_reminder",
+      "event_type": "plugin_entry",
+      "id": "add_reminder",
+      "input_schema": {
+        "properties": {
+          "max_count": {
+            "description": "重复触发的最大次数（仅对 repeat 非 'once' 有效）。达到次数后自动删除。",
+            "type": "integer"
+          },
+          "message": {
+            "description": "提醒内容",
+            "type": "string"
+          },
+          "repeat": {
+            "default": "once",
+            "description": "重复模式(默认 once)。可选值: 'once' | 'daily' | 'weekly' | 'hourly' | '<数字><单位>' 如 '10s' '90m' '2h'。只传纯数字+单位，不要加 'every' 等前缀。",
+            "type": "string"
+          },
+          "time": {
+            "description": "触发时间。格式: 'now'(立即) | 绝对时间 'YYYY-MM-DD HH:MM' | 仅时间 'HH:MM' | 相对偏移 '<数字><单位>' 如 '30m' '2h' '1d'。单位: s=秒 m=分 h=时 d=天。不要加 'in' 'after' 等前缀。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message",
+        "trigger_at_local"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {},
+          "trigger_at_local": {}
+        },
+        "required": [
+          "message",
+          "trigger_at_local"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "添加提醒",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "兼容旧 deferred 调用；提醒触发不再绑定 agent_task_id 或回调完成任务",
+      "event_key": "memo_reminder.bind_task",
+      "event_type": "plugin_entry",
+      "id": "bind_task",
+      "input_schema": {
+        "properties": {
+          "agent_task_id": {
+            "type": "string"
+          },
+          "reminder_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id",
+          "agent_task_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": "绑定Agent任务ID",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "删除所有待触发的提醒",
+      "event_key": "memo_reminder.clear_reminders",
+      "event_type": "plugin_entry",
+      "id": "clear_reminders",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "cleared"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "cleared": {}
+        },
+        "required": [
+          "cleared"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "清空所有提醒",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "根据 reminder_id 删除一个提醒",
+      "event_key": "memo_reminder.delete_reminder",
+      "event_type": "plugin_entry",
+      "id": "delete_reminder",
+      "input_schema": {
+        "properties": {
+          "reminder_id": {
+            "description": "要删除的提醒 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "deleted"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "deleted": {}
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "删除提醒",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "列出所有待触发的提醒",
+      "event_key": "memo_reminder.list_reminders",
+      "event_type": "plugin_entry",
+      "id": "list_reminders",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "count"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "count": {}
+        },
+        "required": [
+          "count"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "查看提醒列表",
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "add_reminder": "add_reminder",
+    "bind_task": "bind_task",
+    "clear_reminders": "clear_reminders",
+    "delete_reminder": "delete_reminder",
+    "list_reminders": "list_reminders"
+  },
+  "handlers": {
+    "memo_reminder.add_reminder": {
+      "auto_start": false,
+      "description": "排期一个备忘提醒（异步，不会立即触发）。调用成功仅表示排期完成，到时间后系统会自动推送提醒消息，请勿在排期完成时就提醒用户。\ntime 格式: 'now'(立即) / 绝对时间 '2026-03-07 09:00' / 仅时间 '07:00' / 相对偏移 '15s' '30m' '2h' '1d'（纯数字+单位，不要加 'every' 'in' 等词）。\nrepeat 格式: 'once' | 'daily' | 'weekly' | 'hourly' | 自定义间隔如 '10s' '90m' '2h'（纯数字+单位）。错误示例: 'every 10s'、'10 seconds'。正确示例: '10s'。\nmax_count: 重复触发的最大次数。例如 repeat='15s' + max_count=5 表示每15秒触发一次，共触发5次后自动删除。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_reminder",
+      "input_schema": {
+        "properties": {
+          "max_count": {
+            "description": "重复触发的最大次数（仅对 repeat 非 'once' 有效）。达到次数后自动删除。",
+            "type": "integer"
+          },
+          "message": {
+            "description": "提醒内容",
+            "type": "string"
+          },
+          "repeat": {
+            "default": "once",
+            "description": "重复模式(默认 once)。可选值: 'once' | 'daily' | 'weekly' | 'hourly' | '<数字><单位>' 如 '10s' '90m' '2h'。只传纯数字+单位，不要加 'every' 等前缀。",
+            "type": "string"
+          },
+          "time": {
+            "description": "触发时间。格式: 'now'(立即) | 绝对时间 'YYYY-MM-DD HH:MM' | 仅时间 'HH:MM' | 相对偏移 '<数字><单位>' 如 '30m' '2h' '1d'。单位: s=秒 m=分 h=时 d=天。不要加 'in' 'after' 等前缀。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "添加提醒"
+    },
+    "memo_reminder.bind_task": {
+      "auto_start": false,
+      "description": "兼容旧 deferred 调用；提醒触发不再绑定 agent_task_id 或回调完成任务",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bind_task",
+      "input_schema": {
+        "properties": {
+          "agent_task_id": {
+            "type": "string"
+          },
+          "reminder_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id",
+          "agent_task_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "绑定Agent任务ID"
+    },
+    "memo_reminder.clear_reminders": {
+      "auto_start": false,
+      "description": "删除所有待触发的提醒",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_reminders",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "清空所有提醒"
+    },
+    "memo_reminder.delete_reminder": {
+      "auto_start": false,
+      "description": "根据 reminder_id 删除一个提醒",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "delete_reminder",
+      "input_schema": {
+        "properties": {
+          "reminder_id": {
+            "description": "要删除的提醒 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "删除提醒"
+    },
+    "memo_reminder.list_reminders": {
+      "auto_start": false,
+      "description": "列出所有待触发的提醒",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_reminders",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "查看提醒列表"
+    },
+    "memo_reminder:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "memo_reminder:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "memo_reminder:plugin_entry:add_reminder": {
+      "auto_start": false,
+      "description": "排期一个备忘提醒（异步，不会立即触发）。调用成功仅表示排期完成，到时间后系统会自动推送提醒消息，请勿在排期完成时就提醒用户。\ntime 格式: 'now'(立即) / 绝对时间 '2026-03-07 09:00' / 仅时间 '07:00' / 相对偏移 '15s' '30m' '2h' '1d'（纯数字+单位，不要加 'every' 'in' 等词）。\nrepeat 格式: 'once' | 'daily' | 'weekly' | 'hourly' | 自定义间隔如 '10s' '90m' '2h'（纯数字+单位）。错误示例: 'every 10s'、'10 seconds'。正确示例: '10s'。\nmax_count: 重复触发的最大次数。例如 repeat='15s' + max_count=5 表示每15秒触发一次，共触发5次后自动删除。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_reminder",
+      "input_schema": {
+        "properties": {
+          "max_count": {
+            "description": "重复触发的最大次数（仅对 repeat 非 'once' 有效）。达到次数后自动删除。",
+            "type": "integer"
+          },
+          "message": {
+            "description": "提醒内容",
+            "type": "string"
+          },
+          "repeat": {
+            "default": "once",
+            "description": "重复模式(默认 once)。可选值: 'once' | 'daily' | 'weekly' | 'hourly' | '<数字><单位>' 如 '10s' '90m' '2h'。只传纯数字+单位，不要加 'every' 等前缀。",
+            "type": "string"
+          },
+          "time": {
+            "description": "触发时间。格式: 'now'(立即) | 绝对时间 'YYYY-MM-DD HH:MM' | 仅时间 'HH:MM' | 相对偏移 '<数字><单位>' 如 '30m' '2h' '1d'。单位: s=秒 m=分 h=时 d=天。不要加 'in' 'after' 等前缀。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time",
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "添加提醒"
+    },
+    "memo_reminder:plugin_entry:bind_task": {
+      "auto_start": false,
+      "description": "兼容旧 deferred 调用；提醒触发不再绑定 agent_task_id 或回调完成任务",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bind_task",
+      "input_schema": {
+        "properties": {
+          "agent_task_id": {
+            "type": "string"
+          },
+          "reminder_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id",
+          "agent_task_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "绑定Agent任务ID"
+    },
+    "memo_reminder:plugin_entry:clear_reminders": {
+      "auto_start": false,
+      "description": "删除所有待触发的提醒",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_reminders",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "清空所有提醒"
+    },
+    "memo_reminder:plugin_entry:delete_reminder": {
+      "auto_start": false,
+      "description": "根据 reminder_id 删除一个提醒",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "delete_reminder",
+      "input_schema": {
+        "properties": {
+          "reminder_id": {
+            "description": "要删除的提醒 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "删除提醒"
+    },
+    "memo_reminder:plugin_entry:list_reminders": {
+      "auto_start": false,
+      "description": "列出所有待触发的提醒",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_reminders",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "查看提醒列表"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 30092,
+  "source_files": [
+    "__init__.py",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml"
+  ],
+  "source_sha256": "3b13eb8925ea340e04472f9084a6c63e2bbd18e2dbe2f8936fddff150bd88c00"
+}

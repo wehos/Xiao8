@@ -121,6 +121,8 @@
     const EMBED_MODEL_HEIGHT_RATIO = 1.34;
     const EMBED_MODEL_CENTER_X_RATIO = 0.22;
     const EMBED_MODEL_CENTER_Y_RATIO = 0.67;
+    const embedModelLayout = window.NEKOCardMakerEmbedLayout;
+    const embedThreeFrameCache = new WeakMap();
     const autoSaveDefaultCardFace = _urlParams.get('auto_save_default') === '1';
     const closeAfterAutoSave = _urlParams.get('close_on_save') === '1';
     const fallbackDefaultOnClose = _urlParams.get('fallback_default_on_close') === '1';
@@ -683,11 +685,53 @@
         if (lighting) {
             window.lanlan_config.lighting = lighting;
         }
-        await window.vrmManager.loadModel(modelPath);
+        await window.vrmManager.loadModel(modelPath, {
+            embed: isEmbedMode,
+            addShadow: !isEmbedMode
+        });
+        if (isEmbedMode) {
+            // The forge preview is intentionally static, like the Live2D
+            // minimal embed. Freeze the first idle pose so animated bones do
+            // not become a moving layout reference during window resizes.
+            window.vrmManager.seekVRMAAnimation?.(0, { paused: true });
+        }
         // 制卡页居中；嵌入页使用与 Live2D 对称的左侧半身构图。
         resizeModelRendererForCard('vrm');
-        if (isEmbedMode) frameThreeModelForEmbed(window.vrmManager);
+        if (isEmbedMode) frameVRMModelForEmbed(window.vrmManager);
         else centerThreeCamera(window.vrmManager);
+    }
+
+    async function loadMMDIdlePoseForEmbed(mgr) {
+        let idleAnimation = '';
+        try {
+            const response = await fetch('/api/characters');
+            if (response.ok) {
+                const characters = await response.json();
+                const character = characters?.['猫娘']?.[currentCharaName];
+                const configured = Array.isArray(character?.mmd_idle_animations)
+                    ? character.mmd_idle_animations
+                    : [character?.mmd_idle_animation];
+                idleAnimation = configured.find(path => typeof path === 'string' && path.trim()) || '';
+            }
+        } catch (error) {
+            console.warn('[CardExport] 获取 MMD 待机姿势失败，使用内置姿势:', error);
+        }
+        const fallbackAnimation = '/static/mmd/animation/wait03.vmd';
+        const candidates = [idleAnimation, fallbackAnimation]
+            .filter((path, index, values) => path && values.indexOf(path) === index);
+        for (const path of candidates) {
+            try {
+                await mgr.loadAnimation(path, { immediate: true, fadeDuration: 0 });
+                // loadAnimation applies frame zero synchronously and leaves the
+                // action paused. Mark it paused explicitly so IK/Grant and the
+                // render loop do not turn the forge pose into a moving reference.
+                mgr.pauseAnimation?.();
+                mgr.currentModel?.mesh?.updateMatrixWorld?.(true);
+                return;
+            } catch (error) {
+                console.warn('[CardExport] MMD 待机姿势加载失败:', path, error);
+            }
+        }
     }
 
     async function loadMMDModel(modelPath) {
@@ -701,20 +745,18 @@
                 throw new Error('MMDManager 未定义');
             }
         }
-        if (!window.mmdManager.core?.renderer) {
+        if (!window.mmdManager.renderer) {
             await window.mmdManager.init('mmd-canvas', 'mmd-container');
         }
         resizeModelRendererForCard('mmd');
-        await window.mmdManager.loadModel(modelPath);
+        await window.mmdManager.loadModel(modelPath, { embed: isEmbedMode });
+        if (isEmbedMode) {
+            await loadMMDIdlePoseForEmbed(window.mmdManager);
+        }
         // 制卡页居中；嵌入页使用与 Live2D/VRM 对称的左侧半身构图。
-        const mmdProxy = {
-            scene: window.mmdManager.core?.scene,
-            camera: window.mmdManager.core?.camera,
-            renderer: window.mmdManager.core?.renderer
-        };
         resizeModelRendererForCard('mmd');
-        if (isEmbedMode) frameThreeModelForEmbed(mmdProxy);
-        else centerThreeCamera(mmdProxy);
+        if (isEmbedMode) frameMMDModelForEmbed(window.mmdManager);
+        else centerThreeCamera(window.mmdManager);
     }
 
     async function loadPNGTuberModel(cfg) {
@@ -723,6 +765,19 @@
         const pngtuberConfig = Object.assign({}, cfg?.pngtuber || {});
         if (!pngtuberConfig.idle_image && cfg?.model_path) {
             pngtuberConfig.idle_image = cfg.model_path;
+        }
+        if (isEmbedMode) {
+            // The forge preview is its own coordinate system. Never seed the
+            // PNGTuber runtime with offsets or scale saved by the desktop pet.
+            Object.assign(pngtuberConfig, {
+                scale: 1,
+                offset_x: 0,
+                offset_y: 0,
+                mobile_scale: 1,
+                mobile_offset_x: 0,
+                mobile_offset_y: 0,
+                position_anchor: 'center'
+            });
         }
         assertExportablePNGTuberConfig(pngtuberConfig);
         window.lanlan_config = window.lanlan_config || {};
@@ -790,24 +845,59 @@
         model.y = screen.height * EMBED_MODEL_CENTER_Y_RATIO;
     }
 
-    function frameThreeModelForEmbed(mgr) {
+    function frameVRMModelForEmbed(mgr) {
+        const model = mgr?.currentModel?.vrm?.scene || mgr?.currentModel?.scene;
+        frameThreeModelForEmbed(mgr, model);
+    }
+
+    function frameMMDModelForEmbed(mgr) {
+        frameThreeModelForEmbed(mgr, mgr?.currentModel?.mesh);
+    }
+
+    function frameThreeModelForEmbed(mgr, model) {
         const THREE = window.THREE;
-        if (!THREE || !mgr?.scene || !mgr?.camera || !mgr?.renderer) return;
+        if (!THREE || !model || !mgr?.camera || !mgr?.renderer || !embedModelLayout) return;
         try {
-            const box = new THREE.Box3().setFromObject(mgr.scene);
-            if (box.isEmpty()) return;
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
+            let bounds = embedThreeFrameCache.get(model);
+            if (!bounds) {
+                model.updateMatrixWorld?.(true);
+                const box = new THREE.Box3().setFromObject(model);
+                if (box.isEmpty()) return;
+                const measuredCenter = box.getCenter(new THREE.Vector3());
+                const measuredSize = box.getSize(new THREE.Vector3());
+                bounds = {
+                    center: measuredCenter.clone(),
+                    size: measuredSize.clone()
+                };
+                embedThreeFrameCache.set(model, bounds);
+            }
+            // Reuse the first stable pose's bounds. Re-measuring a skinned
+            // model during resize makes the camera follow whichever animation
+            // frame happened to be active, which is the source of VRM/MMD
+            // model-specific drift.
+            const center = bounds.center;
+            const size = bounds.size;
             const modelHeight = size.y > 0 ? size.y : 1.5;
             const fov = mgr.camera.fov * (Math.PI / 180);
-            const distance = (modelHeight / 2) / Math.tan(fov / 2) / EMBED_MODEL_HEIGHT_RATIO;
-            const horizontalShift = Math.max(size.x, modelHeight * 0.35) * 0.72;
+            const viewport = mgr.renderer.domElement?.getBoundingClientRect?.();
+            const viewportWidth = Number(viewport?.width) || Number(mgr.renderer.domElement?.clientWidth) || window.innerWidth;
+            const viewportHeight = Number(viewport?.height) || Number(mgr.renderer.domElement?.clientHeight) || window.innerHeight;
+            const frame = embedModelLayout.resolvePerspectiveFrame(
+                viewportWidth,
+                viewportHeight,
+                size.x > 0 ? size.x : modelHeight * 0.35,
+                modelHeight,
+                fov
+            );
+            const cameraX = center.x - frame.ndcX * frame.halfViewWidth;
+            const cameraY = center.y - frame.ndcY * frame.halfViewHeight;
             const target = new THREE.Vector3(
-                center.x + horizontalShift,
-                center.y + modelHeight * 0.1,
+                cameraX,
+                cameraY,
                 center.z
             );
-            mgr.camera.position.set(target.x, target.y, center.z + Math.abs(distance));
+            mgr.camera.up?.set?.(0, 1, 0);
+            mgr.camera.position.set(cameraX, cameraY, center.z + frame.distance);
             mgr.camera.lookAt(target);
             mgr.camera.updateProjectionMatrix();
             mgr._cameraTarget?.copy?.(target);
@@ -822,10 +912,47 @@
 
     function framePNGTuberForEmbed(mgr) {
         const source = getPNGTuberDrawableSource(mgr);
-        if (!source?.style) return;
-        source.style.objectPosition = '22% 64%';
-        source.style.transformOrigin = '22% 64%';
-        source.style.transform = `scale(${EMBED_MODEL_HEIGHT_RATIO})`;
+        if (!source?.style || !embedModelLayout || !mgr?.config) return;
+        const viewportWidth = Math.max(1, window.innerWidth);
+        const viewportHeight = Math.max(1, window.innerHeight);
+        const sourceWidth = mgr.isLayeredActive?.()
+            ? Number(mgr.layeredCanvasLogicalWidth)
+            : Number(source.naturalWidth || source.width);
+        const sourceHeight = mgr.isLayeredActive?.()
+            ? Number(mgr.layeredCanvasLogicalHeight)
+            : Number(source.naturalHeight || source.height);
+        const contained = embedModelLayout.resolveContainedSize(
+            viewportWidth,
+            viewportHeight,
+            sourceWidth,
+            sourceHeight
+        );
+        const frame = embedModelLayout.resolveFrame(
+            viewportWidth,
+            viewportHeight,
+            contained.width,
+            contained.height
+        );
+        source.style.width = contained.width + 'px';
+        source.style.height = contained.height + 'px';
+        source.style.objectFit = 'contain';
+        source.style.objectPosition = 'center center';
+
+        const offsetX = frame.centerX - viewportWidth / 2;
+        const offsetY = frame.centerY - viewportHeight / 2;
+        Object.assign(mgr.config, {
+            scale: frame.scale,
+            offset_x: offsetX,
+            offset_y: offsetY,
+            mobile_scale: frame.scale,
+            mobile_offset_x: offsetX,
+            mobile_offset_y: offsetY,
+            position_anchor: 'center'
+        });
+        // PNGTuber animation calls applyTransform repeatedly. Put the forge
+        // placement into that authoritative path so breathing cannot restore
+        // desktop offsets after this function returns.
+        mgr.applyTransform?.();
     }
 
     function prepareHiddenModelViewport() {
@@ -892,13 +1019,7 @@
             return;
         }
 
-        const mgr = type === 'vrm'
-            ? window.vrmManager
-            : {
-                renderer: window.mmdManager?.core?.renderer,
-                camera: window.mmdManager?.core?.camera,
-                effect: window.mmdManager?.core?.effect || window.mmdManager?.effect
-            };
+        const mgr = type === 'vrm' ? window.vrmManager : window.mmdManager;
         const renderer = mgr?.renderer;
         if (!renderer) return;
         renderer.setPixelRatio?.(ratio);
@@ -912,7 +1033,10 @@
             mgr.camera.updateProjectionMatrix?.();
         }
         mgr.effect?.setSize?.(w, h);
-        if (isEmbedMode) frameThreeModelForEmbed(mgr);
+        if (isEmbedMode) {
+            if (type === 'vrm') frameVRMModelForEmbed(mgr);
+            else frameMMDModelForEmbed(mgr);
+        }
     }
 
     function syncEmbedModelViewport() {
@@ -1158,9 +1282,10 @@
                 mgr.renderer.render(mgr.scene, mgr.camera);
             }
         } else if (currentModelType === 'mmd') {
-            const core = window.mmdManager?.core;
-            if (core?.renderer && core?.scene && core?.camera) {
-                core.renderer.render(core.scene, core.camera);
+            const mgr = window.mmdManager;
+            if (mgr?.renderer && mgr?.scene && mgr?.camera) {
+                if (mgr.useOutlineEffect && mgr.effect) mgr.effect.render(mgr.scene, mgr.camera);
+                else mgr.renderer.render(mgr.scene, mgr.camera);
             }
         } else if (currentModelType === 'pngtuber') {
             const mgr = window.cardMakerPNGTuberManager;

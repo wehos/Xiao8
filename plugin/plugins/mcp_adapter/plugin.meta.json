@@ -1,0 +1,1225 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.addServer.description",
+        "default": "Add a new MCP server configuration."
+      },
+      "event_key": "mcp_adapter.add_server",
+      "event_type": "plugin_entry",
+      "id": "add_server",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": {
+              "$i18n": "entries.addServer.fields.args.description",
+              "default": "Command arguments"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "auto_connect": {
+            "description": {
+              "$i18n": "entries.addServer.fields.autoConnect.description",
+              "default": "Whether to connect immediately"
+            },
+            "type": "boolean"
+          },
+          "command": {
+            "description": {
+              "$i18n": "entries.addServer.fields.command.description",
+              "default": "Command to run for stdio transport"
+            },
+            "type": "string"
+          },
+          "enabled": {
+            "description": {
+              "$i18n": "entries.addServer.fields.enabled.description",
+              "default": "Whether to enable this server"
+            },
+            "type": "boolean"
+          },
+          "env": {
+            "description": {
+              "$i18n": "entries.addServer.fields.env.description",
+              "default": "Environment variables"
+            },
+            "type": "object"
+          },
+          "headers": {
+            "description": {
+              "$i18n": "entries.addServer.fields.headers.description",
+              "default": "Custom HTTP headers for SSE/HTTP transport"
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entries.addServer.fields.name.description",
+              "default": "Server name, used as a unique identifier"
+            },
+            "type": "string"
+          },
+          "transport": {
+            "description": {
+              "$i18n": "entries.addServer.fields.transport.description",
+              "default": "Transport type"
+            },
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": {
+              "$i18n": "entries.addServer.fields.url.description",
+              "default": "Server URL for SSE or HTTP transport"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "transport"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.addServer.name",
+        "default": "Add MCP Server"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.callTool.description",
+        "default": "Call a tool exposed by a configured MCP server."
+      },
+      "event_key": "mcp_adapter.call_tool",
+      "event_type": "plugin_entry",
+      "id": "call_tool",
+      "input_schema": {
+        "properties": {
+          "arguments": {
+            "description": {
+              "$i18n": "entries.common.fields.arguments.description",
+              "default": "Tool arguments"
+            },
+            "type": "object"
+          },
+          "server_name": {
+            "description": {
+              "$i18n": "entries.common.fields.server_name.description",
+              "default": "Server name"
+            },
+            "type": "string"
+          },
+          "tool_name": {
+            "description": {
+              "$i18n": "entries.common.fields.tool_name.description",
+              "default": "Tool name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name",
+          "tool_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.callTool.name",
+        "default": "Call MCP Tool"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.connect.description",
+        "default": "Connect to a configured MCP server."
+      },
+      "event_key": "mcp_adapter.connect_server",
+      "event_type": "plugin_entry",
+      "id": "connect_server",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "description": {
+              "$i18n": "entries.connect.fields.server_name.description",
+              "default": "Server name from config"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.connect.name",
+        "default": "Connect MCP Server"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.disconnect.description",
+        "default": "Disconnect from a configured MCP server."
+      },
+      "event_key": "mcp_adapter.disconnect_server",
+      "event_type": "plugin_entry",
+      "id": "disconnect_server",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "description": {
+              "$i18n": "entries.common.fields.server_name.description",
+              "default": "Server name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.disconnect.name",
+        "default": "Disconnect MCP Server"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.gatewayInvoke.description",
+        "default": "Call an MCP tool through Gateway Core."
+      },
+      "event_key": "mcp_adapter.gateway_invoke",
+      "event_type": "plugin_entry",
+      "id": "gateway_invoke",
+      "input_schema": {
+        "properties": {
+          "arguments": {
+            "description": {
+              "$i18n": "entries.common.fields.arguments.description",
+              "default": "Tool arguments"
+            },
+            "type": "object"
+          },
+          "target_plugin_id": {
+            "description": {
+              "$i18n": "entries.gatewayInvoke.fields.targetPluginId.description",
+              "default": "Optional target N.E.K.O plugin ID"
+            },
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": {
+              "$i18n": "entries.gatewayInvoke.fields.timeout.description",
+              "default": "Optional timeout in seconds for the downstream call"
+            },
+            "type": "number"
+          },
+          "tool_name": {
+            "description": {
+              "$i18n": "entries.common.fields.tool_name.description",
+              "default": "Tool name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.gatewayInvoke.name",
+        "default": "Gateway Invoke"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listServers.description",
+        "default": "List all configured MCP servers and their status."
+      },
+      "event_key": "mcp_adapter.list_servers",
+      "event_type": "plugin_entry",
+      "id": "list_servers",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.listServers.name",
+        "default": "List MCP Servers"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listTools.description",
+        "default": "List all available MCP tools."
+      },
+      "event_key": "mcp_adapter.list_tools",
+      "event_type": "plugin_entry",
+      "id": "list_tools",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "total"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "total": {}
+        },
+        "required": [
+          "total"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.listTools.name",
+        "default": "List MCP Tools"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.removeServers.description",
+        "default": "Remove one or more MCP server configurations."
+      },
+      "event_key": "mcp_adapter.remove_servers",
+      "event_type": "plugin_entry",
+      "id": "remove_servers",
+      "input_schema": {
+        "properties": {
+          "server_names": {
+            "description": {
+              "$i18n": "entries.removeServers.fields.server_names.description",
+              "default": "List of server names to remove"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "server_names"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.removeServers.name",
+        "default": "Remove MCP Servers"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "add_server": "add_server",
+    "call_tool": "call_tool",
+    "connect_server": "connect_server",
+    "disconnect_server": "disconnect_server",
+    "gateway_invoke": "gateway_invoke",
+    "list_servers": "list_servers",
+    "list_tools": "list_tools",
+    "remove_servers": "remove_servers"
+  },
+  "handlers": {
+    "mcp_adapter.add_server": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.addServer.description",
+        "default": "Add a new MCP server configuration."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_server",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": {
+              "$i18n": "entries.addServer.fields.args.description",
+              "default": "Command arguments"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "auto_connect": {
+            "description": {
+              "$i18n": "entries.addServer.fields.autoConnect.description",
+              "default": "Whether to connect immediately"
+            },
+            "type": "boolean"
+          },
+          "command": {
+            "description": {
+              "$i18n": "entries.addServer.fields.command.description",
+              "default": "Command to run for stdio transport"
+            },
+            "type": "string"
+          },
+          "enabled": {
+            "description": {
+              "$i18n": "entries.addServer.fields.enabled.description",
+              "default": "Whether to enable this server"
+            },
+            "type": "boolean"
+          },
+          "env": {
+            "description": {
+              "$i18n": "entries.addServer.fields.env.description",
+              "default": "Environment variables"
+            },
+            "type": "object"
+          },
+          "headers": {
+            "description": {
+              "$i18n": "entries.addServer.fields.headers.description",
+              "default": "Custom HTTP headers for SSE/HTTP transport"
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entries.addServer.fields.name.description",
+              "default": "Server name, used as a unique identifier"
+            },
+            "type": "string"
+          },
+          "transport": {
+            "description": {
+              "$i18n": "entries.addServer.fields.transport.description",
+              "default": "Transport type"
+            },
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": {
+              "$i18n": "entries.addServer.fields.url.description",
+              "default": "Server URL for SSE or HTTP transport"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "transport"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.addServer.name",
+        "default": "Add MCP Server"
+      }
+    },
+    "mcp_adapter.call_tool": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.callTool.description",
+        "default": "Call a tool exposed by a configured MCP server."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "call_tool",
+      "input_schema": {
+        "properties": {
+          "arguments": {
+            "description": {
+              "$i18n": "entries.common.fields.arguments.description",
+              "default": "Tool arguments"
+            },
+            "type": "object"
+          },
+          "server_name": {
+            "description": {
+              "$i18n": "entries.common.fields.server_name.description",
+              "default": "Server name"
+            },
+            "type": "string"
+          },
+          "tool_name": {
+            "description": {
+              "$i18n": "entries.common.fields.tool_name.description",
+              "default": "Tool name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name",
+          "tool_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.callTool.name",
+        "default": "Call MCP Tool"
+      }
+    },
+    "mcp_adapter.connect_server": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.connect.description",
+        "default": "Connect to a configured MCP server."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "connect_server",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "description": {
+              "$i18n": "entries.connect.fields.server_name.description",
+              "default": "Server name from config"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.connect.name",
+        "default": "Connect MCP Server"
+      }
+    },
+    "mcp_adapter.disconnect_server": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.disconnect.description",
+        "default": "Disconnect from a configured MCP server."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "disconnect_server",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "description": {
+              "$i18n": "entries.common.fields.server_name.description",
+              "default": "Server name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.disconnect.name",
+        "default": "Disconnect MCP Server"
+      }
+    },
+    "mcp_adapter.gateway_invoke": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.gatewayInvoke.description",
+        "default": "Call an MCP tool through Gateway Core."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "gateway_invoke",
+      "input_schema": {
+        "properties": {
+          "arguments": {
+            "description": {
+              "$i18n": "entries.common.fields.arguments.description",
+              "default": "Tool arguments"
+            },
+            "type": "object"
+          },
+          "target_plugin_id": {
+            "description": {
+              "$i18n": "entries.gatewayInvoke.fields.targetPluginId.description",
+              "default": "Optional target N.E.K.O plugin ID"
+            },
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": {
+              "$i18n": "entries.gatewayInvoke.fields.timeout.description",
+              "default": "Optional timeout in seconds for the downstream call"
+            },
+            "type": "number"
+          },
+          "tool_name": {
+            "description": {
+              "$i18n": "entries.common.fields.tool_name.description",
+              "default": "Tool name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.gatewayInvoke.name",
+        "default": "Gateway Invoke"
+      }
+    },
+    "mcp_adapter.list_servers": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listServers.description",
+        "default": "List all configured MCP servers and their status."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_servers",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.listServers.name",
+        "default": "List MCP Servers"
+      }
+    },
+    "mcp_adapter.list_tools": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listTools.description",
+        "default": "List all available MCP tools."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_tools",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.listTools.name",
+        "default": "List MCP Tools"
+      }
+    },
+    "mcp_adapter.remove_servers": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.removeServers.description",
+        "default": "Remove one or more MCP server configurations."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_servers",
+      "input_schema": {
+        "properties": {
+          "server_names": {
+            "description": {
+              "$i18n": "entries.removeServers.fields.server_names.description",
+              "default": "List of server names to remove"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "server_names"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.removeServers.name",
+        "default": "Remove MCP Servers"
+      }
+    },
+    "mcp_adapter:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "mcp_adapter:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "mcp_adapter:plugin_entry:add_server": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.addServer.description",
+        "default": "Add a new MCP server configuration."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "add_server",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": {
+              "$i18n": "entries.addServer.fields.args.description",
+              "default": "Command arguments"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "auto_connect": {
+            "description": {
+              "$i18n": "entries.addServer.fields.autoConnect.description",
+              "default": "Whether to connect immediately"
+            },
+            "type": "boolean"
+          },
+          "command": {
+            "description": {
+              "$i18n": "entries.addServer.fields.command.description",
+              "default": "Command to run for stdio transport"
+            },
+            "type": "string"
+          },
+          "enabled": {
+            "description": {
+              "$i18n": "entries.addServer.fields.enabled.description",
+              "default": "Whether to enable this server"
+            },
+            "type": "boolean"
+          },
+          "env": {
+            "description": {
+              "$i18n": "entries.addServer.fields.env.description",
+              "default": "Environment variables"
+            },
+            "type": "object"
+          },
+          "headers": {
+            "description": {
+              "$i18n": "entries.addServer.fields.headers.description",
+              "default": "Custom HTTP headers for SSE/HTTP transport"
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": {
+              "$i18n": "entries.addServer.fields.name.description",
+              "default": "Server name, used as a unique identifier"
+            },
+            "type": "string"
+          },
+          "transport": {
+            "description": {
+              "$i18n": "entries.addServer.fields.transport.description",
+              "default": "Transport type"
+            },
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": {
+              "$i18n": "entries.addServer.fields.url.description",
+              "default": "Server URL for SSE or HTTP transport"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "transport"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.addServer.name",
+        "default": "Add MCP Server"
+      }
+    },
+    "mcp_adapter:plugin_entry:call_tool": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.callTool.description",
+        "default": "Call a tool exposed by a configured MCP server."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "call_tool",
+      "input_schema": {
+        "properties": {
+          "arguments": {
+            "description": {
+              "$i18n": "entries.common.fields.arguments.description",
+              "default": "Tool arguments"
+            },
+            "type": "object"
+          },
+          "server_name": {
+            "description": {
+              "$i18n": "entries.common.fields.server_name.description",
+              "default": "Server name"
+            },
+            "type": "string"
+          },
+          "tool_name": {
+            "description": {
+              "$i18n": "entries.common.fields.tool_name.description",
+              "default": "Tool name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name",
+          "tool_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.callTool.name",
+        "default": "Call MCP Tool"
+      }
+    },
+    "mcp_adapter:plugin_entry:connect_server": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.connect.description",
+        "default": "Connect to a configured MCP server."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "connect_server",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "description": {
+              "$i18n": "entries.connect.fields.server_name.description",
+              "default": "Server name from config"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.connect.name",
+        "default": "Connect MCP Server"
+      }
+    },
+    "mcp_adapter:plugin_entry:disconnect_server": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.disconnect.description",
+        "default": "Disconnect from a configured MCP server."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "disconnect_server",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "description": {
+              "$i18n": "entries.common.fields.server_name.description",
+              "default": "Server name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.disconnect.name",
+        "default": "Disconnect MCP Server"
+      }
+    },
+    "mcp_adapter:plugin_entry:gateway_invoke": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.gatewayInvoke.description",
+        "default": "Call an MCP tool through Gateway Core."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "gateway_invoke",
+      "input_schema": {
+        "properties": {
+          "arguments": {
+            "description": {
+              "$i18n": "entries.common.fields.arguments.description",
+              "default": "Tool arguments"
+            },
+            "type": "object"
+          },
+          "target_plugin_id": {
+            "description": {
+              "$i18n": "entries.gatewayInvoke.fields.targetPluginId.description",
+              "default": "Optional target N.E.K.O plugin ID"
+            },
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": {
+              "$i18n": "entries.gatewayInvoke.fields.timeout.description",
+              "default": "Optional timeout in seconds for the downstream call"
+            },
+            "type": "number"
+          },
+          "tool_name": {
+            "description": {
+              "$i18n": "entries.common.fields.tool_name.description",
+              "default": "Tool name"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.gatewayInvoke.name",
+        "default": "Gateway Invoke"
+      }
+    },
+    "mcp_adapter:plugin_entry:list_servers": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listServers.description",
+        "default": "List all configured MCP servers and their status."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_servers",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.listServers.name",
+        "default": "List MCP Servers"
+      }
+    },
+    "mcp_adapter:plugin_entry:list_tools": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.listTools.description",
+        "default": "List all available MCP tools."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "list_tools",
+      "input_schema": {
+        "properties": {
+          "server_name": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.listTools.name",
+        "default": "List MCP Tools"
+      }
+    },
+    "mcp_adapter:plugin_entry:remove_servers": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.removeServers.description",
+        "default": "Remove one or more MCP server configurations."
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "remove_servers",
+      "input_schema": {
+        "properties": {
+          "server_names": {
+            "description": {
+              "$i18n": "entries.removeServers.fields.server_names.description",
+              "default": "List of server names to remove"
+            },
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "server_names"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.removeServers.name",
+        "default": "Remove MCP Servers"
+      }
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 261548,
+  "source_files": [
+    "__init__.py",
+    "docs/quickstart.tsx",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "invoker.py",
+    "normalizer.py",
+    "plugin.toml",
+    "router.py",
+    "serializer.py",
+    "transport.py",
+    "ui/panel.tsx"
+  ],
+  "source_sha256": "972939fcfe63918d08225f6ad7126c366efb8302e900add7f9a43240fa2d93bb"
+}

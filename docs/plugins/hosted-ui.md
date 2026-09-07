@@ -336,6 +336,7 @@ Not supported:
 | Prop | Type | Description |
 |------|------|-------------|
 | `plugin` | `Record<string, any>` | Plugin metadata |
+| `host` | `{ origin?: string }` | Optional host-origin metadata |
 | `surface` | `Record<string, any>` | Current surface metadata |
 | `state` | generic `State` | Context state from Python |
 | `stateSchema` | `JsonSchema \| null` | Optional schema for `state` |
@@ -345,6 +346,7 @@ Not supported:
 | `warnings` | `Array<{ path, code, message }>` | Surface warnings |
 | `locale` | `string` | Current UI locale |
 | `t` | `(key, params?) => string` | Plugin-local translator |
+| `i18n` | `HostedI18n` | Locale, default locale, and plugin-local message catalogs |
 | `api` | `HostedApi` | Action and refresh bridge |
 | `useLocalState` | hook | iframe-local state persisted across context refresh |
 
@@ -352,12 +354,27 @@ Not supported:
 
 ```ts
 type HostedApi = {
-  call(actionId: string, args?: Record<string, any>): Promise<any>
+  call(
+    actionId: string,
+    args?: Record<string, any>,
+    options?: { timeoutMs?: number; signal?: AbortSignal; userInitiated?: boolean },
+  ): Promise<any>
+  parseDocument(
+    file: File,
+    options?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<ParsedHostedDocument>
   refresh(): Promise<any>
 }
 ```
 
 - `api.call()` calls a plugin entry exposed by `@ui.action`.
+- `api.parseDocument()` extracts text and metadata from a PDF or DOCX selected by the user. The current surface must declare the exact `document:parse` permission in `plugin.toml`:
+
+  ```toml
+  permissions = ["state:read", "document:parse"]
+  ```
+
+  Call it directly from a real user event handler, such as a file input's `onChange`, a click, or a drop. The Hosted UI runtime marks synchronous calls from those handlers as user initiated; a call made after unrelated asynchronous work is rejected.
 - `api.refresh()` fetches the latest context and re-renders the surface.
 - If an action has `refresh_context=false`, it will not refresh automatically.
 
@@ -415,6 +432,10 @@ type HostedApi = {
 | `Tip` | informational tip |
 | `Warning` | warning tip |
 
+The kit also includes layout, input, feedback, media, artifact, form, and
+navigation components. Use `plugin/sdk/hosted-ui/index.d.ts` for the complete
+export list and exact signatures.
+
 ## Hooks quick reference
 
 | Hook | Use |
@@ -427,7 +448,8 @@ type HostedApi = {
 | `useDebounce` | debounced derived value |
 | `useDebouncedState` | state plus debounced state |
 | `useI18n` | translator and current locale |
-| `useState`, `useEffect`, `useMemo`, `useCallback`, `useRef`, `useReducer` | basic hosted runtime hooks |
+| `useElementSize`, `useScrollIntoView`, `useScrollToBottom`, `useClipboard` | element, scrolling, and clipboard helpers |
+| `useState`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useReducer` | basic hosted runtime hooks |
 
 Example:
 

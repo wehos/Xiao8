@@ -723,6 +723,15 @@ async def market_status():
     )
 
 
+# 一整轮镜像测速的墙钟上限。单源的 per-I/O 超时乘以重定向跳数之后并不封顶，
+# 这个才封。12s 的取法：健康时实测一轮 4.6s，留出两倍余量，同时远小于用户会
+# 愿意干等的时间。
+# Env: NEKO_MARKET_PROXY_PROBE_TOTAL_BUDGET
+from plugin.server.application.plugins._env_budgets import env_seconds
+
+_GITHUB_PROXY_PROBE_TOTAL_BUDGET = env_seconds("NEKO_MARKET_PROXY_PROBE_TOTAL_BUDGET", 12.0)
+
+
 async def _measure_github_proxy_sources() -> tuple[dict[str, object], ...]:
     """Measure the fixed proxy list with a bounded number of outbound probes."""
 
@@ -753,9 +762,29 @@ async def _measure_github_proxy_sources() -> tuple[dict[str, object], ...]:
             "status_code": status_code,
         }
 
-    measured = await asyncio.gather(
-        *(probe(source_id, base_url) for source_id, base_url in _GITHUB_PROXY_SOURCES)
+    # 整轮加一个总预算。
+    #
+    # 现有的 httpx.Timeout 是 per-I/O-op 的，而这里开了 follow_redirects 且允许
+    # 5 跳，所以单个源的上界是"跳数 × 每跳超时"，六个源在慢重定向链下能叠到几十
+    # 秒——实测六源各挂在 3s/跳、深 5 的 301 链后是 37.5s，8s 的那个超时一次都
+    # 没触发。而调用它的前端用的是裸 fetch，没有超时。
+    #
+    # 超预算时保留已经量到的结果，而不是整批丢弃：慢但可用的镜像也是有用信息。
+    tasks = [
+        asyncio.ensure_future(probe(source_id, base_url))
+        for source_id, base_url in _GITHUB_PROXY_SOURCES
+    ]
+    done, pending = await asyncio.wait(
+        tasks, timeout=_GITHUB_PROXY_PROBE_TOTAL_BUDGET
     )
+    for task in pending:
+        task.cancel()
+    if pending:
+        # cancel() 只是排一个 CancelledError，任务要到下一轮事件循环才真的停。
+        # 不等就返回的话，这些 HTTP 连接会在响应发出之后才收尾，留下一批看不见
+        # 的悬挂任务（CodeRabbit）。
+        await asyncio.gather(*pending, return_exceptions=True)
+    measured = [task.result() for task in tasks if task in done and not task.cancelled()]
     return tuple(measured)
 
 

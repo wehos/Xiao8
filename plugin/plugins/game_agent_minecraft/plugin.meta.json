@@ -1,0 +1,247 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": "重新读取 plugin.toml [game_agent] 配置；纯数据项 (timeouts、intervals、screenshot 开关) 直接生效，ws_url 或重连间隔变更则会触发 WebSocket 客户端 stop+start 切换到新地址。",
+      "event_key": "game_agent_minecraft.game_agent_reload_config",
+      "event_type": "plugin_entry",
+      "id": "game_agent_reload_config",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "重载游戏插件配置",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "查询 mc-agent 的 WebSocket 连接状态、当前任务和缓存大小。适合在对话里明确出现连接异常（连不上 / 掉线 / 插件没反应 / 「mc-agent 连上了吗」）、或刚要开始玩、想确认 mc-agent 是否就绪时调用。不要在对话是要让化身在游戏里做事（过来、挖矿、建造、跟随等）、或普通闲聊时调用——那些场景不需要查询连接状态。",
+      "event_key": "game_agent_minecraft.game_agent_status",
+      "event_type": "plugin_entry",
+      "id": "game_agent_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "查询 mc-agent 连接状态",
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": "查询当前 Minecraft 化身持有的物品（基于最近一次 task_finished 或定时 nudge 缓存的 inventory snapshot）。供 analyzer 在用户问「我手里有啥」「背包里还剩多少 X」「现在能不能合成 Y」之类需要 ground-truth 库存事实的问题时调用。返回结构化 dict (item_name → count)，并附 summary 字符串方便对话 LLM 直接复述。",
+      "event_key": "game_agent_minecraft.query_inventory",
+      "event_type": "plugin_entry",
+      "id": "query_inventory",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "查询当前持有",
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "game_agent_reload_config": "game_agent_reload_config",
+    "game_agent_status": "game_agent_status",
+    "query_inventory": "query_inventory"
+  },
+  "handlers": {
+    "game_agent_minecraft.game_agent_reload_config": {
+      "auto_start": false,
+      "description": "重新读取 plugin.toml [game_agent] 配置；纯数据项 (timeouts、intervals、screenshot 开关) 直接生效，ws_url 或重连间隔变更则会触发 WebSocket 客户端 stop+start 切换到新地址。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "game_agent_reload_config",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "重载游戏插件配置"
+    },
+    "game_agent_minecraft.game_agent_status": {
+      "auto_start": false,
+      "description": "查询 mc-agent 的 WebSocket 连接状态、当前任务和缓存大小。适合在对话里明确出现连接异常（连不上 / 掉线 / 插件没反应 / 「mc-agent 连上了吗」）、或刚要开始玩、想确认 mc-agent 是否就绪时调用。不要在对话是要让化身在游戏里做事（过来、挖矿、建造、跟随等）、或普通闲聊时调用——那些场景不需要查询连接状态。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "game_agent_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "查询 mc-agent 连接状态"
+    },
+    "game_agent_minecraft.query_inventory": {
+      "auto_start": false,
+      "description": "查询当前 Minecraft 化身持有的物品（基于最近一次 task_finished 或定时 nudge 缓存的 inventory snapshot）。供 analyzer 在用户问「我手里有啥」「背包里还剩多少 X」「现在能不能合成 Y」之类需要 ground-truth 库存事实的问题时调用。返回结构化 dict (item_name → count)，并附 summary 字符串方便对话 LLM 直接复述。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_inventory",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "查询当前持有"
+    },
+    "game_agent_minecraft:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "game_agent_minecraft:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "game_agent_minecraft:plugin_entry:game_agent_reload_config": {
+      "auto_start": false,
+      "description": "重新读取 plugin.toml [game_agent] 配置；纯数据项 (timeouts、intervals、screenshot 开关) 直接生效，ws_url 或重连间隔变更则会触发 WebSocket 客户端 stop+start 切换到新地址。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "game_agent_reload_config",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "重载游戏插件配置"
+    },
+    "game_agent_minecraft:plugin_entry:game_agent_status": {
+      "auto_start": false,
+      "description": "查询 mc-agent 的 WebSocket 连接状态、当前任务和缓存大小。适合在对话里明确出现连接异常（连不上 / 掉线 / 插件没反应 / 「mc-agent 连上了吗」）、或刚要开始玩、想确认 mc-agent 是否就绪时调用。不要在对话是要让化身在游戏里做事（过来、挖矿、建造、跟随等）、或普通闲聊时调用——那些场景不需要查询连接状态。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "game_agent_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "查询 mc-agent 连接状态"
+    },
+    "game_agent_minecraft:plugin_entry:query_inventory": {
+      "auto_start": false,
+      "description": "查询当前 Minecraft 化身持有的物品（基于最近一次 task_finished 或定时 nudge 缓存的 inventory snapshot）。供 analyzer 在用户问「我手里有啥」「背包里还剩多少 X」「现在能不能合成 Y」之类需要 ground-truth 库存事实的问题时调用。返回结构化 dict (item_name → count)，并附 summary 字符串方便对话 LLM 直接复述。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_inventory",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "查询当前持有"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 320132,
+  "source_files": [
+    "README.md",
+    "__init__.py",
+    "client.py",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml",
+    "prompts.py",
+    "service.py",
+    "smoke_local.py",
+    "smoke_overwrite.py",
+    "surfaces/quickstart.tsx"
+  ],
+  "source_sha256": "3c16ed1c51c6627467e7b9ccbda4afc24dff9e1be0c484d5ed2ad2daa42c4084"
+}

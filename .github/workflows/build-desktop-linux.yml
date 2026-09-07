@@ -341,9 +341,6 @@ jobs:
           NUITKA_OPTS="$NUITKA_OPTS --include-package-data=bilibili_api"
 
           # Exclusions
-          # galgame_plugin/training is offline-only model-training code and is
-          # not governed by a top-level plugin [tool.neko.build] rule.
-          NUITKA_OPTS="$NUITKA_OPTS --nofollow-import-to=plugin.plugins.galgame_plugin.training"
           NUITKA_OPTS="$NUITKA_OPTS --nofollow-import-to=audiolab"
           NUITKA_OPTS="$NUITKA_OPTS --nofollow-import-to=pyrnnoise"
           NUITKA_OPTS="$NUITKA_OPTS --nofollow-import-to=matplotlib"
@@ -469,6 +466,15 @@ jobs:
         run: |
           set -euo pipefail
           .venv/bin/python scripts/check_nuitka_dist.py dist/Xiao8 --plugin-stage build/nuitka-plugins
+
+      # 与 build-desktop.yml 的同名步骤对偶（#2898）。这个 workflow 只有 linux x64
+      # 一条腿，期望架构写死即可。
+      - name: Verify dist CPU architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv/bin/python scripts/check_dist_arch.py dist/Xiao8 \
+            --expect-arch x64 --expect-platform linux
 
       - name: Upload Python backend artifact
         uses: actions/upload-artifact@v4

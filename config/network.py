@@ -17,7 +17,7 @@
 
 import json
 import os
-import platform
+import sys
 import uuid
 
 from .application import logger
@@ -25,13 +25,17 @@ from .application import logger
 # 从 Electron userData 目录读取端口覆盖配置（由前端端口设置窗口写入）
 def _read_port_overrides() -> dict:
     try:
-        system = platform.system()
-        if system == "Windows":
+        # 用 sys.platform 而不是 platform.system()：后者在 Windows 上会走
+        # platform.uname() -> win32_ver() -> _syscmd_ver()，**spawn 一个
+        # `cmd /c ver` 子进程**。实测首调 54 ms，杀软介入时观测到 224 ms。
+        # 这个模块被 config 包顶层 import，坐在 launcher 启动链的最前面。
+        # sys.platform 是解释器常量，零成本，三分支判据完全等价。
+        if sys.platform == "win32":
             appdata = os.environ.get("APPDATA") or os.path.join(
                 os.path.expanduser("~"), "AppData", "Roaming"
             )
             base = os.path.join(appdata, "N.E.K.O")
-        elif system == "Darwin":
+        elif sys.platform == "darwin":
             base = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "N.E.K.O")
         else:
             base = os.path.join(

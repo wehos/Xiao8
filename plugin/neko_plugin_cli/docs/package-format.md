@@ -76,7 +76,9 @@ The plugin manager backend exposes the same package workflow with explicit respo
 - `POST /plugin-cli/build` returns `built`, `built_count`, `failed`, `failed_count`, and `ok`.
 - Each build result reports `package_path`, `package_type`, `plugin_ids`, `package_size_bytes`, `payload_hash`, and counts.
 - `staged_files` and `profile_files` are filesystem paths from the temporary staging directory. They are only populated when `keep_staging = true`; otherwise their counts are `0`.
+- `POST /plugin-cli/install-plan` classifies the request as `install`, `upgrade`, `reinstall`, `downgrade`, `override_builtin`, or `blocked`, and returns identity, version, reason, and confirmation-token fields.
 - `POST /plugin-cli/install` returns `installed_plugins` and `installed_plugin_count`.
+- `upgrade`, `reinstall`, and `downgrade` require the current plan token plus explicit confirmation; the server rebuilds the plan before changing files.
 - `POST /plugin-cli/upload-and-install` returns `{ upload, install }`, where `install` uses the same shape as `/plugin-cli/install`.
 
 ## Archive Layout
@@ -350,7 +352,8 @@ Current implementation notes:
 
 - single-plugin builds package one supported runtime type (`plugin` or `adapter`) as `package_type = "plugin"`
 - install verifies `metadata.toml` payload hash when metadata exists
-- install conflict handling currently supports `rename` and `fail`
+- executable plugin directories use their declared identity and fail on an occupied or mismatched destination; they are never installed as suffixed copies
+- the lower-level archive/profile compatibility API still accepts `rename`, but the Plugin Manager backend accepts only `fail` and replacement actions are selected through `/plugin-cli/install-plan`
 
 Recommended pipeline for a bundle:
 
@@ -364,9 +367,9 @@ Recommended pipeline for a bundle:
 
 ## Status
 
-This document is an initial draft for `neko_plugin_cli`.
+This document describes the current `neko_plugin_cli` package and backend contract.
 
 Current intent:
 
-- stable enough for implementation scaffolding
-- still open to adjustment before public compatibility guarantees are made
+- archive layout and identity rules are compatibility-sensitive
+- backend replacement behavior is canonicalized by the install-plan and transaction implementations

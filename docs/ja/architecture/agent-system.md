@@ -69,7 +69,9 @@ Manager と Agent Server は構築時にすべてオフです。ただし最初�
 _CHANNEL_PRIORITY = ["qwenpaw", "browser_use", "computer_use"]
 ```
 
-`qwenpaw` は OpenClaw アダプターに対応します。ユーザープラグインは別経路で判定され、`_CHANNEL_PRIORITY` には含まれません。
+`qwenpaw` は `OpenClawAdapter` に対応します。これは外部 QwenPaw サービスへ接続する互換アダプターです。N.E.K.O はそのサービスプロセスを同梱せず、必要なモデルやツールの権限も保証しません。設定されたヘルスチェックが ready を返した場合にだけ、このチャネルが候補になります。ユーザープラグインは別経路で判定され、`_CHANNEL_PRIORITY` には含まれません。
+
+QwenPaw の `/clear`、`/new`、`/stop`、`/daemon approve` は専用のマジックコマンド判定経路を使います。通常のリクエストは、引き続き可用性チェックと非プラグインチャネルの統一判定を通ります。
 
 ユーザープラグインは最初に `brain/plugin_filter.py` の決定的フィルターを通り、その後 LLM がエントリを選択します。`plugin_id`、`entry_id`、引数は厳密に検証されます。実行タイムアウトはエントリメタデータがあればそれを使い、なければプロジェクト既定値です。
 
@@ -78,8 +80,15 @@ _CHANNEL_PRIORITY = ["qwenpaw", "browser_use", "computer_use"]
 - 判定とディスパッチは直列化され、同時刻の turn-end が重複タスクを作るのを防ぎます。
 - Computer Use は明示的なキューを持ち、デスクトップ操作は一度に1件です。Browser とリモート Agent も独自の active-task guard を持ちます。
 - キャンセルは registry を先に `cancelled` にし、wrapper task を止めてから provider 固有の teardown をバックグラウンドで開始します。遅延結果は終端状態を上書きできません。
+- QwenPaw のキャンセルは外部サービスへ停止要求を転送する協調的なベストエフォート処理です。ローカル状態が `cancelled` でも、外部サービスが不可逆な操作をまだ行っていないことは保証されません。
 - 完了・失敗・キャンセル済み registry は5分保持され、クリーンアップは最大でも1分に1回です。
 - ユーザープラグインは `deferred: true` を返せます。`/api/agent/tasks/{task_id}/complete` が呼ばれるか、1時間の timeout で失敗するまで `running` のままです。
+
+## 修正フィードバック
+
+`POST /api/agent/tasks/{task_id}/correction` は、終端状態になった Browser Use または Computer Use のタスクだけを対象とし、一方のツールからもう一方への修正だけを受け付けます。実行器は切り詰め・秘匿化したイベントを現在の設定ディレクトリにある `correction_memory.json` へ書き込み、最大 300 件を保持します。このファイルはキャラクターメモリでもプラグインの `bus.memory` でもありません。
+
+以後の統一チャネル判定前に、軽量なキーワード照合で最大 3 件の関連イベントを選びます。QwenPaw、ユーザープラグイン、特定のプラグインエントリ ID には同等の修正経路がありません。
 
 ## 実装マップ
 

@@ -22,7 +22,14 @@ import uuid
 from collections.abc import Iterable
 from typing import Any
 
-import httpx
+# httpx 不在模块顶层 import。
+#
+# 这个模块只有一个函数用 httpx，却因为 DOUBAO_VOICE_STORAGE_KEY 这个字符串
+# 常量被 utils/config_manager 引用，而坐在 launcher 的启动导入链上。httpx
+# 会 eager import 自己的 CLI（httpx._main -> rich + pygments + click），实测
+# 整包 108 ms、其中 CLI 占 74-85 ms——而进程启动到端口 bind 之间一次 HTTP
+# 都不发。改成用到时再 import，与 utils/llm_client.py 对那几个 LLM SDK 的
+# 处理同构（见 scripts/check_startup_import_lazy.py 的说明）。
 
 DOUBAO_TTS_DEFAULT_BASE_URL = "https://openspeech.bytedance.com"
 DOUBAO_TTS_DEFAULT_RESOURCE_ID = "seed-icl-2.0"
@@ -206,6 +213,9 @@ class DoubaoVoiceCloneClient:
             "display_name": display_name or speaker_id,
         }
         headers = doubao_voice_clone_headers(self.api_key)
+        # 放在 try 之前：下面的 except 子句也要认得 httpx.TimeoutException。
+        import httpx
+
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 resp = await client.post(

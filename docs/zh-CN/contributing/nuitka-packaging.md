@@ -20,8 +20,6 @@
 
 Staging 脚本按各插件的 `[tool.neko.build]` 规则处理并生成选择性排除。不要恢复全量 `--include-data-dir=plugin/plugins=plugin/plugins` 或全量 `--nofollow-import-to=plugin.plugins`；两者都会以不同方式绕过 staging 契约。
 
-Workflow 对 `plugin.plugins.galgame_plugin.training` 有定向排除。它是经过审查的功能专用策略，不应扩展成通用做法。
-
 ## 资源与动态导入
 
 新增运行时资源或动态导入可能需要协调修改：

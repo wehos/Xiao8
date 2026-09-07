@@ -41,7 +41,7 @@ class MyPlugin(NekoPluginBase):
     llm_result_model=MyResult,   # 結果スキーマ用 Pydantic モデル
     metadata={"category": "data"}  # 追加メタデータ
 )
-def process(self, data: str, **_):
+async def process(self, data: str, **_):
     return Ok({"result": data})
 ```
 
@@ -68,28 +68,41 @@ def process(self, data: str, **_):
 handler が host からの追加 field を意図的に受け取る場合だけ `**_` を使います。明示的な signature では runtime が未対応 keyword を filter するため、必須ではありません。
 :::
 
+実行時エントリーは `async def` で定義してください。ホストは同期エントリーを受け付けません。
+
 ## @lifecycle
 
-ライフサイクルイベントハンドラーを定義します。
+起動、終了、外部からの設定変更、プロセスの一時停止を処理する任意のハンドラーです。初期化には `startup` を使います。通常の `@plugin_entry(auto_start=True)` は、プラグインプロセスの起動時には実行されません。
 
 ```python
 @lifecycle(id="startup")
-def on_startup(self, **_):
-    self.logger.info("Starting up...")
+async def on_startup(self, **_):
+    cfg = await self.config.dump()
+    self.timeout = cfg.get("my_settings", {}).get("timeout", 30)
     return Ok({"status": "ready"})
 
 @lifecycle(id="shutdown")
-def on_shutdown(self, **_):
-    self.logger.info("Shutting down...")
+async def on_shutdown(self, **_):
+    session = getattr(self, "session", None)
+    if session:
+        await session.close()
     return Ok({"status": "stopped"})
 
-@lifecycle(id="reload")
-def on_reload(self, **_):
-    self.logger.info("Reloading config...")
-    return Ok({"status": "reloaded"})
+@lifecycle(id="config_change")
+async def on_config_change(self, old_config, new_config, mode):
+    self.timeout = new_config.get("my_settings", {}).get("timeout", 30)
+    return Ok({"status": "config_updated"})
 ```
 
-有効なライフサイクル ID: `startup`、`shutdown`、`reload`、`freeze`、`unfreeze`、`config_change`
+| ライフサイクル ID または操作 | 実行される時点 | 主な用途 |
+| --- | --- | --- |
+| `startup` | プラグインプロセスの起動時 | 設定の読み込み、接続、リソースの準備 |
+| `shutdown` | プラグインプロセスの終了時 | 接続の終了、状態の保存、リソースの解放 |
+| Plugin Manager の再読み込み | ユーザーが再読み込みを実行 | `shutdown` の後にプロセスを起動し、`startup` を実行 |
+| `config_change` | 外部から設定が変更されたとき | 再起動せずに新しい設定を反映 |
+| `freeze` / `unfreeze` | プラグインの一時停止または再開時 | 処理の停止または再開 |
+
+SDK は互換性のため `reload` ID を受け付けますが、Plugin Manager の再読み込みボタンはプロセスを再起動するため、このイベントを通知しません。`await self.ctx.update_own_config(...)` または `await self.config.update(...)` で設定を更新した場合も、同じプロセスには `config_change` が通知されません。呼び出し後に派生状態を更新してください。
 
 ## @timer_interval
 
@@ -102,13 +115,13 @@ def on_reload(self, **_):
     name="Cleanup Task",
     auto_start=True          # 自動的に開始（デフォルト: True）
 )
-def cleanup(self, **_):
+async def cleanup(self, **_):
     # 別スレッドで実行
     return Ok({"cleaned": True})
 ```
 
 ::: info
-タイマータスクは別スレッドで実行されます。例外はログに記録されますが、タイマーは停止しません。
+timer task は `async def` が必須です。各 task は独自 event loop を持つ timer thread で実行され、exception は log されますが timer は停止しません。
 :::
 
 ## @message
@@ -120,7 +133,7 @@ def cleanup(self, **_):
     id="handle_chat",
     source="chat",           # メッセージソースでフィルタリング
 )
-def handle_chat(self, text: str, sender: str, **_):
+async def handle_chat(self, text: str, sender: str, **_):
     return Ok({"handled": True})
 ```
 
@@ -134,7 +147,7 @@ def handle_chat(self, text: str, sender: str, **_):
     id="my_handler",
     kind="hook"
 )
-def custom_handler(self, event_data: str, **_):
+async def custom_handler(self, event_data: str, **_):
     return Ok({"processed": True})
 ```
 
@@ -149,7 +162,7 @@ def custom_handler(self, event_data: str, **_):
     trigger_method="message",  # このイベントがトリガーされる方法
     auto_start=False
 )
-def on_refresh(self, source: str, **_):
+async def on_refresh(self, source: str, **_):
     return Ok({"refreshed": True})
 ```
 
@@ -216,7 +229,7 @@ async def timing_wrapper(self, *, proceed, args, **_):
 
 ```python
 @replace_entry(target="old_entry", priority=0)
-def new_implementation(self, **kwargs):
+async def new_implementation(self, **kwargs):
     return Ok({"replaced": True})
 ```
 
@@ -238,11 +251,11 @@ def new_implementation(self, **kwargs):
 from plugin.sdk.plugin import plugin
 
 @plugin.entry(id="greet", description="Say hello")
-def greet(self, name: str = "World", **_):
+async def greet(self, name: str = "World", **_):
     return Ok({"message": f"Hello, {name}!"})
 
 @plugin.lifecycle(id="startup")
-def on_startup(self, **_):
+async def on_startup(self, **_):
     return Ok({"status": "ready"})
 
 @plugin.hook(target="greet", timing="before")
@@ -250,10 +263,10 @@ def validate(self, *, args, **_):
     pass
 
 @plugin.timer(id="heartbeat", seconds=60)
-def heartbeat(self, **_):
+async def heartbeat(self, **_):
     return Ok({"alive": True})
 
 @plugin.message(id="on_chat", source="chat")
-def on_chat(self, text: str, **_):
+async def on_chat(self, text: str, **_):
     return Ok({"handled": True})
 ```

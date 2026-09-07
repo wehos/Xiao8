@@ -198,7 +198,9 @@ _disable_windows_plugin_zmq_when_tornado_missing()
 from plugin.server.http_app import build_plugin_server_app  # noqa: E402
 
 
-app = build_plugin_server_app()
+# 独立跑的时候没有别人管生命周期，所以这里显式认领。内嵌进 agent_server 的那条
+# 路径（app/agent_server/plugin_host.py）不认领，由 user_plugin_enabled 开关驱动。
+app = build_plugin_server_app(manage_lifecycle=True)
 
 
 def _can_register_faulthandler_signal() -> bool:

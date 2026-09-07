@@ -1,0 +1,750 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_dashboard_state.description",
+        "default": "读取微信插件当前的登录状态、二维码信息和配置。"
+      },
+      "event_key": "wechat_integration.get_dashboard_state",
+      "event_type": "plugin_entry",
+      "id": "get_dashboard_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_dashboard_state.name",
+        "default": "获取控制面板状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.logout.description",
+        "default": "停止微信消息监听并清除本机保存的登录凭证。"
+      },
+      "event_key": "wechat_integration.logout",
+      "event_type": "plugin_entry",
+      "id": "logout",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.logout.name",
+        "default": "退出登录"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.poll_login_status.description",
+        "default": "轮询当前二维码的扫码状态，检查是否已被扫描或确认。"
+      },
+      "event_key": "wechat_integration.poll_login_status",
+      "event_type": "plugin_entry",
+      "id": "poll_login_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.poll_login_status.name",
+        "default": "查询扫码状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.refresh_qrcode.description",
+        "default": "重新向微信 OpenClaw API 请求一个新的登录二维码。"
+      },
+      "event_key": "wechat_integration.refresh_qrcode",
+      "event_type": "plugin_entry",
+      "id": "refresh_qrcode",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.refresh_qrcode.name",
+        "default": "刷新二维码"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_settings.description",
+        "default": "保存微信插件当前的 API 地址、Bot 类型等设置。"
+      },
+      "event_key": "wechat_integration.save_settings",
+      "event_type": "plugin_entry",
+      "id": "save_settings",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "type": "string"
+          },
+          "bot_type": {
+            "type": "string"
+          },
+          "show_onboarding": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.save_settings.name",
+        "default": "保存微信设置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_message.description",
+        "default": "向指定微信用户发送一条文本消息。需要先在消息监听中收到过该用户的消息。"
+      },
+      "event_key": "wechat_integration.send_message",
+      "event_type": "plugin_entry",
+      "id": "send_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "要发送的文本内容",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "目标微信用户 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.send_message.name",
+        "default": "发送微信消息"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_auto_reply.description",
+        "default": "开始接收微信消息并自动推送到 AI 对话，AI 可以直接回复。"
+      },
+      "event_key": "wechat_integration.start_auto_reply",
+      "event_type": "plugin_entry",
+      "id": "start_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.start_auto_reply.name",
+        "default": "开始消息监听"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_login.description",
+        "default": "向微信 OpenClaw API 请求一个新的登录二维码，开始扫码登录流程。"
+      },
+      "event_key": "wechat_integration.start_login",
+      "event_type": "plugin_entry",
+      "id": "start_login",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.start_login.name",
+        "default": "开始扫码登录"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.stop_auto_reply.description",
+        "default": "停止接收微信消息，不再自动推送到 AI 对话。"
+      },
+      "event_key": "wechat_integration.stop_auto_reply",
+      "event_type": "plugin_entry",
+      "id": "stop_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.stop_auto_reply.name",
+        "default": "停止消息监听"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "get_dashboard_state": "get_dashboard_state",
+    "logout": "logout",
+    "poll_login_status": "poll_login_status",
+    "refresh_qrcode": "refresh_qrcode",
+    "save_settings": "save_settings",
+    "send_message": "send_message",
+    "start_auto_reply": "start_auto_reply",
+    "start_login": "start_login",
+    "stop_auto_reply": "stop_auto_reply"
+  },
+  "handlers": {
+    "wechat_integration.get_dashboard_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_dashboard_state.description",
+        "default": "读取微信插件当前的登录状态、二维码信息和配置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_dashboard_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_dashboard_state.name",
+        "default": "获取控制面板状态"
+      }
+    },
+    "wechat_integration.logout": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.logout.description",
+        "default": "停止微信消息监听并清除本机保存的登录凭证。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "logout",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.logout.name",
+        "default": "退出登录"
+      }
+    },
+    "wechat_integration.poll_login_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.poll_login_status.description",
+        "default": "轮询当前二维码的扫码状态，检查是否已被扫描或确认。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "poll_login_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.poll_login_status.name",
+        "default": "查询扫码状态"
+      }
+    },
+    "wechat_integration.refresh_qrcode": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.refresh_qrcode.description",
+        "default": "重新向微信 OpenClaw API 请求一个新的登录二维码。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "refresh_qrcode",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.refresh_qrcode.name",
+        "default": "刷新二维码"
+      }
+    },
+    "wechat_integration.save_settings": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_settings.description",
+        "default": "保存微信插件当前的 API 地址、Bot 类型等设置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_settings",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "type": "string"
+          },
+          "bot_type": {
+            "type": "string"
+          },
+          "show_onboarding": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_settings.name",
+        "default": "保存微信设置"
+      }
+    },
+    "wechat_integration.send_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_message.description",
+        "default": "向指定微信用户发送一条文本消息。需要先在消息监听中收到过该用户的消息。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "要发送的文本内容",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "目标微信用户 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.send_message.name",
+        "default": "发送微信消息"
+      }
+    },
+    "wechat_integration.start_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_auto_reply.description",
+        "default": "开始接收微信消息并自动推送到 AI 对话，AI 可以直接回复。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "start_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.start_auto_reply.name",
+        "default": "开始消息监听"
+      }
+    },
+    "wechat_integration.start_login": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_login.description",
+        "default": "向微信 OpenClaw API 请求一个新的登录二维码，开始扫码登录流程。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "start_login",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.start_login.name",
+        "default": "开始扫码登录"
+      }
+    },
+    "wechat_integration.stop_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.stop_auto_reply.description",
+        "default": "停止接收微信消息，不再自动推送到 AI 对话。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "stop_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.stop_auto_reply.name",
+        "default": "停止消息监听"
+      }
+    },
+    "wechat_integration:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "wechat_integration:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "wechat_integration:plugin_entry:get_dashboard_state": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_dashboard_state.description",
+        "default": "读取微信插件当前的登录状态、二维码信息和配置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_dashboard_state",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_dashboard_state.name",
+        "default": "获取控制面板状态"
+      }
+    },
+    "wechat_integration:plugin_entry:logout": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.logout.description",
+        "default": "停止微信消息监听并清除本机保存的登录凭证。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "logout",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.logout.name",
+        "default": "退出登录"
+      }
+    },
+    "wechat_integration:plugin_entry:poll_login_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.poll_login_status.description",
+        "default": "轮询当前二维码的扫码状态，检查是否已被扫描或确认。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "poll_login_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.poll_login_status.name",
+        "default": "查询扫码状态"
+      }
+    },
+    "wechat_integration:plugin_entry:refresh_qrcode": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.refresh_qrcode.description",
+        "default": "重新向微信 OpenClaw API 请求一个新的登录二维码。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "refresh_qrcode",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.refresh_qrcode.name",
+        "default": "刷新二维码"
+      }
+    },
+    "wechat_integration:plugin_entry:save_settings": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_settings.description",
+        "default": "保存微信插件当前的 API 地址、Bot 类型等设置。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_settings",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "type": "string"
+          },
+          "bot_type": {
+            "type": "string"
+          },
+          "show_onboarding": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_settings.name",
+        "default": "保存微信设置"
+      }
+    },
+    "wechat_integration:plugin_entry:send_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_message.description",
+        "default": "向指定微信用户发送一条文本消息。需要先在消息监听中收到过该用户的消息。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_message",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "要发送的文本内容",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "目标微信用户 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.send_message.name",
+        "default": "发送微信消息"
+      }
+    },
+    "wechat_integration:plugin_entry:start_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_auto_reply.description",
+        "default": "开始接收微信消息并自动推送到 AI 对话，AI 可以直接回复。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "start_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.start_auto_reply.name",
+        "default": "开始消息监听"
+      }
+    },
+    "wechat_integration:plugin_entry:start_login": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.start_login.description",
+        "default": "向微信 OpenClaw API 请求一个新的登录二维码，开始扫码登录流程。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "start_login",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.start_login.name",
+        "default": "开始扫码登录"
+      }
+    },
+    "wechat_integration:plugin_entry:stop_auto_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.stop_auto_reply.description",
+        "default": "停止接收微信消息，不再自动推送到 AI 对话。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "stop_auto_reply",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.stop_auto_reply.name",
+        "default": "停止消息监听"
+      }
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 107766,
+  "source_files": [
+    "__init__.py",
+    "config_store.py",
+    "doc/README.md",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "plugin.toml",
+    "static/i18n.js",
+    "static/index.html",
+    "static/script.js",
+    "static/style.css",
+    "tests/test_logout.py",
+    "tests/test_memory_settlement.py",
+    "wechat_client.py"
+  ],
+  "source_sha256": "8af636aa5ce4b4829f0aa71efeb84d1145c06444e0b2298ecbd1863f96df44c6"
+}

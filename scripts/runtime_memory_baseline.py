@@ -706,13 +706,13 @@ async def _ocr_scenario(args: argparse.Namespace) -> dict[str, Any]:
         )
     ]
     from PIL import Image
+    from plugin.plugins._shared.rapidocr.ocr_rapidocr_backend import RapidOcrBackend
     from plugin.plugins._shared.rapidocr.rapidocr_support import (
         DEFAULT_RAPIDOCR_ENGINE_TYPE,
         DEFAULT_RAPIDOCR_LANG_TYPE,
         DEFAULT_RAPIDOCR_MODEL_TYPE,
         DEFAULT_RAPIDOCR_OCR_VERSION,
     )
-    from plugin.plugins.galgame_plugin.ocr_rapidocr_backend import RapidOcrBackend
 
     backend = RapidOcrBackend(
         install_target_dir_raw="",
@@ -720,6 +720,7 @@ async def _ocr_scenario(args: argparse.Namespace) -> dict[str, Any]:
         lang_type=DEFAULT_RAPIDOCR_LANG_TYPE,
         model_type=DEFAULT_RAPIDOCR_MODEL_TYPE,
         ocr_version=DEFAULT_RAPIDOCR_OCR_VERSION,
+        plugin_id="runtime_memory_benchmark",
     )
     available = backend.is_available()
     checkpoints.append(

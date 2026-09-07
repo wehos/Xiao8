@@ -369,7 +369,8 @@ class Live2DManager {
                 this.isInitialized = true;
                 this._lastPIXIContext = { ...requestedInitContext };
                 if (typeof window.targetFrameRate === 'number' && this.pixi_app.ticker) {
-                    this.pixi_app.ticker.maxFPS = window.targetFrameRate;
+                    // 经归一化再写：已存的负数/非法配置不能直接进 PIXI maxFPS
+                    this.pixi_app.ticker.maxFPS = this._resolveConfiguredTargetFps();
                 }
                 // 包装 ticker.stop/start：外部代码（app-character / live2d-model 等）直接
                 // 操作 ticker 时先退出空闲低频 tick 模式，避免空闲定时器与外部暂停意图打架。
@@ -383,8 +384,27 @@ class Live2DManager {
                     const origStart = ticker.start.bind(ticker);
                     this._tickerOrigStop = origStop;
                     this._tickerOrigStart = origStart;
-                    ticker.stop = function () { mgr._exitIdleTickMode(); return origStop(); };
-                    ticker.start = function () { mgr._exitIdleTickMode(); return origStart(); };
+                    // stop：退出定时器模式但不拉起全局 ticker（Live2D 停了就不该让 PIXI 的
+                    // rAF 链继续跑）；start：退出定时器模式并把全局 ticker 一并拉回来。
+                    // 身份检查：PIXI 重建后外部残留的旧 ticker 再调包装，不能去动当前实例
+                    // 与全局 ticker 的调度状态，只操作旧 ticker 自己。
+                    // stop 在 Pet 窗口下无论此前是否在定时器模式都扣住全局 ticker：切角色的真实
+                    // 序列是 stop → removeModel 里 start（放开）→ 最终 stop，最后这一下不在
+                    // 定时器模式，只靠 _exitIdleTickMode 不会再把全局 ticker 停回去。
+                    ticker.stop = function () {
+                        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) {
+                            mgr._exitIdleTickMode({ restartGlobals: false });
+                            if (mgr._resolveGlobalTickers()) mgr._holdGlobalTickers();
+                        }
+                        return origStop();
+                    };
+                    ticker.start = function () {
+                        if (mgr.pixi_app && mgr.pixi_app.ticker === ticker) {
+                            mgr._exitIdleTickMode();
+                            mgr._releaseGlobalTickers();
+                        }
+                        return origStart();
+                    };
                 }
                 // 启动自适应帧率守护：静止时降到地板（LIVE2D_IDLE_FPS），活动时升回配置帧率。
                 this._startIdleFpsGovernor();
@@ -734,7 +754,8 @@ class Live2DManager {
         // setTargetFPS 是「目标帧率」配置的权威应用点：先同步配置源，确保 governor 的
         // boost/restore 读到的是新值而非旧值（调用方一般已设过 window.targetFrameRate，这里兜底自洽）。
         const resolved = Number(fps);
-        window.targetFrameRate = Number.isFinite(resolved) ? resolved : 60;
+        // 负数/非法值一律按 60：否则豁免分支会把负数直接写进 PIXI maxFPS，被钳到 minFPS=10
+        window.targetFrameRate = Number.isFinite(resolved) && resolved >= 0 ? resolved : 60;
         if (this._idleFpsRestoreTimer) {
             clearTimeout(this._idleFpsRestoreTimer);
             this._idleFpsRestoreTimer = null;
@@ -744,16 +765,15 @@ class Live2DManager {
         if (window.__NEKO_DISABLE_AVATAR_IDLE_THROTTLE__ === true) {
             // 页面级豁免：直接落配置帧率，不进入空闲地板/低频模式
             this._exitIdleTickMode();
-            this.pixi_app.ticker.maxFPS = window.targetFrameRate;
+            this._applyRafMaxFps(this._resolveConfiguredTargetFps());
         } else if (this._hasRenderActivity()) {
             this.boostInteractiveFPS();
         } else {
-            // 改配置时如果正处于空闲低频 tick 模式，先退出再按新地板重新进入，
+            // 无活动：直接按新地板落到空闲低频 tick。已在定时器模式则只换周期，
             // 让 interval 周期与新的地板帧率一致。
-            const wasIdleTickMode = this._idleTickMode;
-            if (wasIdleTickMode) this._exitIdleTickMode();
-            this.pixi_app.ticker.maxFPS = this._resolveIdleFps();
-            if (wasIdleTickMode) this._enterIdleTickMode();
+            const idleFps = this._resolveIdleFps();
+            this._applyRafMaxFps(idleFps);
+            this._enterIdleTickMode(idleFps);
         }
         console.log(`[Live2D Core] 目标帧率设置为 ${window.targetFrameRate === 0 ? 'VSync (无限制)' : window.targetFrameRate + 'fps'}`);
     }
@@ -761,7 +781,8 @@ class Live2DManager {
     // 用户配置的目标帧率（活动时的上限），默认 60；0 表示不限帧（跟随 VSync）。
     _resolveConfiguredTargetFps() {
         const configured = typeof window.targetFrameRate === 'number' ? Number(window.targetFrameRate) : 60;
-        return Number.isFinite(configured) ? configured : 60;
+        // 负数/非法值一律按 60（否则地板会变成负数、定时器周期算出秒级）
+        return Number.isFinite(configured) && configured >= 0 ? configured : 60;
     }
 
     // 静止地板帧率：不超过用户配置；配置为 0（不限帧）时仍压到地板省 CPU。
@@ -770,18 +791,69 @@ class Live2DManager {
         return configured === 0 ? LIVE2D_IDLE_FPS : Math.min(LIVE2D_IDLE_FPS, configured);
     }
 
+    // 活动态应改用定时器驱动的帧率（Pet 窗口且配置帧率明显低于显示器刷新率时由
+    // frame-pacing.js 给出）；null = 留在 rAF 驱动。非 Pet 页面没有 nekoFramePacing，恒为 null。
+    _resolveActiveTimerTickFps() {
+        const pacing = window.nekoFramePacing;
+        if (!pacing || typeof pacing.activeTimerTickFps !== 'function') return null;
+        const fps = Number(pacing.activeTimerTickFps(this._resolveConfiguredTargetFps()));
+        return Number.isFinite(fps) && fps > 0 ? fps : null;
+    }
+
+    // Pet 窗口进程里只有一个 Live2DManager，可以安全接管全局 PIXI.Ticker.shared/system
+    // 的帧率上限（模型 motion/physics 的 autoUpdate 挂在 shared 上，不接管的话它仍按
+    // 显示器刷新率跑）。其它页面（模型管理器/角色卡预览可能多个 manager 共存）不碰。
+    _resolveGlobalTickers() {
+        const pacing = window.nekoFramePacing;
+        if (!pacing || typeof pacing.isElectronPet !== 'function' || !pacing.isElectronPet()) return null;
+        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
+        if (!PixiTicker || !PixiTicker.shared || !PixiTicker.system) return null;
+        return { shared: PixiTicker.shared, system: PixiTicker.system };
+    }
+
+    // rAF 驱动下的帧率上限：写到 app.ticker，Pet 窗口还一并写到 shared/system。
+    // 定时器驱动模式下三个 ticker 的 maxFPS 必须保持 0（定时器周期本身就是节流器，
+    // interval 抖动会被 maxFPS 丢帧、实际帧率减半），此时只更新退出定时器模式时要恢复的值。
+    _applyRafMaxFps(fps) {
+        const resolved = Number.isFinite(Number(fps)) ? Number(fps) : 0;
+        const ticker = this.pixi_app && this.pixi_app.ticker;
+        if (!ticker) return;
+        const globals = this._resolveGlobalTickers();
+        if (this._idleTickMode) {
+            this._idleTickSavedMaxFPS = resolved;
+        } else if (ticker.maxFPS !== resolved) {
+            ticker.maxFPS = resolved;
+        }
+        if (!globals) return;
+        // 全局 ticker 被扣住（定时器模式 / 外部 stop 期间）时只更新待恢复值，放开时才生效；
+        // 否则直接写——两者分开存，虽然本 manager 总是给同一个值，但恢复时不互相串
+        if (this._globalTickersHeld) {
+            this._idleTickSavedSharedMaxFPS = resolved;
+            this._idleTickSavedSystemMaxFPS = resolved;
+            return;
+        }
+        if (globals.shared.maxFPS !== resolved) globals.shared.maxFPS = resolved;
+        if (globals.system.maxFPS !== resolved) globals.system.maxFPS = resolved;
+    }
+
     // 有渲染活动时升回配置帧率，并安排在 durationMs 后衰减回静止地板（全平台）。
     boostInteractiveFPS(durationMs = LIVE2D_INTERACTIVE_FPS_HOLD_MS) {
         if (!this.pixi_app || !this.pixi_app.ticker) return;
-        // 有活动：先退出空闲低频 tick 模式，恢复 rAF 驱动的满帧管线。
-        this._exitIdleTickMode();
         const ticker = this.pixi_app.ticker;
         const configured = this._resolveConfiguredTargetFps();
         // 活动时升回用户配置上限（0=不限帧）。不再 Math.max(IDLE,...)，否则会把刻意设到
         // 低于地板的配置（如低端机 24fps）反而抬到 30，超过用户上限。
         const activeFps = configured === 0 ? 0 : configured;
-        if (ticker.maxFPS !== activeFps) {
-            ticker.maxFPS = activeFps;
+        const timerFps = this._resolveActiveTimerTickFps();
+        if (timerFps != null) {
+            // Pet 窗口且配置帧率低于刷新率：活动态也留在定时器驱动，只把周期换成配置帧率。
+            // 回到 rAF 只会让 Blink 按刷新率跑主帧再跳掉一半，省不出 CPU/GPU。
+            this._applyRafMaxFps(activeFps);
+            this._enterIdleTickMode(timerFps);
+        } else {
+            // 有活动：退出定时器驱动，恢复 rAF 驱动的满帧管线。
+            this._exitIdleTickMode();
+            this._applyRafMaxFps(activeFps);
         }
         const originalTicker = ticker;
         if (this._idleFpsRestoreTimer) {
@@ -793,11 +865,13 @@ class Live2DManager {
         this._idleFpsRestoreTimer = setTimeout(() => {
             this._idleFpsRestoreTimer = null;
             if (this.pixi_app && this.pixi_app.ticker === originalTicker) {
-                originalTicker.maxFPS = this._resolveIdleFps();
+                const idleFps = this._resolveIdleFps();
+                this._applyRafMaxFps(idleFps);
                 // 无活动衰减到地板后，进一步切换到定时器驱动的低频 tick：
                 // rAF 驱动下即使 maxFPS 已限 30，三个 ticker 的 rAF 请求仍会让
                 // Blink 以显示器刷新率（如 120Hz）跑完整主帧生命周期，空耗 CPU/GPU。
-                this._enterIdleTickMode();
+                // 已在定时器模式（活动态定时器驱动）则只把周期换成地板帧率。
+                this._enterIdleTickMode(idleFps);
             }
         }, Math.max(100, Number(durationMs) || LIVE2D_INTERACTIVE_FPS_HOLD_MS));
     }
@@ -814,25 +888,64 @@ class Live2DManager {
      * （模型 motion/physics 的 autoUpdate）降到自己的地板频率——届时需要把
      * shared/system 的接管改成跨实例引用计数。
      */
-    _enterIdleTickMode() {
-        if (this._idleTickMode) return;
+    _enterIdleTickMode(fps) {
+        const requested = Number(fps);
+        const tickFps = Number.isFinite(requested) && requested > 0 ? requested : this._resolveIdleFps();
+        if (this._idleTickMode) {
+            // 已在定时器模式（空闲地板 ↔ 活动态定时器驱动之间切换）：只换周期，不经过 rAF
+            if (this._idleTickFps === tickFps) return;
+            if (this._idleTickTimer) clearInterval(this._idleTickTimer);
+            this._idleTickTimer = this._startTimerTick(tickFps);
+            return;
+        }
         if (!this.pixi_app || !this.pixi_app.ticker || !this._tickerOrigStop) return;
         const ticker = this.pixi_app.ticker;
         // 外部已显式暂停（pauseRendering / 角色切换）：不接管
         if (ticker.started === false) return;
-        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
         this._idleTickMode = true;
-        this._idleTickSharedWasStarted = !!(PixiTicker && PixiTicker.shared.started);
-        this._idleTickSystemWasStarted = !!(PixiTicker && PixiTicker.system.started);
         // 定时器本身就是节流器：清掉 maxFPS 限制，避免 interval 抖动（33ms < minElapsed
         // 33.33ms）导致 update() 被 maxFPS 丢帧、实际帧率减半。
         this._idleTickSavedMaxFPS = ticker.maxFPS;
         ticker.maxFPS = 0;
         this._tickerOrigStop();
-        if (this._idleTickSharedWasStarted) PixiTicker.shared.stop();
-        if (this._idleTickSystemWasStarted) PixiTicker.system.stop();
-        const intervalMs = Math.max(16, Math.round(1000 / Math.max(1, this._resolveIdleFps())));
-        this._idleTickTimer = setInterval(() => {
+        this._holdGlobalTickers();
+        this._idleTickTimer = this._startTimerTick(tickFps);
+    }
+
+    /**
+     * 扣住全局 PIXI.Ticker.shared/system：记录它们原本是否在跑并停掉（幂等，已扣住则不动）。
+     * 定时器模式下由 _startTimerTick 手动 update 它们；Pet 窗口外部 ticker.stop()（切
+     * VRM/MMD、pauseRendering）也扣住——Live2D 不渲染时没人需要 PIXI 的 rAF 链继续跑。
+     * Pet 窗口下 shared/system 的 maxFPS 也由本 manager 接管（见 _applyRafMaxFps），
+     * 手动 update() 同样不能被它们的 maxFPS 丢帧：一并清零并记住恢复值。
+     */
+    _holdGlobalTickers() {
+        if (this._globalTickersHeld) return;
+        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
+        if (!PixiTicker || !PixiTicker.shared || !PixiTicker.system) return;
+        this._globalTickersHeld = true;
+        this._idleTickSharedWasStarted = !!PixiTicker.shared.started;
+        this._idleTickSystemWasStarted = !!PixiTicker.system.started;
+        const globals = this._resolveGlobalTickers();
+        if (globals) {
+            this._idleTickSavedSharedMaxFPS = globals.shared.maxFPS;
+            this._idleTickSavedSystemMaxFPS = globals.system.maxFPS;
+            globals.shared.maxFPS = 0;
+            globals.system.maxFPS = 0;
+        }
+        try {
+            if (this._idleTickSharedWasStarted) PixiTicker.shared.stop();
+            if (this._idleTickSystemWasStarted) PixiTicker.system.stop();
+        } catch (_) {}
+    }
+
+    // 定时器驱动的 tick 循环：按 fps 手动 update() app + shared/system 三个 ticker。
+    // 空闲地板（30）和活动态定时器驱动（配置帧率）共用，只有周期不同。
+    _startTimerTick(fps) {
+        this._idleTickFps = fps;
+        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
+        const intervalMs = Math.max(4, Math.round(1000 / Math.max(1, fps)));
+        return setInterval(() => {
             if (!this._idleTickMode) return;
             const app = this.pixi_app;
             if (!app || !app.ticker) { this._exitIdleTickMode(); return; }
@@ -862,28 +975,49 @@ class Live2DManager {
         }, intervalMs);
     }
 
-    _exitIdleTickMode() {
+    /**
+     * 退出定时器驱动模式。默认把定时器模式停掉的全局 shared/system ticker 一并拉起
+     * （回到 rAF 驱动）；`restartGlobals: false` 用于外部 ticker.stop() 路径（切到
+     * VRM/MMD、pauseRendering）：Live2D 本身都不渲染了，全局 ticker 拉起来只会让
+     * PIXI 的 rAF 链继续按刷新率空跑，之后由 ticker.start() 包装再 _releaseGlobalTickers。
+     */
+    _exitIdleTickMode(options) {
         if (!this._idleTickMode) return;
+        const restartGlobals = !(options && options.restartGlobals === false);
         this._idleTickMode = false;
         if (this._idleTickTimer) {
             clearInterval(this._idleTickTimer);
             this._idleTickTimer = null;
         }
-        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
-        try {
-            if (PixiTicker) {
-                if (this._idleTickSharedWasStarted && !PixiTicker.shared.started) PixiTicker.shared.start();
-                if (this._idleTickSystemWasStarted && !PixiTicker.system.started) PixiTicker.system.start();
-            }
-        } catch (_) {}
         const app = this.pixi_app;
         if (app && app.ticker && typeof this._idleTickSavedMaxFPS === 'number') {
             app.ticker.maxFPS = this._idleTickSavedMaxFPS;
         }
+        if (restartGlobals) this._releaseGlobalTickers();
         if (app && app.ticker && app.ticker.started === false && this._tickerOrigStart) {
             try { this._tickerOrigStart(); } catch (_) {}
         }
         this._idleTickSavedMaxFPS = null;
+        this._idleTickFps = null;
+    }
+
+    // 把定时器模式接管（停掉）的全局 shared/system ticker 拉回来并恢复它们的帧率上限。
+    // 幂等：没接管过就什么都不做。
+    _releaseGlobalTickers() {
+        if (!this._globalTickersHeld) return;
+        this._globalTickersHeld = false;
+        const PixiTicker = (typeof PIXI !== 'undefined' && PIXI.Ticker) ? PIXI.Ticker : null;
+        if (!PixiTicker) return;
+        try {
+            if (typeof this._idleTickSavedSharedMaxFPS === 'number') PixiTicker.shared.maxFPS = this._idleTickSavedSharedMaxFPS;
+            if (typeof this._idleTickSavedSystemMaxFPS === 'number') PixiTicker.system.maxFPS = this._idleTickSavedSystemMaxFPS;
+            if (this._idleTickSharedWasStarted && !PixiTicker.shared.started) PixiTicker.shared.start();
+            if (this._idleTickSystemWasStarted && !PixiTicker.system.started) PixiTicker.system.start();
+        } catch (_) {}
+        this._idleTickSharedWasStarted = false;
+        this._idleTickSystemWasStarted = false;
+        this._idleTickSavedSharedMaxFPS = null;
+        this._idleTickSavedSystemMaxFPS = null;
     }
 
     // 向后兼容旧调用名（live2d-interaction.js 的交互升帧），现已推广到全平台。
@@ -898,7 +1032,11 @@ class Live2DManager {
                 return true;
             }
         } catch (_) {}
-        if (this._isDraggingModel || this.isFocusing) return true;
+        if (this._isDraggingModel) return true;
+        // 光标停在模型悬停范围内时 isFocusing 会一直为 true；只有光标最近真的动过才算活动，
+        // 否则视线目标已收敛、却永远进不了空闲低频 tick。
+        if (this.isFocusing && Number.isFinite(this._lastPointerMoveAt) &&
+            (performance.now() - this._lastPointerMoveAt) < LIVE2D_INTERACTIVE_FPS_HOLD_MS) return true;
         const appState = window.appState;
         if (appState && appState.lipSyncActive) return true;
         return false;
@@ -933,8 +1071,9 @@ class Live2DManager {
                 // 自愈：外部「确保渲染」路径（model-display / universal-manager 等的
                 // `!started && start()`）会把 ticker 拉回 rAF 模式并解除空闲低频 tick，
                 // 且不会再有 boost 衰减计时器带我们回来。无活动、无待衰减时直接重新进入。
-                this.pixi_app.ticker.maxFPS = this._resolveIdleFps();
-                this._enterIdleTickMode();
+                const idleFps = this._resolveIdleFps();
+                this._applyRafMaxFps(idleFps);
+                this._enterIdleTickMode(idleFps);
             }
         }, LIVE2D_IDLE_FPS_GOVERNOR_INTERVAL_MS);
     }
@@ -952,6 +1091,9 @@ class Live2DManager {
         // teardown 时必须退出空闲低频 tick 模式：全局 PIXI.Ticker.shared/system 是
         // 我们停的，不恢复的话销毁重建后模型 autoUpdate（挂在 shared 上）会被冻住。
         this._exitIdleTickMode();
+        // 先 ticker.stop()（不拉起全局 ticker）再销毁的路径：上面已不在定时器模式，
+        // 全局 ticker 仍被本 manager 扣着——销毁时必须无条件释放（幂等）。
+        this._releaseGlobalTickers();
     }
 
     /**

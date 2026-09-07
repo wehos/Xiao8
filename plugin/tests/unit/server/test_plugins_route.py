@@ -25,10 +25,14 @@ async def test_plugins_refresh_routes_delegate_to_registry_service(
     plugin_route_test_app: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    refresh_calls: list[str] = []
+
     async def _refresh_registry() -> dict[str, object]:
+        refresh_calls.append("all")
         return {"success": True, "added": ["demo"], "updated": [], "removed": []}
 
     async def _refresh_plugin(plugin_id: str) -> dict[str, object]:
+        refresh_calls.append(plugin_id)
         return {"success": True, "plugin_id": plugin_id, "status": "updated"}
 
     monkeypatch.setattr(route_module.registry_service, "refresh_registry", _refresh_registry)
@@ -39,10 +43,16 @@ async def test_plugins_refresh_routes_delegate_to_registry_service(
         all_response = await client.post("/plugins/refresh")
         assert all_response.status_code == 200
         assert all_response.json()["added"] == ["demo"]
+        # force 参数没有了：刷新不再有缓存可绕过，每次都重读盘面。签名里留一个
+        # 恒为真的开关只会让人以为还存在一条"不重读"的路。
+        assert refresh_calls == ["all"], f"刷新路由没有调到注册表：{refresh_calls}"
 
         one_response = await client.post("/plugin/demo/refresh")
         assert one_response.status_code == 200
         assert one_response.json()["plugin_id"] == "demo"
+        assert refresh_calls == ["all", "demo"], (
+            f"单插件刷新没有把插件 id 传下去：{refresh_calls}"
+        )
 
 
 @pytest.mark.asyncio

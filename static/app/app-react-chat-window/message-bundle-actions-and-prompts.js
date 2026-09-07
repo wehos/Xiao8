@@ -1005,6 +1005,20 @@
         });
     }
 
+    function isNewUserIcebreakerChatMessage(message) {
+        if (!message) return false;
+        var messageId = typeof message.id === 'string' ? message.id : '';
+        if (messageId.indexOf('icebreaker-user-') === 0
+                || messageId.indexOf('icebreaker-assistant-') === 0) {
+            return true;
+        }
+        if (message.source === 'new_user_icebreaker') return true;
+        var icebreaker = message.icebreaker && typeof message.icebreaker === 'object'
+            ? message.icebreaker
+            : {};
+        return icebreaker.source === 'new_user_icebreaker';
+    }
+
     function getRecentGalgameMessageHistory() {
         var msgs = Array.isArray(I.state.messages) ? I.state.messages : [];
         var collected = [];
@@ -1013,6 +1027,13 @@
             if (!m) continue;
             if (isYuiGuideChatMessage(m)) continue;
             if (m.role !== 'assistant' && m.role !== 'user') continue;
+            if (isNewUserIcebreakerChatMessage(m)) {
+                // While the latest conversation turn belongs to the scripted
+                // icebreaker, do not fall back to an older ordinary assistant
+                // turn and generate unrelated GalGame choices for it.
+                if (!collected.length) return [];
+                continue;
+            }
             var text = '';
             if (Array.isArray(m.blocks)) {
                 for (var j = 0; j < m.blocks.length; j++) {
@@ -2001,7 +2022,7 @@
         // when the message came in via voice / proactive / sendTextPayload
         // rather than the React composer. Invalidate any pending GalGame fetch
         // so its response can't render against the old turn context.
-        if (normalized.role === 'user') {
+        if (normalized.role === 'user' || isNewUserIcebreakerChatMessage(normalized)) {
             I.invalidatePendingGalgameRequest();
         }
         I.renderWindow();

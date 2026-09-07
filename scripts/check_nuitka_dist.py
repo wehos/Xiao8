@@ -113,7 +113,9 @@ _PLUGIN_TOML_REQUIRED_PARENT = "plugin/plugins"
 # These plugins are distributed exclusively through the plugin marketplace.
 # Shipping one here would recreate a read-only built-in copy that conflicts
 # with market installation and upgrades using the same plugin ID.
-_MARKETPLACE_ONLY_PLUGIN_IDS = frozenset({"neko_warthunder"})
+_MARKETPLACE_ONLY_PLUGIN_IDS = frozenset(
+    {"neko_warthunder", "study_companion", "galgame_plugin"}
+)
 
 
 def _plugin_manifest_id(manifest_path: Path) -> str | None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import zipfile
 from pathlib import Path
@@ -66,6 +67,41 @@ def _tamper_package(package_path: Path, target_name: str) -> None:
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as dst:
         for info, data in entries:
             dst.writestr(info, data)
+
+
+def _append_install_declaration(
+    plugin_dir: Path,
+    *,
+    ui_i18n_dir: str = "i18n/ui",
+    timeout: str = "600.0",
+) -> None:
+    (plugin_dir / "i18n" / "ui").mkdir(parents=True, exist_ok=True)
+    manifest_path = plugin_dir / "plugin.toml"
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8")
+        + "\n[plugin.install]\n"
+        + "enabled = true\n"
+        + f'ui_i18n_dir = "{ui_i18n_dir}"\n'
+        + "tutorial_enabled = true\n"
+        + "\n[plugin.install.kinds.rapidocr_models]\n"
+        + 'entry_id = "cli_demo_download_rapidocr_models"\n'
+        + 'label = "RapidOCR Models"\n'
+        + 'queued_message = "RapidOCR model download queued"\n'
+        + f"entry_timeout = {timeout}\n",
+        encoding="utf-8",
+    )
+
+
+def _append_raw_install_declaration(plugin_dir: Path, declaration: str) -> None:
+    (plugin_dir / "i18n" / "ui").mkdir(parents=True, exist_ok=True)
+    manifest_path = plugin_dir / "plugin.toml"
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8")
+        + "\n"
+        + declaration.strip()
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_cli_runtime_install_is_disabled_without_writing_plugin_directories(
@@ -339,6 +375,253 @@ def test_validate_plugin_dir_reports_invalid_toml_without_crashing(tmp_path: Pat
     issues = validate_plugin_dir(plugin_dir)
 
     assert any(level == "error" and "plugin.toml could not be read" in message for level, message in issues)
+
+
+def test_validate_plugin_dir_accepts_install_declaration_and_i18n_directory(
+    tmp_path: Path,
+) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_install_declaration(plugin_dir)
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert not any(level == "error" and "install" in message for level, message in issues)
+    assert not any("[plugin].install is not a recognized" in message for _level, message in issues)
+
+
+def test_validate_plugin_dir_accepts_missing_and_empty_disabled_install_declaration(
+    tmp_path: Path,
+) -> None:
+    without_install = _make_plugin_dir(tmp_path / "without")
+    assert not any(
+        level == "error" and "install" in message
+        for level, message in validate_plugin_dir(without_install)
+    )
+
+    disabled = _make_plugin_dir(tmp_path / "disabled")
+    _append_raw_install_declaration(
+        disabled,
+        """
+        [plugin.install]
+        enabled = false
+        """,
+    )
+    assert not any(
+        level == "error" and "install" in message
+        for level, message in validate_plugin_dir(disabled)
+    )
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        """
+        [plugin.install]
+        enabled = true
+        unknown = true
+        """,
+        """
+        [plugin.install]
+        enabled = true
+        [plugin.install.kinds.models]
+        entry_id = "demo_install_models"
+        label = "Models"
+        queued_message = "Models queued"
+        entry_timeout = 600.0
+        unknown = true
+        """,
+    ],
+)
+def test_validate_plugin_dir_rejects_unknown_install_fields(
+    tmp_path: Path,
+    declaration: str,
+) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_raw_install_declaration(plugin_dir, declaration)
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(
+        level == "error" and "not a recognized plugin.toml field" in message
+        for level, message in issues
+    )
+
+
+@pytest.mark.parametrize("kind", ["RapidOCR", "rapid-ocr", "1ocr"])
+def test_validate_plugin_dir_rejects_noncanonical_install_kind(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_raw_install_declaration(
+        plugin_dir,
+        f"""
+        [plugin.install]
+        enabled = true
+        [plugin.install.kinds.{kind}]
+        entry_id = "demo_install_models"
+        label = "Models"
+        queued_message = "Models queued"
+        entry_timeout = 600.0
+        """,
+    )
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(
+        level == "error" and "must match ^[a-z][a-z0-9_]*$" in message
+        for level, message in issues
+    )
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        """
+        [plugin.install]
+        tutorial_enabled = false
+        """,
+        """
+        [plugin.install]
+        enabled = "true"
+        """,
+        """
+        [plugin.install]
+        enabled = false
+        tutorial_enabled = true
+        """,
+        """
+        [plugin.install]
+        enabled = false
+        ui_i18n_dir = "i18n/ui"
+        """,
+        """
+        [plugin.install]
+        enabled = false
+        [plugin.install.kinds.models]
+        entry_id = "demo_install_models"
+        label = "Models"
+        queued_message = "Models queued"
+        entry_timeout = 600.0
+        """,
+    ],
+)
+def test_validate_plugin_dir_rejects_invalid_or_contradictory_install_enablement(
+    tmp_path: Path,
+    declaration: str,
+) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_raw_install_declaration(plugin_dir, declaration)
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(level == "error" and "install" in message for level, message in issues)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("entry_id", ""),
+        ("entry_id", " padded"),
+        ("label", ""),
+        ("label", "padded "),
+        ("queued_message", ""),
+        ("queued_message", " padded "),
+    ],
+)
+def test_validate_plugin_dir_rejects_empty_or_padded_install_text(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    fields = {
+        "entry_id": "demo_install_models",
+        "label": "Models",
+        "queued_message": "Models queued",
+    }
+    fields[field] = value
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_raw_install_declaration(
+        plugin_dir,
+        "\n".join(
+            [
+                "[plugin.install]",
+                "enabled = true",
+                "[plugin.install.kinds.models]",
+                f'entry_id = {json.dumps(fields["entry_id"])}',
+                f'label = {json.dumps(fields["label"])}',
+                f'queued_message = {json.dumps(fields["queued_message"])}',
+                "entry_timeout = 600.0",
+            ]
+        ),
+    )
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(level == "error" and field in message for level, message in issues)
+
+
+@pytest.mark.parametrize("ui_i18n_dir", ["../outside", "/absolute/i18n"])
+def test_validate_plugin_dir_rejects_install_i18n_escape(
+    tmp_path: Path,
+    ui_i18n_dir: str,
+) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_install_declaration(plugin_dir, ui_i18n_dir=ui_i18n_dir)
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(
+        level == "error" and "ui_i18n_dir" in message
+        for level, message in issues
+    )
+
+
+def test_validate_plugin_dir_rejects_missing_install_i18n_directory(tmp_path: Path) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_install_declaration(plugin_dir, ui_i18n_dir="missing-i18n")
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(
+        level == "error" and "ui_i18n_dir" in message
+        for level, message in issues
+    )
+
+
+def test_validate_plugin_dir_rejects_install_i18n_symlink_escape(tmp_path: Path) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    outside = tmp_path / "outside-i18n"
+    outside.mkdir()
+    link = plugin_dir / "linked-i18n"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+    _append_install_declaration(plugin_dir, ui_i18n_dir="linked-i18n")
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(
+        level == "error" and "ui_i18n_dir" in message
+        for level, message in issues
+    )
+
+
+@pytest.mark.parametrize("timeout", ["true", "0", "-1", '"600"', "nan", "inf"])
+def test_validate_plugin_dir_rejects_invalid_install_timeout(
+    tmp_path: Path,
+    timeout: str,
+) -> None:
+    plugin_dir = _make_plugin_dir(tmp_path)
+    _append_install_declaration(plugin_dir, timeout=timeout)
+
+    issues = validate_plugin_dir(plugin_dir)
+
+    assert any(
+        level == "error" and "entry_timeout" in message
+        for level, message in issues
+    )
 
 
 def test_validate_plugin_dir_reports_invalid_config_example_without_crashing(tmp_path: Path) -> None:

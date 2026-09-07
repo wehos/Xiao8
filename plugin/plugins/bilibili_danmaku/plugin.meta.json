@@ -1,0 +1,5036 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_reply.description",
+        "default": "将评论意图交给NEKO AI生成适合B站评论区的自然回复，然后自动发送"
+      },
+      "event_key": "bilibili_danmaku.ask_neko_bili_reply",
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_reply",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "description": "B站视频BV号",
+            "type": "string"
+          },
+          "root": {
+            "description": "根评论ID，默认0",
+            "type": "integer"
+          },
+          "rpid": {
+            "description": "回复的评论ID（楼层号），默认0为评论视频",
+            "type": "integer"
+          },
+          "text": {
+            "description": "评论意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bvid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.ask_neko_bili_reply.name",
+        "default": "AI代写评论"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_send_dynamic.description",
+        "default": "将动态意图交给NEKO AI生成适合B站动态的文案，然后自动发布"
+      },
+      "event_key": "bilibili_danmaku.ask_neko_bili_send_dynamic",
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_send_dynamic",
+      "input_schema": {
+        "properties": {
+          "images": {
+            "description": "图片URL列表（可选）",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schedule_time": {
+            "description": "定时发布时间戳（可选）",
+            "type": "integer"
+          },
+          "text": {
+            "description": "动态意图描述",
+            "type": "string"
+          },
+          "topic_id": {
+            "description": "话题ID（可选）",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.ask_neko_bili_send_dynamic.name",
+        "default": "AI代写动态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_send_message.description",
+        "default": "将私信意图交给NEKO AI生成礼貌自然的私信内容，然后自动发送"
+      },
+      "event_key": "bilibili_danmaku.ask_neko_bili_send_message",
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_send_message",
+      "input_schema": {
+        "properties": {
+          "receiver_uid": {
+            "description": "接收者B站UID",
+            "type": "integer"
+          },
+          "text": {
+            "description": "私信意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiver_uid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.ask_neko_bili_send_message.name",
+        "default": "AI代写私信"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_send_danmaku.description",
+        "default": "将弹幕意图交给NEKO AI生成适合直播间的弹幕内容，然后自动发送（需已连接直播间并登录）"
+      },
+      "event_key": "bilibili_danmaku.ask_neko_send_danmaku",
+      "event_type": "plugin_entry",
+      "id": "ask_neko_send_danmaku",
+      "input_schema": {
+        "properties": {
+          "message": {
+            "description": "弹幕意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.ask_neko_send_danmaku.name",
+        "default": "AI代发弹幕"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_check_credential.description",
+        "default": "检查当前 B站 登录凭证是否可用。"
+      },
+      "event_key": "bilibili_danmaku.bili_check_credential",
+      "event_type": "plugin_entry",
+      "id": "bili_check_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_check_credential.name",
+        "default": "检查 B站 凭证"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_comments.description",
+        "default": "根据视频 BV 号或关键词获取评论。"
+      },
+      "event_key": "bilibili_danmaku.bili_comments",
+      "event_type": "plugin_entry",
+      "id": "bili_comments",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 30,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_comments.name",
+        "default": "获取视频评论"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_danmaku.description",
+        "default": "根据视频 BV 号或关键词获取历史弹幕。"
+      },
+      "event_key": "bilibili_danmaku.bili_danmaku",
+      "event_type": "plugin_entry",
+      "id": "bili_danmaku",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_danmaku.name",
+        "default": "获取视频弹幕"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_favorite_content.description",
+        "default": "获取指定收藏夹中的视频列表。"
+      },
+      "event_key": "bilibili_danmaku.bili_favorite_content",
+      "event_type": "plugin_entry",
+      "id": "bili_favorite_content",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "default": "",
+            "type": "string"
+          },
+          "media_id": {
+            "type": "integer"
+          },
+          "page": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_favorite_content.name",
+        "default": "获取收藏夹内容"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_favorite_lists.description",
+        "default": "获取当前用户或指定 UID 的收藏夹列表。"
+      },
+      "event_key": "bilibili_danmaku.bili_favorite_lists",
+      "event_type": "plugin_entry",
+      "id": "bili_favorite_lists",
+      "input_schema": {
+        "properties": {
+          "uid": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_favorite_lists.name",
+        "default": "获取收藏夹列表"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_hot_buzzwords.description",
+        "default": "获取 B站 热搜关键词。"
+      },
+      "event_key": "bilibili_danmaku.bili_hot_buzzwords",
+      "event_type": "plugin_entry",
+      "id": "bili_hot_buzzwords",
+      "input_schema": {
+        "properties": {
+          "page_num": {
+            "default": 1,
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 20,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_hot_buzzwords.name",
+        "default": "获取热搜词"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_hot_videos.description",
+        "default": "获取 B站 热门视频列表。"
+      },
+      "event_key": "bilibili_danmaku.bili_hot_videos",
+      "event_type": "plugin_entry",
+      "id": "bili_hot_videos",
+      "input_schema": {
+        "properties": {
+          "pn": {
+            "default": 1,
+            "type": "integer"
+          },
+          "ps": {
+            "default": 20,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_hot_videos.name",
+        "default": "获取热门视频"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_list_tools.description",
+        "default": "列出当前插件暴露的 B站 工具能力。"
+      },
+      "event_key": "bilibili_danmaku.bili_list_tools",
+      "event_type": "plugin_entry",
+      "id": "bili_list_tools",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_list_tools.name",
+        "default": "列出 B站 工具"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_login.description",
+        "default": "生成 B站 扫码登录二维码。"
+      },
+      "event_key": "bilibili_danmaku.bili_login",
+      "event_type": "plugin_entry",
+      "id": "bili_login",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_login.name",
+        "default": "生成 B站 登录二维码"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_login_check.description",
+        "default": "检查当前扫码登录状态。"
+      },
+      "event_key": "bilibili_danmaku.bili_login_check",
+      "event_type": "plugin_entry",
+      "id": "bili_login_check",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_login_check.name",
+        "default": "检查 B站 登录状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_rank.description",
+        "default": "获取 B站 各分区排行榜。"
+      },
+      "event_key": "bilibili_danmaku.bili_rank",
+      "event_type": "plugin_entry",
+      "id": "bili_rank",
+      "input_schema": {
+        "properties": {
+          "category": {
+            "default": "all",
+            "type": "string"
+          },
+          "day": {
+            "default": 3,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_rank.name",
+        "default": "获取排行榜"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_reply.description",
+        "default": "在 B站 视频下发表评论或回复评论。需要已登录。"
+      },
+      "event_key": "bilibili_danmaku.bili_reply",
+      "event_type": "plugin_entry",
+      "id": "bili_reply",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "root": {
+            "default": 0,
+            "type": "integer"
+          },
+          "rpid": {
+            "default": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bvid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_reply.name",
+        "default": "发表评论或回复"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_search.description",
+        "default": "按关键词搜索 B站 视频。"
+      },
+      "event_key": "bilibili_danmaku.bili_search",
+      "event_type": "plugin_entry",
+      "id": "bili_search",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 10,
+            "type": "integer"
+          },
+          "order": {
+            "default": "totalrank",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_search.name",
+        "default": "搜索 B站 视频"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_send_dynamic.description",
+        "default": "发布 B站 动态。需要已登录。"
+      },
+      "event_key": "bilibili_danmaku.bili_send_dynamic",
+      "event_type": "plugin_entry",
+      "id": "bili_send_dynamic",
+      "input_schema": {
+        "properties": {
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schedule_time": {
+            "default": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "topic_id": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_send_dynamic.name",
+        "default": "发布动态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_send_message.description",
+        "default": "向指定用户发送 B站 私信。需要已登录。"
+      },
+      "event_key": "bilibili_danmaku.bili_send_message",
+      "event_type": "plugin_entry",
+      "id": "bili_send_message",
+      "input_schema": {
+        "properties": {
+          "receiver_uid": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiver_uid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_send_message.name",
+        "default": "发送私信"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_subtitle.description",
+        "default": "根据视频 BV 号或关键词获取字幕。"
+      },
+      "event_key": "bilibili_danmaku.bili_subtitle",
+      "event_type": "plugin_entry",
+      "id": "bili_subtitle",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_subtitle.name",
+        "default": "获取视频字幕"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_user_info.description",
+        "default": "根据 UID 获取 B站 用户信息。"
+      },
+      "event_key": "bilibili_danmaku.bili_user_info",
+      "event_type": "plugin_entry",
+      "id": "bili_user_info",
+      "input_schema": {
+        "properties": {
+          "uid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_user_info.name",
+        "default": "获取用户信息"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_user_videos.description",
+        "default": "根据 UID 获取 B站 用户投稿视频列表。"
+      },
+      "event_key": "bilibili_danmaku.bili_user_videos",
+      "event_type": "plugin_entry",
+      "id": "bili_user_videos",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "default": "",
+            "type": "string"
+          },
+          "order": {
+            "default": "pubdate",
+            "type": "string"
+          },
+          "pn": {
+            "default": 1,
+            "type": "integer"
+          },
+          "ps": {
+            "default": 30,
+            "type": "integer"
+          },
+          "uid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_user_videos.name",
+        "default": "获取用户投稿"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_video_info.description",
+        "default": "根据 bvid 或 aid 获取 B站 视频详情。"
+      },
+      "event_key": "bilibili_danmaku.bili_video_info",
+      "event_type": "plugin_entry",
+      "id": "bili_video_info",
+      "input_schema": {
+        "properties": {
+          "aid": {
+            "type": "integer"
+          },
+          "bvid": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_video_info.name",
+        "default": "获取视频信息"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_weekly_hot.description",
+        "default": "获取 B站 每周必看列表或指定期内容。"
+      },
+      "event_key": "bilibili_danmaku.bili_weekly_hot",
+      "event_type": "plugin_entry",
+      "id": "bili_weekly_hot",
+      "input_schema": {
+        "properties": {
+          "week": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "summary"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "summary": {}
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.bili_weekly_hot.name",
+        "default": "获取每周必看"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.clear_credential.description",
+        "default": "删除插件本地保存的 B站 Cookie，切换回游客模式"
+      },
+      "event_key": "bilibili_danmaku.clear_credential",
+      "event_type": "plugin_entry",
+      "id": "clear_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.clear_credential.name",
+        "default": "清除B站登录凭据"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.connect.description",
+        "default": "立即开始（或重启）弹幕监听，可选传入直播间ID"
+      },
+      "event_key": "bilibili_danmaku.connect",
+      "event_type": "plugin_entry",
+      "id": "connect",
+      "input_schema": {
+        "properties": {
+          "room_id": {
+            "description": "直播间ID（可选，不传则使用当前配置）",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.connect.name",
+        "default": "开始监听"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.disconnect.description",
+        "default": "停止当前弹幕监听连接"
+      },
+      "event_key": "bilibili_danmaku.disconnect",
+      "event_type": "plugin_entry",
+      "id": "disconnect",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.disconnect.name",
+        "default": "停止监听"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_bg_llm_config.description",
+        "default": "读取完整背景LLM配置（含 cloud/api_key/model 等），不受 enabled 状态影响"
+      },
+      "event_key": "bilibili_danmaku.get_bg_llm_config",
+      "event_type": "plugin_entry",
+      "id": "get_bg_llm_config",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "config"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "config": {}
+        },
+        "required": [
+          "config"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_bg_llm_config.name",
+        "default": "获取背景LLM完整配置"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_danmaku.description",
+        "default": "获取当前直播间最新的弹幕、SC、礼物，返回格式化内容供 AI 理解和回复"
+      },
+      "event_key": "bilibili_danmaku.get_danmaku",
+      "event_type": "plugin_entry",
+      "id": "get_danmaku",
+      "input_schema": {
+        "properties": {
+          "include_gifts": {
+            "description": "是否包含礼物信息（默认true）",
+            "type": "boolean"
+          },
+          "max_count": {
+            "description": "最多返回的弹幕条数（默认10，最大30）",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_danmaku.name",
+        "default": "获取直播间弹幕"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_guidance_config.description",
+        "default": "查询背景LLM系统的当前配置，包括聚合窗口大小、采样数、LLM调用统计等"
+      },
+      "event_key": "bilibili_danmaku.get_guidance_config",
+      "event_type": "plugin_entry",
+      "id": "get_guidance_config",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "config"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "config": {}
+        },
+        "required": [
+          "config"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_guidance_config.name",
+        "default": "获取背景LLM配置与统计"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_status.description",
+        "default": "获取弹幕插件当前状态，包括直播间、监听状态、过滤设置等"
+      },
+      "event_key": "bilibili_danmaku.get_status",
+      "event_type": "plugin_entry",
+      "id": "get_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.get_status.name",
+        "default": "获取插件状态"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.open_ui.description",
+        "default": "在浏览器中打开B站弹幕插件的Web UI控制台，用于配置直播间、查看弹幕等"
+      },
+      "event_key": "bilibili_danmaku.open_ui",
+      "event_type": "plugin_entry",
+      "id": "open_ui",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.open_ui.name",
+        "default": "打开弹幕控制台"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_danmaku.description",
+        "default": "查询历史弹幕，支持按关键词/用户/时间范围"
+      },
+      "event_key": "bilibili_danmaku.query_danmaku",
+      "event_type": "plugin_entry",
+      "id": "query_danmaku",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "description": "关键词搜索（可选）",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          },
+          "uid": {
+            "description": "用户UID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.query_danmaku.name",
+        "default": "查询弹幕历史"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_gifts.description",
+        "default": "查询礼物记录与流水统计"
+      },
+      "event_key": "bilibili_danmaku.query_gifts",
+      "event_type": "plugin_entry",
+      "id": "query_gifts",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          },
+          "summary": {
+            "default": false,
+            "description": "是否返回统计摘要（用户送礼排行）",
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.query_gifts.name",
+        "default": "查询礼物历史"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_interact.description",
+        "default": "查询进场/关注等互动记录"
+      },
+      "event_key": "bilibili_danmaku.query_interact",
+      "event_type": "plugin_entry",
+      "id": "query_interact",
+      "input_schema": {
+        "properties": {
+          "interact_type": {
+            "default": "entry",
+            "description": "互动类型: entry(进场) / follow(关注)",
+            "enum": [
+              "entry",
+              "follow"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.query_interact.name",
+        "default": "查询互动记录"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_stats.description",
+        "default": "获取弹幕/礼物数据库统计信息"
+      },
+      "event_key": "bilibili_danmaku.query_stats",
+      "event_type": "plugin_entry",
+      "id": "query_stats",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.query_stats.name",
+        "default": "数据统计"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.reload_credential.description",
+        "default": "重新从本地文件/NEKO全局读取 B站凭据，无需重启插件"
+      },
+      "event_key": "bilibili_danmaku.reload_credential",
+      "event_type": "plugin_entry",
+      "id": "reload_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.reload_credential.name",
+        "default": "重新加载凭据"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_credential.description",
+        "default": "将用户提供的 B站 Cookie 字段加密保存到插件本地，重启后生效"
+      },
+      "event_key": "bilibili_danmaku.save_credential",
+      "event_type": "plugin_entry",
+      "id": "save_credential",
+      "input_schema": {
+        "properties": {
+          "bili_jct": {
+            "description": "bili_jct Cookie 值",
+            "type": "string"
+          },
+          "buvid3": {
+            "description": "buvid3 Cookie 值（可选但强烈建议填写）",
+            "type": "string"
+          },
+          "dedeuserid": {
+            "description": "DedeUserID Cookie 值",
+            "type": "string"
+          },
+          "sessdata": {
+            "description": "SESSDATA Cookie 值",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessdata",
+          "bili_jct",
+          "dedeuserid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.save_credential.name",
+        "default": "保存B站登录凭据"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_danmaku.description",
+        "default": "向当前监听的 B站直播间发送弹幕消息，用于回复弹幕、感谢礼物等互动。需要已登录 B站账号。"
+      },
+      "event_key": "bilibili_danmaku.send_danmaku",
+      "event_type": "plugin_entry",
+      "id": "send_danmaku",
+      "input_schema": {
+        "properties": {
+          "message": {
+            "description": "要发送的弹幕内容（建议 20 字符以内，B站限制 20 字符/秒）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.send_danmaku.name",
+        "default": "发送弹幕到直播间"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_danmaku_max_length.description",
+        "default": "设置发送弹幕的最大长度限制"
+      },
+      "event_key": "bilibili_danmaku.set_danmaku_max_length",
+      "event_type": "plugin_entry",
+      "id": "set_danmaku_max_length",
+      "input_schema": {
+        "properties": {
+          "max_length": {
+            "description": "弹幕最大长度（范围 1-20，B站单条弹幕上限为 20 字符）",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.set_danmaku_max_length.name",
+        "default": "设置弹幕最大长度"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_interval.description",
+        "default": "设置每次推送弹幕给AI的时间间隔（最小{min_interval}秒，最大{max_interval}秒）",
+        "params": {
+          "max_interval": 180,
+          "min_interval": 5
+        }
+      },
+      "event_key": "bilibili_danmaku.set_interval",
+      "event_type": "plugin_entry",
+      "id": "set_interval",
+      "input_schema": {
+        "properties": {
+          "seconds": {
+            "description": "间隔秒数，范围 5~180",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.set_interval.name",
+        "default": "更改弹幕推送间隔"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_master_bili_account.description",
+        "default": "设置主人的 B站 UID 和用户名，帮助 NEKO 识别哪个账号属于主人本人。"
+      },
+      "event_key": "bilibili_danmaku.set_master_bili_account",
+      "event_type": "plugin_entry",
+      "id": "set_master_bili_account",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "default": "",
+            "description": "主人的 B站 用户名/显示名，留空表示清除",
+            "type": "string"
+          },
+          "uid": {
+            "default": 0,
+            "description": "主人的 B站 UID，留空或 0 表示清除",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.set_master_bili_account.name",
+        "default": "设置主人B站账号"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_room_id.description",
+        "default": "切换要监听的 B站直播间，传入直播间号码（数字ID）"
+      },
+      "event_key": "bilibili_danmaku.set_room_id",
+      "event_type": "plugin_entry",
+      "id": "set_room_id",
+      "input_schema": {
+        "properties": {
+          "room_id": {
+            "description": "B站直播间ID（数字），如 1234567",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "room_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.set_room_id.name",
+        "default": "更改监听直播间"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_target_lanlan.description",
+        "default": "设置弹幕推送的目标 AI 名称"
+      },
+      "event_key": "bilibili_danmaku.set_target_lanlan",
+      "event_type": "plugin_entry",
+      "id": "set_target_lanlan",
+      "input_schema": {
+        "properties": {
+          "target_lanlan": {
+            "description": "目标 AI 名称（应与 lanlan_name 一致，留空则不指定）",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "message": {}
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.set_target_lanlan.name",
+        "default": "设置目标 AI"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.test_bg_llm.description",
+        "default": "发送最小 chat completion 请求验证 LLM 连通性"
+      },
+      "event_key": "bilibili_danmaku.test_bg_llm",
+      "event_type": "plugin_entry",
+      "id": "test_bg_llm",
+      "input_schema": {
+        "properties": {
+          "api_key": {
+            "description": "API Key（留空则用已保存配置）",
+            "type": "string"
+          },
+          "model": {
+            "description": "模型名（留空则用已保存配置）",
+            "type": "string"
+          },
+          "url": {
+            "description": "LLM API 地址（留空则用已保存配置）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [],
+      "llm_result_schema": {},
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.test_bg_llm.name",
+        "default": "测试背景LLM连接"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.test_guidance.description",
+        "default": "用测试弹幕验证引导词生成效果"
+      },
+      "event_key": "bilibili_danmaku.test_guidance",
+      "event_type": "plugin_entry",
+      "id": "test_guidance",
+      "input_schema": {
+        "properties": {
+          "danmaku_texts": {
+            "description": "测试弹幕文本列表",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "danmaku_texts"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "test_result"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "test_result": {}
+        },
+        "required": [
+          "test_result"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.test_guidance.name",
+        "default": "测试引导词生成"
+      },
+      "return_message": "",
+      "timeout": null
+    },
+    {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.update_guidance_config.description",
+        "default": "更新背景LLM系统的配置参数（持久化到 config.json）"
+      },
+      "event_key": "bilibili_danmaku.update_guidance_config",
+      "event_type": "plugin_entry",
+      "id": "update_guidance_config",
+      "input_schema": {
+        "properties": {
+          "config": {
+            "description": "配置参数对象",
+            "type": "object"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "updated",
+        "config"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "config": {},
+          "updated": {}
+        },
+        "required": [
+          "updated",
+          "config"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": {
+        "$i18n": "entries.update_guidance_config.name",
+        "default": "更新背景LLM配置"
+      },
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "ask_neko_bili_reply": "ask_neko_bili_reply",
+    "ask_neko_bili_send_dynamic": "ask_neko_bili_send_dynamic",
+    "ask_neko_bili_send_message": "ask_neko_bili_send_message",
+    "ask_neko_send_danmaku": "ask_neko_send_danmaku",
+    "bili_check_credential": "bili_check_credential",
+    "bili_comments": "bili_comments",
+    "bili_danmaku": "bili_danmaku",
+    "bili_favorite_content": "bili_favorite_content",
+    "bili_favorite_lists": "bili_favorite_lists",
+    "bili_hot_buzzwords": "bili_hot_buzzwords",
+    "bili_hot_videos": "bili_hot_videos",
+    "bili_list_tools": "bili_list_tools",
+    "bili_login": "bili_login",
+    "bili_login_check": "bili_login_check",
+    "bili_rank": "bili_rank",
+    "bili_reply": "bili_reply",
+    "bili_search": "bili_search",
+    "bili_send_dynamic": "bili_send_dynamic",
+    "bili_send_message": "bili_send_message",
+    "bili_subtitle": "bili_subtitle",
+    "bili_user_info": "bili_user_info",
+    "bili_user_videos": "bili_user_videos",
+    "bili_video_info": "bili_video_info",
+    "bili_weekly_hot": "bili_weekly_hot",
+    "clear_credential": "clear_credential",
+    "connect": "connect",
+    "disconnect": "disconnect",
+    "get_bg_llm_config": "get_bg_llm_config",
+    "get_danmaku": "get_danmaku",
+    "get_guidance_config": "get_guidance_config",
+    "get_status": "get_status",
+    "open_ui": "open_ui",
+    "query_danmaku": "query_danmaku",
+    "query_gifts": "query_gifts",
+    "query_interact": "query_interact",
+    "query_stats": "query_stats",
+    "reload_credential": "reload_credential",
+    "save_credential": "save_credential",
+    "send_danmaku": "send_danmaku",
+    "set_danmaku_max_length": "set_danmaku_max_length",
+    "set_interval": "set_interval",
+    "set_master_bili_account": "set_master_bili_account",
+    "set_room_id": "set_room_id",
+    "set_target_lanlan": "set_target_lanlan",
+    "test_bg_llm": "test_bg_llm",
+    "test_guidance": "test_guidance",
+    "update_guidance_config": "update_guidance_config"
+  },
+  "handlers": {
+    "bilibili_danmaku.ask_neko_bili_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_reply.description",
+        "default": "将评论意图交给NEKO AI生成适合B站评论区的自然回复，然后自动发送"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_reply",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "description": "B站视频BV号",
+            "type": "string"
+          },
+          "root": {
+            "description": "根评论ID，默认0",
+            "type": "integer"
+          },
+          "rpid": {
+            "description": "回复的评论ID（楼层号），默认0为评论视频",
+            "type": "integer"
+          },
+          "text": {
+            "description": "评论意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bvid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_bili_reply.name",
+        "default": "AI代写评论"
+      }
+    },
+    "bilibili_danmaku.ask_neko_bili_send_dynamic": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_send_dynamic.description",
+        "default": "将动态意图交给NEKO AI生成适合B站动态的文案，然后自动发布"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_send_dynamic",
+      "input_schema": {
+        "properties": {
+          "images": {
+            "description": "图片URL列表（可选）",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schedule_time": {
+            "description": "定时发布时间戳（可选）",
+            "type": "integer"
+          },
+          "text": {
+            "description": "动态意图描述",
+            "type": "string"
+          },
+          "topic_id": {
+            "description": "话题ID（可选）",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_bili_send_dynamic.name",
+        "default": "AI代写动态"
+      }
+    },
+    "bilibili_danmaku.ask_neko_bili_send_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_send_message.description",
+        "default": "将私信意图交给NEKO AI生成礼貌自然的私信内容，然后自动发送"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_send_message",
+      "input_schema": {
+        "properties": {
+          "receiver_uid": {
+            "description": "接收者B站UID",
+            "type": "integer"
+          },
+          "text": {
+            "description": "私信意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiver_uid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_bili_send_message.name",
+        "default": "AI代写私信"
+      }
+    },
+    "bilibili_danmaku.ask_neko_send_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_send_danmaku.description",
+        "default": "将弹幕意图交给NEKO AI生成适合直播间的弹幕内容，然后自动发送（需已连接直播间并登录）"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_send_danmaku",
+      "input_schema": {
+        "properties": {
+          "message": {
+            "description": "弹幕意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_send_danmaku.name",
+        "default": "AI代发弹幕"
+      }
+    },
+    "bilibili_danmaku.bili_check_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_check_credential.description",
+        "default": "检查当前 B站 登录凭证是否可用。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_check_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_check_credential.name",
+        "default": "检查 B站 凭证"
+      }
+    },
+    "bilibili_danmaku.bili_comments": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_comments.description",
+        "default": "根据视频 BV 号或关键词获取评论。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_comments",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 30,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_comments.name",
+        "default": "获取视频评论"
+      }
+    },
+    "bilibili_danmaku.bili_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_danmaku.description",
+        "default": "根据视频 BV 号或关键词获取历史弹幕。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_danmaku",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_danmaku.name",
+        "default": "获取视频弹幕"
+      }
+    },
+    "bilibili_danmaku.bili_favorite_content": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_favorite_content.description",
+        "default": "获取指定收藏夹中的视频列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_favorite_content",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "default": "",
+            "type": "string"
+          },
+          "media_id": {
+            "type": "integer"
+          },
+          "page": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_favorite_content.name",
+        "default": "获取收藏夹内容"
+      }
+    },
+    "bilibili_danmaku.bili_favorite_lists": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_favorite_lists.description",
+        "default": "获取当前用户或指定 UID 的收藏夹列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_favorite_lists",
+      "input_schema": {
+        "properties": {
+          "uid": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_favorite_lists.name",
+        "default": "获取收藏夹列表"
+      }
+    },
+    "bilibili_danmaku.bili_hot_buzzwords": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_hot_buzzwords.description",
+        "default": "获取 B站 热搜关键词。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_hot_buzzwords",
+      "input_schema": {
+        "properties": {
+          "page_num": {
+            "default": 1,
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 20,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_hot_buzzwords.name",
+        "default": "获取热搜词"
+      }
+    },
+    "bilibili_danmaku.bili_hot_videos": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_hot_videos.description",
+        "default": "获取 B站 热门视频列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_hot_videos",
+      "input_schema": {
+        "properties": {
+          "pn": {
+            "default": 1,
+            "type": "integer"
+          },
+          "ps": {
+            "default": 20,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_hot_videos.name",
+        "default": "获取热门视频"
+      }
+    },
+    "bilibili_danmaku.bili_list_tools": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_list_tools.description",
+        "default": "列出当前插件暴露的 B站 工具能力。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_list_tools",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_list_tools.name",
+        "default": "列出 B站 工具"
+      }
+    },
+    "bilibili_danmaku.bili_login": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_login.description",
+        "default": "生成 B站 扫码登录二维码。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_login",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_login.name",
+        "default": "生成 B站 登录二维码"
+      }
+    },
+    "bilibili_danmaku.bili_login_check": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_login_check.description",
+        "default": "检查当前扫码登录状态。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_login_check",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_login_check.name",
+        "default": "检查 B站 登录状态"
+      }
+    },
+    "bilibili_danmaku.bili_rank": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_rank.description",
+        "default": "获取 B站 各分区排行榜。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_rank",
+      "input_schema": {
+        "properties": {
+          "category": {
+            "default": "all",
+            "type": "string"
+          },
+          "day": {
+            "default": 3,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_rank.name",
+        "default": "获取排行榜"
+      }
+    },
+    "bilibili_danmaku.bili_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_reply.description",
+        "default": "在 B站 视频下发表评论或回复评论。需要已登录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_reply",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "root": {
+            "default": 0,
+            "type": "integer"
+          },
+          "rpid": {
+            "default": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bvid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_reply.name",
+        "default": "发表评论或回复"
+      }
+    },
+    "bilibili_danmaku.bili_search": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_search.description",
+        "default": "按关键词搜索 B站 视频。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_search",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 10,
+            "type": "integer"
+          },
+          "order": {
+            "default": "totalrank",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_search.name",
+        "default": "搜索 B站 视频"
+      }
+    },
+    "bilibili_danmaku.bili_send_dynamic": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_send_dynamic.description",
+        "default": "发布 B站 动态。需要已登录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_send_dynamic",
+      "input_schema": {
+        "properties": {
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schedule_time": {
+            "default": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "topic_id": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_send_dynamic.name",
+        "default": "发布动态"
+      }
+    },
+    "bilibili_danmaku.bili_send_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_send_message.description",
+        "default": "向指定用户发送 B站 私信。需要已登录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_send_message",
+      "input_schema": {
+        "properties": {
+          "receiver_uid": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiver_uid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_send_message.name",
+        "default": "发送私信"
+      }
+    },
+    "bilibili_danmaku.bili_subtitle": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_subtitle.description",
+        "default": "根据视频 BV 号或关键词获取字幕。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_subtitle",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_subtitle.name",
+        "default": "获取视频字幕"
+      }
+    },
+    "bilibili_danmaku.bili_user_info": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_user_info.description",
+        "default": "根据 UID 获取 B站 用户信息。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_user_info",
+      "input_schema": {
+        "properties": {
+          "uid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_user_info.name",
+        "default": "获取用户信息"
+      }
+    },
+    "bilibili_danmaku.bili_user_videos": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_user_videos.description",
+        "default": "根据 UID 获取 B站 用户投稿视频列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_user_videos",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "default": "",
+            "type": "string"
+          },
+          "order": {
+            "default": "pubdate",
+            "type": "string"
+          },
+          "pn": {
+            "default": 1,
+            "type": "integer"
+          },
+          "ps": {
+            "default": 30,
+            "type": "integer"
+          },
+          "uid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_user_videos.name",
+        "default": "获取用户投稿"
+      }
+    },
+    "bilibili_danmaku.bili_video_info": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_video_info.description",
+        "default": "根据 bvid 或 aid 获取 B站 视频详情。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_video_info",
+      "input_schema": {
+        "properties": {
+          "aid": {
+            "type": "integer"
+          },
+          "bvid": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_video_info.name",
+        "default": "获取视频信息"
+      }
+    },
+    "bilibili_danmaku.bili_weekly_hot": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_weekly_hot.description",
+        "default": "获取 B站 每周必看列表或指定期内容。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_weekly_hot",
+      "input_schema": {
+        "properties": {
+          "week": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_weekly_hot.name",
+        "default": "获取每周必看"
+      }
+    },
+    "bilibili_danmaku.clear_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.clear_credential.description",
+        "default": "删除插件本地保存的 B站 Cookie，切换回游客模式"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.clear_credential.name",
+        "default": "清除B站登录凭据"
+      }
+    },
+    "bilibili_danmaku.connect": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.connect.description",
+        "default": "立即开始（或重启）弹幕监听，可选传入直播间ID"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "connect",
+      "input_schema": {
+        "properties": {
+          "room_id": {
+            "description": "直播间ID（可选，不传则使用当前配置）",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.connect.name",
+        "default": "开始监听"
+      }
+    },
+    "bilibili_danmaku.disconnect": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.disconnect.description",
+        "default": "停止当前弹幕监听连接"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "disconnect",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.disconnect.name",
+        "default": "停止监听"
+      }
+    },
+    "bilibili_danmaku.get_bg_llm_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_bg_llm_config.description",
+        "default": "读取完整背景LLM配置（含 cloud/api_key/model 等），不受 enabled 状态影响"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_bg_llm_config",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_bg_llm_config.name",
+        "default": "获取背景LLM完整配置"
+      }
+    },
+    "bilibili_danmaku.get_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_danmaku.description",
+        "default": "获取当前直播间最新的弹幕、SC、礼物，返回格式化内容供 AI 理解和回复"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_danmaku",
+      "input_schema": {
+        "properties": {
+          "include_gifts": {
+            "description": "是否包含礼物信息（默认true）",
+            "type": "boolean"
+          },
+          "max_count": {
+            "description": "最多返回的弹幕条数（默认10，最大30）",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_danmaku.name",
+        "default": "获取直播间弹幕"
+      }
+    },
+    "bilibili_danmaku.get_guidance_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_guidance_config.description",
+        "default": "查询背景LLM系统的当前配置，包括聚合窗口大小、采样数、LLM调用统计等"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_guidance_config",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_guidance_config.name",
+        "default": "获取背景LLM配置与统计"
+      }
+    },
+    "bilibili_danmaku.get_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_status.description",
+        "default": "获取弹幕插件当前状态，包括直播间、监听状态、过滤设置等"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_status.name",
+        "default": "获取插件状态"
+      }
+    },
+    "bilibili_danmaku.open_ui": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.open_ui.description",
+        "default": "在浏览器中打开B站弹幕插件的Web UI控制台，用于配置直播间、查看弹幕等"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "open_ui",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.open_ui.name",
+        "default": "打开弹幕控制台"
+      }
+    },
+    "bilibili_danmaku.query_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_danmaku.description",
+        "default": "查询历史弹幕，支持按关键词/用户/时间范围"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_danmaku",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "description": "关键词搜索（可选）",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          },
+          "uid": {
+            "description": "用户UID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_danmaku.name",
+        "default": "查询弹幕历史"
+      }
+    },
+    "bilibili_danmaku.query_gifts": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_gifts.description",
+        "default": "查询礼物记录与流水统计"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_gifts",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          },
+          "summary": {
+            "default": false,
+            "description": "是否返回统计摘要（用户送礼排行）",
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_gifts.name",
+        "default": "查询礼物历史"
+      }
+    },
+    "bilibili_danmaku.query_interact": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_interact.description",
+        "default": "查询进场/关注等互动记录"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_interact",
+      "input_schema": {
+        "properties": {
+          "interact_type": {
+            "default": "entry",
+            "description": "互动类型: entry(进场) / follow(关注)",
+            "enum": [
+              "entry",
+              "follow"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_interact.name",
+        "default": "查询互动记录"
+      }
+    },
+    "bilibili_danmaku.query_stats": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_stats.description",
+        "default": "获取弹幕/礼物数据库统计信息"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_stats",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_stats.name",
+        "default": "数据统计"
+      }
+    },
+    "bilibili_danmaku.reload_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.reload_credential.description",
+        "default": "重新从本地文件/NEKO全局读取 B站凭据，无需重启插件"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "reload_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.reload_credential.name",
+        "default": "重新加载凭据"
+      }
+    },
+    "bilibili_danmaku.save_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_credential.description",
+        "default": "将用户提供的 B站 Cookie 字段加密保存到插件本地，重启后生效"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_credential",
+      "input_schema": {
+        "properties": {
+          "bili_jct": {
+            "description": "bili_jct Cookie 值",
+            "type": "string"
+          },
+          "buvid3": {
+            "description": "buvid3 Cookie 值（可选但强烈建议填写）",
+            "type": "string"
+          },
+          "dedeuserid": {
+            "description": "DedeUserID Cookie 值",
+            "type": "string"
+          },
+          "sessdata": {
+            "description": "SESSDATA Cookie 值",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessdata",
+          "bili_jct",
+          "dedeuserid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_credential.name",
+        "default": "保存B站登录凭据"
+      }
+    },
+    "bilibili_danmaku.send_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_danmaku.description",
+        "default": "向当前监听的 B站直播间发送弹幕消息，用于回复弹幕、感谢礼物等互动。需要已登录 B站账号。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_danmaku",
+      "input_schema": {
+        "properties": {
+          "message": {
+            "description": "要发送的弹幕内容（建议 20 字符以内，B站限制 20 字符/秒）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.send_danmaku.name",
+        "default": "发送弹幕到直播间"
+      }
+    },
+    "bilibili_danmaku.set_danmaku_max_length": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_danmaku_max_length.description",
+        "default": "设置发送弹幕的最大长度限制"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_danmaku_max_length",
+      "input_schema": {
+        "properties": {
+          "max_length": {
+            "description": "弹幕最大长度（范围 1-20，B站单条弹幕上限为 20 字符）",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_danmaku_max_length.name",
+        "default": "设置弹幕最大长度"
+      }
+    },
+    "bilibili_danmaku.set_interval": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_interval.description",
+        "default": "设置每次推送弹幕给AI的时间间隔（最小{min_interval}秒，最大{max_interval}秒）",
+        "params": {
+          "max_interval": 180,
+          "min_interval": 5
+        }
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_interval",
+      "input_schema": {
+        "properties": {
+          "seconds": {
+            "description": "间隔秒数，范围 5~180",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_interval.name",
+        "default": "更改弹幕推送间隔"
+      }
+    },
+    "bilibili_danmaku.set_master_bili_account": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_master_bili_account.description",
+        "default": "设置主人的 B站 UID 和用户名，帮助 NEKO 识别哪个账号属于主人本人。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_master_bili_account",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "default": "",
+            "description": "主人的 B站 用户名/显示名，留空表示清除",
+            "type": "string"
+          },
+          "uid": {
+            "default": 0,
+            "description": "主人的 B站 UID，留空或 0 表示清除",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_master_bili_account.name",
+        "default": "设置主人B站账号"
+      }
+    },
+    "bilibili_danmaku.set_room_id": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_room_id.description",
+        "default": "切换要监听的 B站直播间，传入直播间号码（数字ID）"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_room_id",
+      "input_schema": {
+        "properties": {
+          "room_id": {
+            "description": "B站直播间ID（数字），如 1234567",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "room_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_room_id.name",
+        "default": "更改监听直播间"
+      }
+    },
+    "bilibili_danmaku.set_target_lanlan": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_target_lanlan.description",
+        "default": "设置弹幕推送的目标 AI 名称"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_target_lanlan",
+      "input_schema": {
+        "properties": {
+          "target_lanlan": {
+            "description": "目标 AI 名称（应与 lanlan_name 一致，留空则不指定）",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_target_lanlan.name",
+        "default": "设置目标 AI"
+      }
+    },
+    "bilibili_danmaku.test_bg_llm": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.test_bg_llm.description",
+        "default": "发送最小 chat completion 请求验证 LLM 连通性"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "test_bg_llm",
+      "input_schema": {
+        "properties": {
+          "api_key": {
+            "description": "API Key（留空则用已保存配置）",
+            "type": "string"
+          },
+          "model": {
+            "description": "模型名（留空则用已保存配置）",
+            "type": "string"
+          },
+          "url": {
+            "description": "LLM API 地址（留空则用已保存配置）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.test_bg_llm.name",
+        "default": "测试背景LLM连接"
+      }
+    },
+    "bilibili_danmaku.test_guidance": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.test_guidance.description",
+        "default": "用测试弹幕验证引导词生成效果"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "test_guidance",
+      "input_schema": {
+        "properties": {
+          "danmaku_texts": {
+            "description": "测试弹幕文本列表",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "danmaku_texts"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.test_guidance.name",
+        "default": "测试引导词生成"
+      }
+    },
+    "bilibili_danmaku.update_guidance_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.update_guidance_config.description",
+        "default": "更新背景LLM系统的配置参数（持久化到 config.json）"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "update_guidance_config",
+      "input_schema": {
+        "properties": {
+          "config": {
+            "description": "配置参数对象",
+            "type": "object"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.update_guidance_config.name",
+        "default": "更新背景LLM配置"
+      }
+    },
+    "bilibili_danmaku:lifecycle:shutdown": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "shutdown",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "shutdown"
+    },
+    "bilibili_danmaku:lifecycle:startup": {
+      "auto_start": false,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "lifecycle",
+      "id": "startup",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "lifecycle",
+      "metadata": {},
+      "name": "startup"
+    },
+    "bilibili_danmaku:plugin_entry:ask_neko_bili_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_reply.description",
+        "default": "将评论意图交给NEKO AI生成适合B站评论区的自然回复，然后自动发送"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_reply",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "description": "B站视频BV号",
+            "type": "string"
+          },
+          "root": {
+            "description": "根评论ID，默认0",
+            "type": "integer"
+          },
+          "rpid": {
+            "description": "回复的评论ID（楼层号），默认0为评论视频",
+            "type": "integer"
+          },
+          "text": {
+            "description": "评论意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bvid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_bili_reply.name",
+        "default": "AI代写评论"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:ask_neko_bili_send_dynamic": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_send_dynamic.description",
+        "default": "将动态意图交给NEKO AI生成适合B站动态的文案，然后自动发布"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_send_dynamic",
+      "input_schema": {
+        "properties": {
+          "images": {
+            "description": "图片URL列表（可选）",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schedule_time": {
+            "description": "定时发布时间戳（可选）",
+            "type": "integer"
+          },
+          "text": {
+            "description": "动态意图描述",
+            "type": "string"
+          },
+          "topic_id": {
+            "description": "话题ID（可选）",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_bili_send_dynamic.name",
+        "default": "AI代写动态"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:ask_neko_bili_send_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_bili_send_message.description",
+        "default": "将私信意图交给NEKO AI生成礼貌自然的私信内容，然后自动发送"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_bili_send_message",
+      "input_schema": {
+        "properties": {
+          "receiver_uid": {
+            "description": "接收者B站UID",
+            "type": "integer"
+          },
+          "text": {
+            "description": "私信意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiver_uid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_bili_send_message.name",
+        "default": "AI代写私信"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:ask_neko_send_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.ask_neko_send_danmaku.description",
+        "default": "将弹幕意图交给NEKO AI生成适合直播间的弹幕内容，然后自动发送（需已连接直播间并登录）"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "ask_neko_send_danmaku",
+      "input_schema": {
+        "properties": {
+          "message": {
+            "description": "弹幕意图描述",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.ask_neko_send_danmaku.name",
+        "default": "AI代发弹幕"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_check_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_check_credential.description",
+        "default": "检查当前 B站 登录凭证是否可用。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_check_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_check_credential.name",
+        "default": "检查 B站 凭证"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_comments": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_comments.description",
+        "default": "根据视频 BV 号或关键词获取评论。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_comments",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 30,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_comments.name",
+        "default": "获取视频评论"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_danmaku.description",
+        "default": "根据视频 BV 号或关键词获取历史弹幕。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_danmaku",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_danmaku.name",
+        "default": "获取视频弹幕"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_favorite_content": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_favorite_content.description",
+        "default": "获取指定收藏夹中的视频列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_favorite_content",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "default": "",
+            "type": "string"
+          },
+          "media_id": {
+            "type": "integer"
+          },
+          "page": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_favorite_content.name",
+        "default": "获取收藏夹内容"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_favorite_lists": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_favorite_lists.description",
+        "default": "获取当前用户或指定 UID 的收藏夹列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_favorite_lists",
+      "input_schema": {
+        "properties": {
+          "uid": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_favorite_lists.name",
+        "default": "获取收藏夹列表"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_hot_buzzwords": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_hot_buzzwords.description",
+        "default": "获取 B站 热搜关键词。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_hot_buzzwords",
+      "input_schema": {
+        "properties": {
+          "page_num": {
+            "default": 1,
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 20,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_hot_buzzwords.name",
+        "default": "获取热搜词"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_hot_videos": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_hot_videos.description",
+        "default": "获取 B站 热门视频列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_hot_videos",
+      "input_schema": {
+        "properties": {
+          "pn": {
+            "default": 1,
+            "type": "integer"
+          },
+          "ps": {
+            "default": 20,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_hot_videos.name",
+        "default": "获取热门视频"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_list_tools": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_list_tools.description",
+        "default": "列出当前插件暴露的 B站 工具能力。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_list_tools",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_list_tools.name",
+        "default": "列出 B站 工具"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_login": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_login.description",
+        "default": "生成 B站 扫码登录二维码。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_login",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_login.name",
+        "default": "生成 B站 登录二维码"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_login_check": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_login_check.description",
+        "default": "检查当前扫码登录状态。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_login_check",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_login_check.name",
+        "default": "检查 B站 登录状态"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_rank": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_rank.description",
+        "default": "获取 B站 各分区排行榜。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_rank",
+      "input_schema": {
+        "properties": {
+          "category": {
+            "default": "all",
+            "type": "string"
+          },
+          "day": {
+            "default": 3,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_rank.name",
+        "default": "获取排行榜"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_reply": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_reply.description",
+        "default": "在 B站 视频下发表评论或回复评论。需要已登录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_reply",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "root": {
+            "default": 0,
+            "type": "integer"
+          },
+          "rpid": {
+            "default": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bvid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_reply.name",
+        "default": "发表评论或回复"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_search": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_search.description",
+        "default": "按关键词搜索 B站 视频。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_search",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "type": "string"
+          },
+          "num": {
+            "default": 10,
+            "type": "integer"
+          },
+          "order": {
+            "default": "totalrank",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_search.name",
+        "default": "搜索 B站 视频"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_send_dynamic": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_send_dynamic.description",
+        "default": "发布 B站 动态。需要已登录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_send_dynamic",
+      "input_schema": {
+        "properties": {
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schedule_time": {
+            "default": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "topic_id": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_send_dynamic.name",
+        "default": "发布动态"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_send_message": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_send_message.description",
+        "default": "向指定用户发送 B站 私信。需要已登录。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_send_message",
+      "input_schema": {
+        "properties": {
+          "receiver_uid": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiver_uid",
+          "text"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_send_message.name",
+        "default": "发送私信"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_subtitle": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_subtitle.description",
+        "default": "根据视频 BV 号或关键词获取字幕。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_subtitle",
+      "input_schema": {
+        "properties": {
+          "bvid": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_subtitle.name",
+        "default": "获取视频字幕"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_user_info": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_user_info.description",
+        "default": "根据 UID 获取 B站 用户信息。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_user_info",
+      "input_schema": {
+        "properties": {
+          "uid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_user_info.name",
+        "default": "获取用户信息"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_user_videos": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_user_videos.description",
+        "default": "根据 UID 获取 B站 用户投稿视频列表。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_user_videos",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "default": "",
+            "type": "string"
+          },
+          "order": {
+            "default": "pubdate",
+            "type": "string"
+          },
+          "pn": {
+            "default": 1,
+            "type": "integer"
+          },
+          "ps": {
+            "default": 30,
+            "type": "integer"
+          },
+          "uid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_user_videos.name",
+        "default": "获取用户投稿"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_video_info": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_video_info.description",
+        "default": "根据 bvid 或 aid 获取 B站 视频详情。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_video_info",
+      "input_schema": {
+        "properties": {
+          "aid": {
+            "type": "integer"
+          },
+          "bvid": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_video_info.name",
+        "default": "获取视频信息"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:bili_weekly_hot": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.bili_weekly_hot.description",
+        "default": "获取 B站 每周必看列表或指定期内容。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "bili_weekly_hot",
+      "input_schema": {
+        "properties": {
+          "week": {
+            "default": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.bili_weekly_hot.name",
+        "default": "获取每周必看"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:clear_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.clear_credential.description",
+        "default": "删除插件本地保存的 B站 Cookie，切换回游客模式"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "clear_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.clear_credential.name",
+        "default": "清除B站登录凭据"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:connect": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.connect.description",
+        "default": "立即开始（或重启）弹幕监听，可选传入直播间ID"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "connect",
+      "input_schema": {
+        "properties": {
+          "room_id": {
+            "description": "直播间ID（可选，不传则使用当前配置）",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.connect.name",
+        "default": "开始监听"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:disconnect": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.disconnect.description",
+        "default": "停止当前弹幕监听连接"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "disconnect",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.disconnect.name",
+        "default": "停止监听"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:get_bg_llm_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_bg_llm_config.description",
+        "default": "读取完整背景LLM配置（含 cloud/api_key/model 等），不受 enabled 状态影响"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_bg_llm_config",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_bg_llm_config.name",
+        "default": "获取背景LLM完整配置"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:get_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_danmaku.description",
+        "default": "获取当前直播间最新的弹幕、SC、礼物，返回格式化内容供 AI 理解和回复"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_danmaku",
+      "input_schema": {
+        "properties": {
+          "include_gifts": {
+            "description": "是否包含礼物信息（默认true）",
+            "type": "boolean"
+          },
+          "max_count": {
+            "description": "最多返回的弹幕条数（默认10，最大30）",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_danmaku.name",
+        "default": "获取直播间弹幕"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:get_guidance_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_guidance_config.description",
+        "default": "查询背景LLM系统的当前配置，包括聚合窗口大小、采样数、LLM调用统计等"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_guidance_config",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_guidance_config.name",
+        "default": "获取背景LLM配置与统计"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:get_status": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.get_status.description",
+        "default": "获取弹幕插件当前状态，包括直播间、监听状态、过滤设置等"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "get_status",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.get_status.name",
+        "default": "获取插件状态"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:open_ui": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.open_ui.description",
+        "default": "在浏览器中打开B站弹幕插件的Web UI控制台，用于配置直播间、查看弹幕等"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "open_ui",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.open_ui.name",
+        "default": "打开弹幕控制台"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:query_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_danmaku.description",
+        "default": "查询历史弹幕，支持按关键词/用户/时间范围"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_danmaku",
+      "input_schema": {
+        "properties": {
+          "keyword": {
+            "description": "关键词搜索（可选）",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          },
+          "uid": {
+            "description": "用户UID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_danmaku.name",
+        "default": "查询弹幕历史"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:query_gifts": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_gifts.description",
+        "default": "查询礼物记录与流水统计"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_gifts",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          },
+          "summary": {
+            "default": false,
+            "description": "是否返回统计摘要（用户送礼排行）",
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_gifts.name",
+        "default": "查询礼物历史"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:query_interact": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_interact.description",
+        "default": "查询进场/关注等互动记录"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_interact",
+      "input_schema": {
+        "properties": {
+          "interact_type": {
+            "default": "entry",
+            "description": "互动类型: entry(进场) / follow(关注)",
+            "enum": [
+              "entry",
+              "follow"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "返回条数上限",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_interact.name",
+        "default": "查询互动记录"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:query_stats": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.query_stats.description",
+        "default": "获取弹幕/礼物数据库统计信息"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "query_stats",
+      "input_schema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.query_stats.name",
+        "default": "数据统计"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:reload_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.reload_credential.description",
+        "default": "重新从本地文件/NEKO全局读取 B站凭据，无需重启插件"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "reload_credential",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.reload_credential.name",
+        "default": "重新加载凭据"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:save_credential": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.save_credential.description",
+        "default": "将用户提供的 B站 Cookie 字段加密保存到插件本地，重启后生效"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "save_credential",
+      "input_schema": {
+        "properties": {
+          "bili_jct": {
+            "description": "bili_jct Cookie 值",
+            "type": "string"
+          },
+          "buvid3": {
+            "description": "buvid3 Cookie 值（可选但强烈建议填写）",
+            "type": "string"
+          },
+          "dedeuserid": {
+            "description": "DedeUserID Cookie 值",
+            "type": "string"
+          },
+          "sessdata": {
+            "description": "SESSDATA Cookie 值",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessdata",
+          "bili_jct",
+          "dedeuserid"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.save_credential.name",
+        "default": "保存B站登录凭据"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:send_danmaku": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.send_danmaku.description",
+        "default": "向当前监听的 B站直播间发送弹幕消息，用于回复弹幕、感谢礼物等互动。需要已登录 B站账号。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "send_danmaku",
+      "input_schema": {
+        "properties": {
+          "message": {
+            "description": "要发送的弹幕内容（建议 20 字符以内，B站限制 20 字符/秒）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.send_danmaku.name",
+        "default": "发送弹幕到直播间"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:set_danmaku_max_length": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_danmaku_max_length.description",
+        "default": "设置发送弹幕的最大长度限制"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_danmaku_max_length",
+      "input_schema": {
+        "properties": {
+          "max_length": {
+            "description": "弹幕最大长度（范围 1-20，B站单条弹幕上限为 20 字符）",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_danmaku_max_length.name",
+        "default": "设置弹幕最大长度"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:set_interval": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_interval.description",
+        "default": "设置每次推送弹幕给AI的时间间隔（最小{min_interval}秒，最大{max_interval}秒）",
+        "params": {
+          "max_interval": 180,
+          "min_interval": 5
+        }
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_interval",
+      "input_schema": {
+        "properties": {
+          "seconds": {
+            "description": "间隔秒数，范围 5~180",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_interval.name",
+        "default": "更改弹幕推送间隔"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:set_master_bili_account": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_master_bili_account.description",
+        "default": "设置主人的 B站 UID 和用户名，帮助 NEKO 识别哪个账号属于主人本人。"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_master_bili_account",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "default": "",
+            "description": "主人的 B站 用户名/显示名，留空表示清除",
+            "type": "string"
+          },
+          "uid": {
+            "default": 0,
+            "description": "主人的 B站 UID，留空或 0 表示清除",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_master_bili_account.name",
+        "default": "设置主人B站账号"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:set_room_id": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_room_id.description",
+        "default": "切换要监听的 B站直播间，传入直播间号码（数字ID）"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_room_id",
+      "input_schema": {
+        "properties": {
+          "room_id": {
+            "description": "B站直播间ID（数字），如 1234567",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "room_id"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_room_id.name",
+        "default": "更改监听直播间"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:set_target_lanlan": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.set_target_lanlan.description",
+        "default": "设置弹幕推送的目标 AI 名称"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "set_target_lanlan",
+      "input_schema": {
+        "properties": {
+          "target_lanlan": {
+            "description": "目标 AI 名称（应与 lanlan_name 一致，留空则不指定）",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.set_target_lanlan.name",
+        "default": "设置目标 AI"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:test_bg_llm": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.test_bg_llm.description",
+        "default": "发送最小 chat completion 请求验证 LLM 连通性"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "test_bg_llm",
+      "input_schema": {
+        "properties": {
+          "api_key": {
+            "description": "API Key（留空则用已保存配置）",
+            "type": "string"
+          },
+          "model": {
+            "description": "模型名（留空则用已保存配置）",
+            "type": "string"
+          },
+          "url": {
+            "description": "LLM API 地址（留空则用已保存配置）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.test_bg_llm.name",
+        "default": "测试背景LLM连接"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:test_guidance": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.test_guidance.description",
+        "default": "用测试弹幕验证引导词生成效果"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "test_guidance",
+      "input_schema": {
+        "properties": {
+          "danmaku_texts": {
+            "description": "测试弹幕文本列表",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "danmaku_texts"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.test_guidance.name",
+        "default": "测试引导词生成"
+      }
+    },
+    "bilibili_danmaku:plugin_entry:update_guidance_config": {
+      "auto_start": false,
+      "description": {
+        "$i18n": "entries.update_guidance_config.description",
+        "default": "更新背景LLM系统的配置参数（持久化到 config.json）"
+      },
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "update_guidance_config",
+      "input_schema": {
+        "properties": {
+          "config": {
+            "description": "配置参数对象",
+            "type": "object"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": {
+        "$i18n": "entries.update_guidance_config.name",
+        "default": "更新背景LLM配置"
+      }
+    },
+    "bilibili_danmaku:timer:auto_save_user_records": {
+      "auto_start": true,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "timer",
+      "id": "auto_save_user_records",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "timer",
+      "metadata": {
+        "seconds": 300
+      },
+      "name": "auto_save_user_records"
+    },
+    "bilibili_danmaku:timer:bg_agent": {
+      "auto_start": true,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "timer",
+      "id": "bg_agent",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "timer",
+      "metadata": {
+        "seconds": 2
+      },
+      "name": "bg_agent"
+    },
+    "bilibili_danmaku:timer:push_danmaku": {
+      "auto_start": true,
+      "description": "",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "timer",
+      "id": "push_danmaku",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      },
+      "kind": "timer",
+      "metadata": {
+        "seconds": 5
+      },
+      "name": "push_danmaku"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 914051,
+  "source_files": [
+    "README.md",
+    "__init__.py",
+    "aggregator.py",
+    "background_llm_agent.py",
+    "bili_auth_service.py",
+    "bili_content_service.py",
+    "danmaku_analyzer.py",
+    "danmaku_core.py",
+    "danmaku_memory.py",
+    "danmaku_storage.py",
+    "data/config.json",
+    "docs/DEPLOYMENT_GUIDE.md",
+    "docs/quickstart.en.md",
+    "docs/quickstart.es.md",
+    "docs/quickstart.ja.md",
+    "docs/quickstart.ko.md",
+    "docs/quickstart.md",
+    "docs/quickstart.pt.md",
+    "docs/quickstart.ru.md",
+    "docs/quickstart.zh-TW.md",
+    "http_api.py",
+    "i18n/_frontend_keys_zh.json",
+    "i18n/en.json",
+    "i18n/es.json",
+    "i18n/ja.json",
+    "i18n/ko.json",
+    "i18n/pt.json",
+    "i18n/ru.json",
+    "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
+    "intelligence_card.py",
+    "livedanmaku.py",
+    "llm_client.py",
+    "orchestrator.py",
+    "plugin.toml",
+    "plugin_utils.py",
+    "skill/SKILL.md",
+    "static/i18n.js",
+    "static/index.html",
+    "user_profile.py",
+    "ws_bridge.py"
+  ],
+  "source_sha256": "9e891f7977ea61a38127524a268f7c7e6d3d1732717e27b8c88c020a9c885617"
+}

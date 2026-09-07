@@ -2968,7 +2968,12 @@ body.electron-chat-window.subtitle-web-host .compact-chat-surface-shell {
 .compact-export-history-anchor {
   position: fixed;
   --compact-export-surface-width: var(--compact-surface-resize-width, var(--desktop-compact-surface-width, var(--compact-surface-width, 430px)));
-  left: calc(var(--desktop-compact-surface-left, var(--compact-surface-left, 50vw)) + (var(--compact-export-surface-width) / 2));
+  --compact-export-surface-center-inline-position: calc(
+    var(--desktop-compact-surface-left, var(--compact-surface-left, 50vw))
+      + (var(--compact-export-surface-width) / 2)
+  );
+  --compact-export-layout-inline-size: 100vw;
+  --compact-export-history-edge-gutter: 12px;
   bottom: calc(100vh - var(--desktop-compact-surface-top, var(--compact-surface-top, 68vh)) + 2px);
   /* Geometry-critical: derive collapse compensation from control metrics; do not animate layout properties here. */
   --compact-export-controls-padding-y: clamp(4px, calc(var(--compact-export-surface-width) * 0.0116), 6px);
@@ -2993,9 +2998,29 @@ body.electron-chat-window.subtitle-web-host .compact-chat-surface-shell {
   --compact-export-history-shadow-gutter-right: 32px;
   --compact-export-history-shadow-gutter-left: 12px;
   --compact-export-history-max-inline-size: calc(100vw - var(--compact-export-history-viewport-gutter));
+  --compact-export-link-card-min-inline-size: 170px;
+  --compact-export-link-bubble-chrome-inline-size: 23px;
+  --compact-export-link-row-reserve-inline-size: 48px;
+  /* 170px card + bubble chrome + row reserve + 44px shadow gutters. */
+  --compact-export-link-history-min-inline-size: calc(
+    var(--compact-export-link-card-min-inline-size)
+      + var(--compact-export-link-bubble-chrome-inline-size)
+      + var(--compact-export-link-row-reserve-inline-size)
+      + var(--compact-export-history-shadow-gutter-left) + var(--compact-export-history-shadow-gutter-right)
+  );
   --compact-export-history-inline-size: min(
     calc(var(--compact-export-surface-width) * var(--compact-export-history-width-ratio)),
     var(--compact-export-history-max-inline-size)
+  );
+  --compact-export-history-active-inline-size: var(--compact-export-history-inline-size);
+  --compact-export-history-center-inline-position: clamp(
+    calc((var(--compact-export-history-active-inline-size) / 2) + var(--compact-export-history-edge-gutter)),
+    var(--compact-export-surface-center-inline-position),
+    calc(
+      var(--compact-export-layout-inline-size)
+        - (var(--compact-export-history-active-inline-size) / 2)
+        - var(--compact-export-history-edge-gutter)
+    )
   );
   --compact-export-history-bubble-max-ratio: 86%;
   --compact-export-history-system-bubble-max-ratio: 94%;
@@ -3007,7 +3032,8 @@ body.electron-chat-window.subtitle-web-host .compact-chat-surface-shell {
     max(var(--compact-export-history-region-height), var(--compact-export-preview-min-height)),
     var(--compact-export-preview-max-height)
   );
-  width: var(--compact-export-history-inline-size);
+  left: var(--compact-export-history-center-inline-position);
+  width: var(--compact-export-history-active-inline-size);
   /* 与 JS getCompactHistorySlotMaxHeight 对齐：高度上限只受屏幕(78vh)约束、不再挂对话条宽度，
      否则窄宽+高屏时 JS 允许的 slot 高 > CSS anchor 高，hit region 会被裁出死区(Codex P2)。 */
   max-height: var(--compact-export-preview-max-height);
@@ -3035,6 +3061,7 @@ body.electron-chat-window.subtitle-web-host .compact-export-history-anchor {
   --compact-export-history-max-inline-size: calc(
     var(--compact-desktop-workarea-width, 1440px) - var(--compact-export-history-viewport-gutter)
   );
+  --compact-export-layout-inline-size: var(--compact-desktop-workarea-width, 1440px);
   --compact-export-preview-max-height: min(
     calc(var(--compact-export-surface-width) * 1.46),
     calc(var(--compact-desktop-workarea-height, 900px) * 0.78)
@@ -3432,6 +3459,38 @@ body.electron-chat-window.subtitle-web-host .compact-export-history-anchor {
   min-width: 0;
   font-size: 0.92rem;
   line-height: 1.48;
+}
+
+/* Preserve a readable card at the 180px compact-surface minimum without
+   changing the surface itself. The active width and center are both capped,
+   so a link card also remains inside the viewport/workarea near either edge. */
+.compact-export-history-anchor:has(.compact-export-history-content > .message-block-link) {
+  --compact-export-history-active-inline-size: min(
+    max(var(--compact-export-history-inline-size), var(--compact-export-link-history-min-inline-size)),
+    var(--compact-export-history-max-inline-size)
+  );
+}
+
+.compact-export-history-bubble:has(> .compact-export-history-content > .message-block-link) {
+  width: calc(100% - var(--compact-export-link-row-reserve-inline-size));
+  min-width: min(
+    calc(
+      var(--compact-export-link-card-min-inline-size)
+        + var(--compact-export-link-bubble-chrome-inline-size)
+    ),
+    calc(100% - var(--compact-export-link-row-reserve-inline-size))
+  );
+}
+
+.compact-export-history-content > .message-block-link {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.compact-export-history-content > .message-block-link .message-link-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .compact-export-history-controls,

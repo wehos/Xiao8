@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, StrictStr, field_validator, model_validator
 from plugin._types.plugin_types import (
     PluginType,
     SUPPORTED_PLUGIN_TYPES,
@@ -19,6 +20,7 @@ from plugin._types.plugin_types import (
 )
 
 _PLUGIN_RUNTIME_TIMEOUT_MAX = 300.0
+_PLUGIN_INSTALL_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 class PluginAuthorSchema(BaseModel):
@@ -56,6 +58,96 @@ class PluginConfigProfilesSchema(BaseModel):
 class PluginSafetySchema(BaseModel):
     """插件安全配置 Schema"""
     sync_call_in_handler: Optional[Literal["warn", "reject"]] = None
+
+
+class PluginInstallKindSchema(BaseModel):
+    """One host-managed install action declared by a plugin manifest."""
+
+    model_config = {"extra": "forbid"}
+
+    entry_id: StrictStr
+    label: StrictStr
+    queued_message: StrictStr
+    entry_timeout: float
+
+    @field_validator("entry_id")
+    @classmethod
+    def validate_entry_id(cls, value: str) -> str:
+        if not value or value.strip() != value:
+            raise ValueError("entry_id must be non-empty and unpadded")
+        return value
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, value: str) -> str:
+        if not value or value.strip() != value:
+            raise ValueError("label must be non-empty and unpadded")
+        return value
+
+    @field_validator("queued_message")
+    @classmethod
+    def validate_queued_message(cls, value: str) -> str:
+        if not value or value.strip() != value:
+            raise ValueError("queued_message must be non-empty and unpadded")
+        return value
+
+    @field_validator("entry_timeout", mode="before")
+    @classmethod
+    def validate_entry_timeout(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("entry_timeout must be a finite number greater than zero")
+        try:
+            timeout = float(value)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(
+                "entry_timeout must be a finite number greater than zero"
+            ) from exc
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("entry_timeout must be a finite number greater than zero")
+        return timeout
+
+
+class PluginInstallSchema(BaseModel):
+    """Declarative install capabilities under ``[plugin.install]``."""
+
+    model_config = {"extra": "forbid"}
+
+    enabled: StrictBool
+    ui_i18n_dir: Optional[StrictStr] = None
+    tutorial_enabled: StrictBool = False
+    kinds: Dict[str, PluginInstallKindSchema] = Field(default_factory=dict)
+
+    @field_validator("kinds")
+    @classmethod
+    def validate_kind_names(
+        cls,
+        value: Dict[str, PluginInstallKindSchema],
+    ) -> Dict[str, PluginInstallKindSchema]:
+        for kind in value:
+            if not _PLUGIN_INSTALL_KIND_PATTERN.fullmatch(kind):
+                raise ValueError(
+                    "install kinds must match ^[a-z][a-z0-9_]*$ without normalization"
+                )
+        return value
+
+    @field_validator("ui_i18n_dir")
+    @classmethod
+    def validate_i18n_path_string(cls, value: str | None) -> str | None:
+        if value is not None and (not value or value.strip() != value):
+            raise ValueError("ui_i18n_dir must be non-empty and unpadded")
+        return value
+
+    @model_validator(mode="after")
+    def validate_disabled_contract(self) -> "PluginInstallSchema":
+        if self.enabled:
+            return self
+        if self.kinds:
+            raise ValueError("disabled plugin install declarations must not define kinds")
+        if self.tutorial_enabled:
+            raise ValueError("disabled plugin install declarations must not enable tutorials")
+        if self.ui_i18n_dir is not None:
+            raise ValueError("disabled plugin install declarations must not define ui_i18n_dir")
+        return self
 
 
 class PluginDependencySchema(BaseModel):
@@ -96,6 +188,7 @@ class PluginSectionSchema(BaseModel):
     store: Optional[PluginStoreSchema] = None
     config_profiles: Optional[PluginConfigProfilesSchema] = None
     safety: Optional[PluginSafetySchema] = None
+    install: Optional[PluginInstallSchema] = None
     dependencies: Optional[List[PluginDependencySchema]] = None
 
     @model_validator(mode="before")
@@ -451,6 +544,8 @@ __all__ = [
     "PluginAuthorSchema",
     "PluginSdkSchema",
     "PluginStoreSchema",
+    "PluginInstallKindSchema",
+    "PluginInstallSchema",
     "PluginConfigProfilesSchema",
     "PluginDependencySchema",
     "PluginType",

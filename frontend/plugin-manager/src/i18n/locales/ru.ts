@@ -648,7 +648,13 @@ export default {
     returnedLines: 'Возвращено строк',
     connected: 'Подключено',
     disconnected: 'Отключено',
-    connectionFailed: 'Ошибка подключения к потоку логов'
+    connectionFailed: 'Ошибка подключения к потоку логов',
+    exportLog: 'Экспортировать архив логов',
+    openLogDirectory: 'Открыть директорию логов',
+    exportSuccess: 'Лог успешно экспортирован',
+    exportFailed: 'Не удалось экспортировать лог',
+    openDirectoryFailed: 'Не удалось открыть директорию',
+    noLogFileToExport: 'Нет файла лога для экспорта'
   },
   runs: {
     title: 'Запуски',

@@ -7351,6 +7351,31 @@ describe('App', () => {
     );
   });
 
+  it('gives compact history link cards a bounded readable width', () => {
+    expect(compactChatStyles).toContain('--compact-export-history-edge-gutter: 12px;');
+    expect(compactChatStyles).toContain('--compact-export-history-viewport-gutter: 24px;');
+    expect(compactChatStyles).toContain('--compact-export-history-shadow-gutter-right: 32px;');
+    expect(compactChatStyles).toContain('--compact-export-history-shadow-gutter-left: 12px;');
+    expect(compactChatStyles).toContain('--compact-export-link-card-min-inline-size: 170px;');
+    expect(compactChatStyles).toContain('--compact-export-link-bubble-chrome-inline-size: 23px;');
+    expect(compactChatStyles).toContain('--compact-export-link-row-reserve-inline-size: 48px;');
+    expect(compactChatStyles).toMatch(
+      /--compact-export-link-history-min-inline-size:\s*calc\([\s\S]*?var\(--compact-export-link-card-min-inline-size\)[\s\S]*?var\(--compact-export-link-bubble-chrome-inline-size\)[\s\S]*?var\(--compact-export-link-row-reserve-inline-size\)[\s\S]*?var\(--compact-export-history-shadow-gutter-left\) \+ var\(--compact-export-history-shadow-gutter-right\)[\s\S]*?\);/,
+    );
+    expect(compactChatStyles).toMatch(
+      /\.compact-export-history-anchor:has\(\.compact-export-history-content > \.message-block-link\)\s*\{[\s\S]*?max\(var\(--compact-export-history-inline-size\), var\(--compact-export-link-history-min-inline-size\)\)[\s\S]*?var\(--compact-export-history-max-inline-size\)/,
+    );
+    expect(compactChatStyles).toMatch(
+      /\.compact-export-history-bubble:has\(> \.compact-export-history-content > \.message-block-link\)\s*\{[\s\S]*?width: calc\(100% - var\(--compact-export-link-row-reserve-inline-size\)\);[\s\S]*?min-width: min\(/,
+    );
+    expect(compactChatStyles).toMatch(
+      /\.compact-export-history-content > \.message-block-link\s*\{[\s\S]*?width: 100%;[\s\S]*?max-width: 100%;[\s\S]*?min-width: 0;/,
+    );
+    expect(compactChatStyles).toMatch(
+      /\.compact-export-history-content > \.message-block-link \.message-link-copy\s*\{[\s\S]*?min-width: 0;[\s\S]*?overflow-wrap: anywhere;/,
+    );
+  });
+
   it('keeps compact composer text legible over both light and dark backdrops', () => {
     expect(compactChatStyles).toMatch(
       /\.compact-chat-surface-frame\[data-compact-chat-state="input"\] \.composer-input\s*\{[\s\S]*?color: #2f526b;[\s\S]*?caret-color: #167fbd;[\s\S]*?0 1px 1px rgba\(255, 255, 255, 0\.94\),[\s\S]*?0 0 4px rgba\(255, 255, 255, 0\.72\);/,

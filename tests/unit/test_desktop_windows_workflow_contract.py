@@ -104,7 +104,7 @@ def test_reusable_build_honors_signing_inputs_and_distribution_wrapper() -> None
     assert distribution["run"] == (
         "node scripts/build-electron-distribution.js "
         "${{ matrix.builder_platform }} ${{ matrix.portable_arch_args }} "
-        "--publish never"
+        "${{ matrix.builder_target_args }} --publish never"
     )
 
     nightly_steps = _steps_by_name(workflow, "nightly")

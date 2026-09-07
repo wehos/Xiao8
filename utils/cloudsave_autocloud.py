@@ -275,6 +275,7 @@ class CloudSaveManager:
         manifest_fingerprint = str(manifest.get("fingerprint") or "")
         snapshot_sequence_number = int(manifest.get("sequence_number") or 0)
         snapshot_exported_at_utc = str(manifest.get("exported_at_utc") or "")
+        snapshot_kind = str(manifest.get("snapshot_kind") or "")
         last_applied_manifest_fingerprint = str(cloud_state.get("last_applied_manifest_fingerprint") or "")
         runtime_has_user_content = runtime_root_has_user_content(
             self.config_manager.app_docs_dir,
@@ -317,6 +318,7 @@ class CloudSaveManager:
             "has_snapshot": has_snapshot,
             "snapshot_sequence_number": snapshot_sequence_number,
             "snapshot_exported_at_utc": snapshot_exported_at_utc,
+            "snapshot_kind": snapshot_kind,
             "manifest_fingerprint": manifest_fingerprint,
             "last_applied_manifest_fingerprint": last_applied_manifest_fingerprint,
             "startup_import_required": startup_import_required,

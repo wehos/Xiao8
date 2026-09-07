@@ -200,12 +200,21 @@ def _cleanup_empty_parent_dirs(path: Path, stop_at: Path) -> None:
         current = current.parent
 
 
-def _build_manifest_fingerprint(*, client_id: str, sequence_number: int, files: dict[str, Any]) -> str:
+def _build_manifest_fingerprint(
+    *,
+    client_id: str,
+    sequence_number: int,
+    files: dict[str, Any],
+    snapshot_kind: str = "",
+) -> str:
     payload = {
         "client_id": client_id,
         "sequence_number": int(sequence_number),
         "files": files,
     }
+    normalized_snapshot_kind = str(snapshot_kind or "").strip()
+    if normalized_snapshot_kind:
+        payload["snapshot_kind"] = normalized_snapshot_kind
     return _sha256_bytes(_json_canonical_dumps(payload).encode("utf-8"))
 
 

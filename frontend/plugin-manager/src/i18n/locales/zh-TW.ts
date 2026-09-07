@@ -648,7 +648,13 @@ export default {
     returnedLines: '返回行數',
     connected: '已連線',
     disconnected: '未連線',
-    connectionFailed: '日誌串流連線失敗'
+    connectionFailed: '日誌串流連線失敗',
+    exportLog: '匯出日誌壓縮包',
+    openLogDirectory: '開啟日誌目錄',
+    exportSuccess: '日誌匯出成功',
+    exportFailed: '日誌匯出失敗',
+    openDirectoryFailed: '開啟目錄失敗',
+    noLogFileToExport: '沒有可匯出的日誌檔案'
   },
   runs: {
     title: '執行記錄',

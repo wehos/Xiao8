@@ -61,6 +61,67 @@ def test_voice_clone_script_is_cache_versioned(mock_page: Page, running_server: 
     assert src and src != "/static/js/voice_clone.js?v=0"
 
 
+@pytest.mark.frontend
+def test_vllm_clone_configuration_warning_names_active_tts_provider(mock_page: Page, running_server: str):
+    try:
+        route_voice_clone_region_dependencies(
+            mock_page,
+            {
+                "success": True,
+                "steam_language": "schinese",
+                "i18n_language": "zh-CN",
+                "ip_country": "CN",
+                "is_mainland_china": True,
+            },
+        )
+        mock_page.goto(f"{running_server}/voice_clone")
+        mock_page.wait_for_load_state("domcontentloaded")
+        mock_page.wait_for_function("window.i18next && window.i18next.isInitialized")
+
+        warning = mock_page.evaluate(
+            """() => getVllmOmniCloneConfigurationWarning({
+                enableCustomApi: false,
+                ttsModelProvider: 'follow_assist',
+            })"""
+        )
+        configured_warning = mock_page.evaluate(
+            """() => getVllmOmniCloneConfigurationWarning({
+                enableCustomApi: true,
+                ttsModelProvider: 'vllm_omni',
+            })"""
+        )
+        legacy_enabled_warning = mock_page.evaluate(
+            """() => getVllmOmniCloneConfigurationWarning({
+                enableCustomApi: 'on',
+                ttsModelProvider: 'vllm_omni',
+            })"""
+        )
+        globally_disabled_warning = mock_page.evaluate(
+            """() => getVllmOmniCloneConfigurationWarning({
+                enableCustomApi: true,
+                disableTts: 'on',
+                ttsModelProvider: 'vllm_omni',
+            })"""
+        )
+
+        assert "跟随辅助API" in warning
+        assert "自定义 API 已关闭" in warning
+        assert configured_warning == ""
+        assert legacy_enabled_warning == ""
+        assert "TTS 已全局关闭" in globally_disabled_warning
+        assert mock_page.evaluate(
+            """() => {
+                setFormDisabled(true);
+                return document.getElementById('vllmRefText').disabled;
+            }"""
+        ) is True
+        mock_page.evaluate("() => setFormDisabled(false)")
+    finally:
+        mock_page.unroute("**/api/config/steam_language")
+        mock_page.unroute("**/api/config/api_providers")
+        mock_page.unroute("**/api/config/core_api")
+
+
 def route_voice_clone_region_dependencies(page: Page, steam_language_payload: dict, steam_language_status: int = 200) -> None:
     page.add_init_script("localStorage.setItem('neko_tutorial_voice_clone', 'true');")
     page.route(

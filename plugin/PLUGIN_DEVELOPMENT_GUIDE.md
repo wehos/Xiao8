@@ -43,7 +43,7 @@ N.E.K.O 插件系统是一个基于 Python 的插件框架，允许开发者创�
 ### 1.3 核心特性
 
 - **进程隔离**：Plugin 与 Adapter 独立运行
-- **异步支持**：支持同步和异步入口函数
+- **异步运行时入口**：运行时入口使用 `async def`；同步辅助函数保持为内部实现
 - **Result 类型**：`Ok`/`Err` 类型安全的错误处理（替代异常流）
 - **Hook 系统**：`@before_entry`, `@after_entry`, `@around_entry`, `@replace_entry` 面向切面编程
 - **跨插件调用**：`self.plugins.call_entry("other_plugin:entry_id")` 插件间通信
@@ -92,17 +92,23 @@ plugin/sdk/
 
 > `plugin/sdk/shared/` 是内部实现细节，不应被开发者直接导入。
 
-### 1.6 插件目录结构
+### 1.6 代码目录与状态目录
 
 ```text
 plugin/plugins/
 └── my_plugin/
     ├── __init__.py      # 插件代码（入口点）
-    ├── plugin.toml      # 插件配置
-    ├── config.json      # 可选：自定义配置
-    ├── data/            # 可选：运行时数据目录
+    ├── plugin.toml      # 插件清单与默认值
+    ├── config.example.toml # 可选：运行时配置模板
     └── static/          # 可选：Web UI 文件
+
+<用户数据根目录>/plugins/my_plugin/
+├── config/plugin.toml   # 当前用户的运行时配置
+├── data/                # 持久数据
+└── cache/               # 可重新生成的缓存
 ```
+
+通过安装包安装时，可执行代码与状态目录分开存放。
 
 ---
 
@@ -122,7 +128,7 @@ id = "hello_world"
 name = "Hello World Plugin"
 description = "一个简单的示例插件"
 version = "1.0.0"
-entry = "plugins.hello_world:HelloWorldPlugin"
+entry = "plugin.plugins.hello_world:HelloWorldPlugin"
 
 [plugin.sdk]
 recommended = ">=0.1.0,<0.2.0"
@@ -168,7 +174,7 @@ class HelloWorldPlugin(NekoPluginBase):
         self.counter = 0
 
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         self.logger.info("HelloWorldPlugin 已启动！")
         return Ok({"status": "ready"})
 
@@ -192,7 +198,7 @@ class HelloWorldPlugin(NekoPluginBase):
             }
         }
     )
-    def greet(self, name: str = "World", **_):
+    async def greet(self, name: str = "World", **_):
         self.counter += 1
         message = f"Hello, {name}! (第 {self.counter} 次调用)"
         self.logger.info(f"问候: {message}")
@@ -206,7 +212,7 @@ class HelloWorldPlugin(NekoPluginBase):
 - **`@plugin_entry`** — 定义外部可调用的入口点
 - **`@lifecycle`** — 处理生命周期事件（`startup`, `shutdown`, `reload`）
 - **`Ok(...)` / `Err(...)`** — 返回 Result 类型，类型安全的错误处理
-- **`**_`** — 入口点签名中始终包含，用于捕获额外参数
+- **`**_`** — 仅在入口确实要接收额外宿主字段时使用；显式签名会过滤未声明字段
 
 ### 2.5 测试
 
@@ -924,7 +930,7 @@ window.addEventListener('music-ui-ready', () => {
 
 ```python
 @plugin_entry(id="play_external")
-def play_external(self, url: str, **_):
+async def play_external(self, url: str, **_):
     # 先加白域名，确保播放不会被 Music UI 拦截
     self.push_message(
         ai_behavior="blind",
@@ -977,15 +983,15 @@ class MyPlugin(NekoPluginBase):
     input_schema={...},            # JSON Schema 验证
     params=MyParamsModel,          # 或 Pydantic 模型（自动生成 schema）
     kind="action",                 # "action" | "service" | "hook" | "custom"
-    auto_start=False,              # 加载时自动启动
-    persist=False,                 # 跨重载持久化
+    auto_start=False,              # 元数据标记；普通入口不会在加载时执行
+    persist=False,                 # 覆盖调用后的状态快照策略
     model_validate=True,           # 启用 Pydantic 验证
     timeout=30.0,                  # 执行超时（秒）
     llm_result_fields=["text"],    # LLM 消费的字段
     llm_result_model=MyResult,     # 结果的 Pydantic 模型
     metadata={"category": "data"}  # 额外元数据
 )
-def process(self, data: str, **_):
+async def process(self, data: str, **_):
     return Ok({"result": data})
 ```
 
@@ -999,15 +1005,15 @@ def process(self, data: str, **_):
 | `input_schema` | `dict` | `None` | 输入的 JSON Schema |
 | `params` | `type` | `None` | Pydantic 模型（自动生成 `input_schema`） |
 | `kind` | `str` | `"action"` | 入口类型 |
-| `auto_start` | `bool` | `False` | 加载时自动启动 |
-| `persist` | `bool` | `None` | 跨重载持久化状态 |
+| `auto_start` | `bool` | `False` | 元数据标记；普通入口不会在加载时自动执行 |
+| `persist` | `bool` | `None` | 覆盖本次入口调用后的状态快照策略 |
 | `model_validate` | `bool` | `True` | 启用 Pydantic 验证 |
 | `timeout` | `float` | `None` | 执行超时（秒） |
 | `llm_result_fields` | `list[str]` | `None` | LLM 结果提取字段 |
 | `llm_result_model` | `type` | `None` | 结果的 Pydantic 模型 |
 | `metadata` | `dict` | `None` | 额外元数据 |
 
-> 提示：始终在入口函数签名中包含 `**_`，以优雅处理未使用的参数。
+> 提示：只有在入口确实要接收额外宿主字段时才使用 `**_`。宿主会为显式签名过滤未声明字段。
 
 ### 4.3 @lifecycle
 
@@ -1015,7 +1021,7 @@ def process(self, data: str, **_):
 
 ```python
 @lifecycle(id="startup")
-def on_startup(self, **_):
+async def on_startup(self, **_):
     return Ok({"status": "ready"})
 
 @lifecycle(id="shutdown")
@@ -1040,7 +1046,7 @@ def on_reload(self, **_):
     name="清理任务",
     auto_start=True          # 自动启动（默认 True）
 )
-def cleanup(self, **_):
+async def cleanup(self, **_):
     # 在独立线程中运行
     return Ok({"cleaned": True})
 ```
@@ -1057,7 +1063,7 @@ def cleanup(self, **_):
     source="chat",           # 按消息来源过滤
     auto_start=True
 )
-def handle_chat(self, text: str, sender: str, **_):
+async def handle_chat(self, text: str, sender: str, **_):
     return Ok({"handled": True})
 ```
 
@@ -1071,7 +1077,7 @@ def handle_chat(self, text: str, sender: str, **_):
     id="my_handler",
     kind="hook"
 )
-def custom_handler(self, event_data: str, **_):
+async def custom_handler(self, event_data: str, **_):
     return Ok({"processed": True})
 ```
 
@@ -1086,7 +1092,7 @@ def custom_handler(self, event_data: str, **_):
     trigger_method="message",
     auto_start=False
 )
-def on_refresh(self, source: str, **_):
+async def on_refresh(self, source: str, **_):
     return Ok({"refreshed": True})
 ```
 
@@ -1130,7 +1136,7 @@ async def timing_wrapper(self, *, proceed, args, **_):
 
 ```python
 @replace_entry(target="old_entry", priority=0)
-def new_implementation(self, **kwargs):
+async def new_implementation(self, **kwargs):
     return Ok({"replaced": True})
 ```
 
@@ -1150,11 +1156,11 @@ def new_implementation(self, **kwargs):
 from plugin.sdk.plugin import plugin
 
 @plugin.entry(id="greet", description="打招呼")
-def greet(self, name: str = "World", **_):
+async def greet(self, name: str = "World", **_):
     return Ok({"message": f"Hello, {name}!"})
 
 @plugin.lifecycle(id="startup")
-def on_startup(self, **_):
+async def on_startup(self, **_):
     return Ok({"status": "ready"})
 
 @plugin.hook(target="greet", timing="before")
@@ -1162,7 +1168,7 @@ def validate(self, *, args, **_):
     pass
 
 @plugin.timer(id="heartbeat", seconds=60)
-def heartbeat(self, **_):
+async def heartbeat(self, **_):
     return Ok({"alive": True})
 ```
 
@@ -1206,8 +1212,8 @@ watcher.start()
 只处理已经物化的本地快照，不能被 `watch()` 重放。监听链必须使用上例中
 可重放的结构化 `filter(field=value, ...)` 与 `sort(by=...)`。
 
-最近记忆记录使用 `await self.bus.memory.get(bucket_id="default", limit=20)`；
-语义检索使用 `await self.ctx.query_memory("default", "用户偏好")`。旧的
+最近记忆记录使用 `await self.bus.memory.get(bucket_id="default", limit=20)`。
+`self.ctx.query_memory(...)` 只是已弃用的兼容占位调用，不提供语义召回；旧的
 高层 `self.memory` / SDK `MemoryClient` 已删除。
 
 ### 5.3 PluginConfig
@@ -1218,7 +1224,7 @@ watcher.start()
 from plugin.sdk.plugin import PluginConfig
 
 config = PluginConfig(self.ctx)
-timeout = config.get("timeout", default=30)
+timeout = await config.get("timeout", default=30)
 ```
 
 ---
@@ -1242,7 +1248,7 @@ class GreeterPlugin(NekoPluginBase):
         self.greet_count = 0
 
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         self.logger.info("GreeterPlugin 就绪")
         return Ok({"status": "ready"})
 
@@ -1257,7 +1263,7 @@ class GreeterPlugin(NekoPluginBase):
             }
         }
     )
-    def greet(self, name: str = "World", **_):
+    async def greet(self, name: str = "World", **_):
         if not name.strip():
             return Err(SdkError("名字不能为空"))
 
@@ -1338,7 +1344,7 @@ class MonitoredPlugin(NekoPluginBase):
         self.call_stats: dict[str, int] = {}
 
     @lifecycle(id="startup")
-    def on_startup(self, **_):
+    async def on_startup(self, **_):
         return Ok({"status": "ready"})
 
     @before_entry(target="*")
@@ -1352,15 +1358,15 @@ class MonitoredPlugin(NekoPluginBase):
         self.logger.info(f"[{entry_id}] result={result}")
 
     @plugin_entry(id="process", description="处理数据")
-    def process(self, data: str, **_):
+    async def process(self, data: str, **_):
         return Ok({"processed": data.upper()})
 
     @plugin_entry(id="stats", description="获取调用统计")
-    def stats(self, **_):
+    async def stats(self, **_):
         return Ok({"stats": dict(self.call_stats)})
 
     @timer_interval(id="health_check", seconds=300, auto_start=True)
-    def health_check(self, **_):
+    async def health_check(self, **_):
         self.report_status({
             "status": "healthy",
             "total_calls": sum(self.call_stats.values()),
@@ -1520,15 +1526,9 @@ class MyProtocolAdapter(NekoAdapterPlugin):
 
 ### 9.1 异步编程
 
-入口点可以是同步或异步的：
+运行时入口必须使用 `async def`。同步辅助函数仍可使用，但应通过异步入口暴露：
 
 ```python
-# 同步入口（在线程池中运行）
-@plugin_entry(id="sync_task")
-def sync_task(self, **_):
-    return Ok({"result": "done"})
-
-# 异步入口（在事件循环中运行）
 @plugin_entry(id="async_task")
 async def async_task(self, url: str, **_):
     async with aiohttp.ClientSession() as session:
@@ -1551,13 +1551,13 @@ class ThreadSafePlugin(NekoPluginBase):
         self._counter = 0
 
     @plugin_entry(id="increment")
-    def increment(self, **_):
+    async def increment(self, **_):
         with self._lock:
             self._counter += 1
             return Ok({"count": self._counter})
 
     @timer_interval(id="report", seconds=60, auto_start=True)
-    def report(self, **_):
+    async def report(self, **_):
         with self._lock:
             count = self._counter
         self.report_status({"count": count})
@@ -1565,17 +1565,14 @@ class ThreadSafePlugin(NekoPluginBase):
 
 ### 9.3 自定义配置
 
-```python
-import json
+运行时配置由宿主提供的 `self.config` 管理。配置 API 是异步的，应在
+异步生命周期钩子或入口中加载，不要覆盖 `self.config`：
 
-class ConfigurablePlugin(NekoPluginBase):
-    def __init__(self, ctx):
-        super().__init__(ctx)
-        config_file = self.storage_dir / "config" / "config.json"
-        if config_file.exists():
-            self.config = json.loads(config_file.read_text())
-        else:
-            self.config = {"timeout": 30}
+```python
+@lifecycle(id="startup")
+async def load_config(self, **_):
+    self.timeout = await self.config.get("timeout", default=30)
+    return Ok({"timeout": self.timeout})
 ```
 
 ### 9.4 SQLite 数据持久化
@@ -1612,7 +1609,7 @@ class PersistentPlugin(NekoPluginBase):
 
 ```python
 @plugin_entry(id="process")
-def process(self, data: str, **_):
+async def process(self, data: str, **_):
     if not data:
         return Err(SdkError("data 是必填的"))
     try:
@@ -1667,8 +1664,7 @@ async def on_shutdown(self, **_):
 # 插件安装目录（代码、Manifest 和静态资源）
 template_path = self.plugin_dir / "static" / "template.json"
 
-# 用户存储目录
-config_file = self.storage_dir / "config" / "config.json"
+# 运行时配置通过 await self.config.get()/update() 读取或更新
 
 # 数据目录
 db_path = self.data_path("records.db")     # → <storage-dir>/data/records.db
@@ -1681,10 +1677,10 @@ preview_path = self.cache_path("preview.png")  # → <storage-dir>/cache/preview
 ### 10.6 插件发布检查清单
 
 - [ ] 所有入口点返回 `Ok`/`Err`（不是裸 dict 或异常）
-- [ ] 实现了 `@lifecycle(id="startup")` 和 `@lifecycle(id="shutdown")`
-- [ ] 所有接受参数的入口点定义了 `input_schema`
-- [ ] 所有入口点签名包含 `**_`
-- [ ] 使用 Logger 而非 `print()`
+- [ ] 只在确实需要初始化或清理资源时实现对应生命周期钩子
+- [ ] 入口参数具备可推断 schema、显式 `input_schema` 或 Pydantic `params` 模型
+- [ ] 入口签名明确声明消费的参数，仅在确实接收额外字段时使用 `**_`
+- [ ] 正常诊断使用 Logger，且日志和进程输出均不包含原始对话、密钥或私有 payload
 - [ ] 如果使用定时器，共享状态受锁保护
 - [ ] 跨插件调用处理了 `Err` 结果
 - [ ] `plugin.toml` 的 `entry` 路径和 SDK 版本约束正确
@@ -1703,7 +1699,7 @@ Plugin 与 Adapter 的崩溃通常不会影响主系统或其他插件，因为�
 
 ### Q: 同步还是异步？
 
-都支持。I/O 密集型操作建议用异步。同步入口点在线程池中运行，异步入口点在事件循环中运行。
+运行时入口只支持 `async def`。同步计算可以保留为私有辅助函数；如果它会阻塞事件循环，应在入口中显式卸载到线程。
 
 ### Q: 如何调试插件？
 
@@ -1728,12 +1724,15 @@ Plugin 与 Adapter 的崩溃通常不会影响主系统或其他插件，因为�
 
 | 类别 | 导出 |
 |------|------|
-| **基类** | `NekoPluginBase`, `PluginMeta` |
-| **装饰器** | `neko_plugin`, `plugin_entry`, `lifecycle`, `timer_interval`, `message`, `on_event`, `custom_event`, `hook`, `before_entry`, `after_entry`, `around_entry`, `replace_entry`, `plugin` |
-| **Result** | `Ok`, `Err`, `Result`, `unwrap`, `unwrap_or` |
+| **基类** | `NekoPluginBase` |
+| **元数据与类型** | `PluginMeta`, `EntryKind`, `LlmToolMeta`, `NEKO_PLUGIN_META_ATTR`, `NEKO_PLUGIN_TAG` |
+| **装饰器** | `neko_plugin`, `plugin_entry`, `quick_action`, `lifecycle`, `timer_interval`, `message`, `on_event`, `custom_event`, `hook`, `before_entry`, `after_entry`, `around_entry`, `replace_entry`, `plugin`, `ui`, `llm_tool` |
+| **Result** | `Ok`, `Err`, `Result`, `PushMessageResult`, `unwrap`, `unwrap_or` |
 | **运行时** | `Plugins`, `PluginRouter`, `PluginConfig`, `PluginStore`, `SystemInfo` |
 | **错误** | `SdkError`, `TransportError` |
 | **日志** | `get_plugin_logger` |
+| **设置** | `PluginSettings`, `SettingsField` |
+| **活动与 i18n** | `OsActivitySnapshot`, `get_os_activity_snapshot`, `PluginI18n`, `tr` |
 
 ### Adapter SDK (`plugin.sdk.adapter`)
 

@@ -1,0 +1,199 @@
+{
+  "build_env": {
+    "arch": "AMD64",
+    "os": "win32",
+    "python": "3.11"
+  },
+  "entries": [
+    {
+      "auto_start": false,
+      "description": "控制本地 N.E.K.O 点歌台。用户要求播放指定曲目时使用 play 并传 query；用户要求切歌、下一首时使用 next；用户要求停止点歌台播放时使用 stop；用户要求上一首时使用 previous；用户要求设置音量时使用 set_volume 并传 value；用户要求调大/调小音量时使用 adjust_volume 并传 value；用户要求切换播放模式时使用 set_mode 并传 mode。",
+      "event_key": "jukebox_controller.control_jukebox",
+      "event_type": "plugin_entry",
+      "id": "control_jukebox",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "控制动作：play 播放指定曲目，next 切到下一首，previous 切到上一首，stop 停止播放，set_volume 设置音量，adjust_volume 增减音量，set_mode 设置播放模式。",
+            "enum": [
+              "play",
+              "next",
+              "previous",
+              "stop",
+              "set_volume",
+              "adjust_volume",
+              "set_mode"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "action=set_mode 时使用。none 不自动下一首，sequence 顺序播放，single 单曲循环，random 随机播放。",
+            "enum": [
+              "none",
+              "sequence",
+              "single",
+              "random"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "description": "要播放的曲目名。action=play 时使用；支持不完整歌名，前端播放第一匹配项。",
+            "type": "string"
+          },
+          "value": {
+            "description": "音量数值。0 到 1 之间的小数按比例算（0.5 = 50%），1 以上按百分点算（30 = 30%，1 = 1%）。action=set_volume 时是目标音量，取值 0-100；action=adjust_volume 时是相对增减量，取值 -100 到 100。",
+            "type": "number"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "llm_result_fields": [
+        "action",
+        "query",
+        "value",
+        "mode",
+        "message"
+      ],
+      "llm_result_schema": {
+        "properties": {
+          "action": {},
+          "message": {},
+          "mode": {},
+          "query": {},
+          "value": {}
+        },
+        "required": [
+          "action",
+          "query",
+          "value",
+          "mode",
+          "message"
+        ],
+        "type": "object"
+      },
+      "metadata": {},
+      "model_validate": true,
+      "name": "控制点歌台",
+      "return_message": "",
+      "timeout": null
+    }
+  ],
+  "entries_config_sha256": "",
+  "entry_methods": {
+    "control_jukebox": "control_jukebox"
+  },
+  "handlers": {
+    "jukebox_controller.control_jukebox": {
+      "auto_start": false,
+      "description": "控制本地 N.E.K.O 点歌台。用户要求播放指定曲目时使用 play 并传 query；用户要求切歌、下一首时使用 next；用户要求停止点歌台播放时使用 stop；用户要求上一首时使用 previous；用户要求设置音量时使用 set_volume 并传 value；用户要求调大/调小音量时使用 adjust_volume 并传 value；用户要求切换播放模式时使用 set_mode 并传 mode。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "control_jukebox",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "控制动作：play 播放指定曲目，next 切到下一首，previous 切到上一首，stop 停止播放，set_volume 设置音量，adjust_volume 增减音量，set_mode 设置播放模式。",
+            "enum": [
+              "play",
+              "next",
+              "previous",
+              "stop",
+              "set_volume",
+              "adjust_volume",
+              "set_mode"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "action=set_mode 时使用。none 不自动下一首，sequence 顺序播放，single 单曲循环，random 随机播放。",
+            "enum": [
+              "none",
+              "sequence",
+              "single",
+              "random"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "description": "要播放的曲目名。action=play 时使用；支持不完整歌名，前端播放第一匹配项。",
+            "type": "string"
+          },
+          "value": {
+            "description": "音量数值。0 到 1 之间的小数按比例算（0.5 = 50%），1 以上按百分点算（30 = 30%，1 = 1%）。action=set_volume 时是目标音量，取值 0-100；action=adjust_volume 时是相对增减量，取值 -100 到 100。",
+            "type": "number"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "控制点歌台"
+    },
+    "jukebox_controller:plugin_entry:control_jukebox": {
+      "auto_start": false,
+      "description": "控制本地 N.E.K.O 点歌台。用户要求播放指定曲目时使用 play 并传 query；用户要求切歌、下一首时使用 next；用户要求停止点歌台播放时使用 stop；用户要求上一首时使用 previous；用户要求设置音量时使用 set_volume 并传 value；用户要求调大/调小音量时使用 adjust_volume 并传 value；用户要求切换播放模式时使用 set_mode 并传 mode。",
+      "dynamic": false,
+      "enabled": true,
+      "event_type": "plugin_entry",
+      "id": "control_jukebox",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "控制动作：play 播放指定曲目，next 切到下一首，previous 切到上一首，stop 停止播放，set_volume 设置音量，adjust_volume 增减音量，set_mode 设置播放模式。",
+            "enum": [
+              "play",
+              "next",
+              "previous",
+              "stop",
+              "set_volume",
+              "adjust_volume",
+              "set_mode"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "action=set_mode 时使用。none 不自动下一首，sequence 顺序播放，single 单曲循环，random 随机播放。",
+            "enum": [
+              "none",
+              "sequence",
+              "single",
+              "random"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "description": "要播放的曲目名。action=play 时使用；支持不完整歌名，前端播放第一匹配项。",
+            "type": "string"
+          },
+          "value": {
+            "description": "音量数值。0 到 1 之间的小数按比例算（0.5 = 50%），1 以上按百分点算（30 = 30%，1 = 1%）。action=set_volume 时是目标音量，取值 0-100；action=adjust_volume 时是相对增减量，取值 -100 到 100。",
+            "type": "number"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "kind": "action",
+      "metadata": {},
+      "name": "控制点歌台"
+    }
+  },
+  "schema_version": 3,
+  "sdk_version": "0.1.0",
+  "source_bytes": 10264,
+  "source_files": [
+    "__init__.py",
+    "plugin.toml"
+  ],
+  "source_sha256": "425a9098f99095f8f2d8ac87397ab291574c517f5fb00be8b2c3434702b854f0"
+}

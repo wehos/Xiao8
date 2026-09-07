@@ -31,6 +31,11 @@ from plugin.server.application.install_source import (
     classify_plugin_path,
     get_install_source_manager,
 )
+from plugin.server.infrastructure.autostart_approvals import (
+    clear_autostart_pending,
+    is_autostart_approved,
+    mark_autostart_pending,
+)
 from plugin.server.application.plugin_cli.paths import PluginCliPathPolicy
 from plugin.server.application.plugin_cli.install_plan import (
     REPLACEMENT_ACTIONS,
@@ -42,6 +47,7 @@ from plugin.server.application.plugins.installation_transactions import (
     replace as replacement_transaction,
 )
 from plugin.server.application.plugins import source_switch
+from plugin.server.application.plugins.registry_service import PluginRegistryService
 from plugin.server.application.plugins.installation_transactions.manual_takeover import (
     is_manual_takeover_entry,
     local_manual_takeover_confirmation_token,
@@ -79,6 +85,34 @@ _UPLOAD_MAX_BYTES = 500 * 1024 * 1024
 _UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
 
 logger = get_logger("server.application.plugin_cli")
+plugin_registry_service = PluginRegistryService()
+
+
+async def _refresh_committed_market_install(plugin_id: str) -> str | None:
+    """Refresh a fresh Market install without rolling back committed files.
+
+    The source row is the commit point. Cancellation after it must wait for the
+    one refresh already in flight, then propagate to the caller; refresh failure
+    is surfaced as a warning while the committed installation remains intact.
+    """
+
+    try:
+        # upload_and_install is wrapped by serialized_plugin_operation, which
+        # shields the complete locked operation and waits for it before
+        # propagating caller cancellation. Await directly here so no orphan
+        # refresh task is created.
+        await plugin_registry_service.refresh_plugin(plugin_id, force=True)
+    except Exception as exc:  # noqa: BLE001 - committed install stays successful.
+        logger.warning(
+            "post-commit Market plugin refresh failed: plugin_id={}",
+            plugin_id,
+            exc_info=True,
+        )
+        return (
+            f"plugin '{plugin_id}' was installed, but its registry refresh failed "
+            f"({type(exc).__name__}: {exc}); refresh plugins or restart N.E.K.O"
+        )
+    return None
 
 _PACKAGE_ERROR_PATTERNS = (
     (
@@ -348,16 +382,106 @@ class PluginCliService:
                 details=plan_dict,
             )
         if action == "install":
-            result = await asyncio.to_thread(
-                self._install_sync,
-                package=package,
-                plugins_root=plugins_root,
-                profiles_root=profiles_root,
-                on_conflict=on_conflict,
-                use_staging=use_staging,
-                forced_directory_name=forced_directory_name,
-                _allow_external_profiles_root=_allow_external_profiles_root,
+            # 登记排在提升之前，和覆盖安装那条路同一个形状。装完再登记的话，写盘
+            # 失败时插件已经在盘上了，只能报个 warning——而下次启动会把"没有待批准
+            # 记录"当成已批准，第三方代码就在用户首次启动之前跑起来了（coderabbit
+            # / greptile）。plan_dict 的 plugin_id 读自包内 manifest，提升之前就有。
+            # bundle 的 plan.plugin_id 是**包** id，而注册表按包内每个插件自己的
+            # manifest id 记批准状态——只登记包 id 等于对整组一个都没拦住
+            # （coderabbit）。所以 bundle 用 bundle_plugin_ids，单插件用 plugin_id。
+            bundle_ids = [
+                str(item or "").strip()
+                for item in (plan_dict.get("bundle_plugin_ids") or ())
+                if str(item or "").strip()
+            ]
+            gate_plugin_ids = bundle_ids or [
+                pid for pid in (str(plan_dict.get("plugin_id") or "").strip(),) if pid
+            ]
+            gate_restore: list[str] = []
+            for gate_plugin_id in gate_plugin_ids:
+                if await asyncio.to_thread(is_autostart_approved, gate_plugin_id):
+                    gate_restore.append(gate_plugin_id)
+                if not await asyncio.to_thread(mark_autostart_pending, gate_plugin_id):
+                    # 拒绝之前先把这一轮已经登记的还原掉，别留半截状态。
+                    for done in gate_restore:
+                        if not await asyncio.to_thread(clear_autostart_pending, done):
+                            logger.error(
+                                "could not restore the autostart approval for "
+                                "plugin_id={} while refusing the install; it must "
+                                "be started once by hand",
+                                done,
+                            )
+                    raise ServerDomainError(
+                        code="PLUGIN_AUTOSTART_GATE_UNAVAILABLE",
+                        message=(
+                            "cannot record the plugin as awaiting approval; "
+                            "refusing to install code that would autostart "
+                            "unapproved"
+                        ),
+                        status_code=500,
+                        details={"plugin_id": gate_plugin_id},
+                    )
+            try:
+                result = await asyncio.to_thread(
+                    self._install_sync,
+                    package=package,
+                    plugins_root=plugins_root,
+                    profiles_root=profiles_root,
+                    on_conflict=on_conflict,
+                    use_staging=use_staging,
+                    forced_directory_name=forced_directory_name,
+                    _allow_external_profiles_root=_allow_external_profiles_root,
+                )
+            except BaseException:
+                # 安装没成，把批准状态原样放回去——否则一次失败的安装会给这些 id
+                # 留下待批准记录，将来同 id 的插件会被它误伤。
+                gate_root = await asyncio.to_thread(
+                    self._autostart_gate_root, plugins_root
+                )
+                for gate_plugin_id in gate_restore:
+                    # 只为真的没留在盘上的那些还原。_install_via_staging_sync 用
+                    # rmtree(ignore_errors=True) 收尾，占用/权限/坏盘都可能留下一份
+                    # 可执行的残骸；无条件还原批准等于放它下次开机自己跑起来
+                    # （codex）。和覆盖回滚同一条判据：看盘不看意图。
+                    if gate_root is None or await asyncio.to_thread(
+                        _plugin_directory_exists, gate_root, gate_plugin_id
+                    ):
+                        logger.error(
+                            "install rollback could not clear plugin_id={} of "
+                            "leftovers; keeping it gated so leftover code cannot "
+                            "autostart",
+                            gate_plugin_id,
+                        )
+                        continue
+                    if not await asyncio.to_thread(
+                        clear_autostart_pending, gate_plugin_id
+                    ):
+                        # 和覆盖回滚同一个判断：这里正在处理另一个异常，改抛会把
+                        # 真正的失败原因换掉。记一笔，后果有界——这个 id 上留了一条
+                        # 待批准记录，将来占用它的插件第一次要手动启动一次。
+                        logger.error(
+                            "install rollback could not restore the autostart "
+                            "approval for plugin_id={}; whatever later takes that "
+                            "id must be started once by hand",
+                            gate_plugin_id,
+                        )
+                raise
+            # 挂在 install() 的成功出口上，不是挂在某一条来源登记路径上。
+            # 上传安装（upload_and_install）自己登记来源、不走
+            # _record_requested_install_source，把钩子放在那里等于对上传来的
+            # 插件完全不生效——而那正是最需要这道闸的一条路（greptile）。
+            #
+            # 再按安装结果里的 manifest id 登记一次。上面用的是 plan 的 id，而
+            # 目录名和 [plugin].id 允许不一致；两次都是幂等的。这一次已经在盘上了，
+            # 拒绝不了，所以失败时挂 warning 而不是抛。
+            unrecorded = await asyncio.to_thread(
+                _mark_new_install_awaiting_autostart, result
             )
+            if unrecorded:
+                result["autostart_gate_warning"] = (
+                    "could not record as awaiting approval: "
+                    + ", ".join(sorted(unrecorded))
+                )
             return await self._record_requested_install_source(
                 install_result=result,
                 package=package,
@@ -445,6 +569,27 @@ class PluginCliService:
                 status_code=409,
                 details=asdict(plan),
             )
+
+        # 目标目录里只有 config/data/cache、连 plugin.toml 都没有时，install_plan
+        # 给的是 reinstall——而这条替换出口按定义不登记待批准。可那里从来没装过
+        # 插件代码：这一次是**全新**把可执行代码放进去，默认 enabled/auto_start
+        # 会让它在下次开机自己跑起来，用户一次都没启动过（codex）。所以按全新安装
+        # 处理，闸设在提升之前。
+        manifestless_gate_restore = False
+        if plan.manifestless_state:
+            manifestless_gate_restore = await asyncio.to_thread(
+                is_autostart_approved, plan.plugin_id
+            )
+            if not await asyncio.to_thread(mark_autostart_pending, plan.plugin_id):
+                raise ServerDomainError(
+                    code="PLUGIN_AUTOSTART_GATE_UNAVAILABLE",
+                    message=(
+                        "cannot record the plugin as awaiting approval; refusing "
+                        "to install code that would autostart unapproved"
+                    ),
+                    status_code=500,
+                    details={"plugin_id": plan.plugin_id},
+                )
 
         manual_manager: InstallSourceManager | None = None
         manual_entry: LockEntry | None = None
@@ -569,6 +714,20 @@ class PluginCliService:
                 ),
             )
         except replacement_transaction.ReplacePluginError as exc:
+            if manifestless_gate_restore and not await asyncio.to_thread(
+                (target_dir / "plugin.toml").exists
+            ):
+                # 和别处同一条判据：看盘不看意图。manifest 还在说明代码留在盘上了，
+                # 那就保持拦截；真的回滚干净了才把批准位还回去。
+                if not await asyncio.to_thread(
+                    clear_autostart_pending, plan.plugin_id
+                ):
+                    logger.error(
+                        "manifestless replacement rollback could not restore the "
+                        "autostart approval for plugin_id={}; it must be started "
+                        "once by hand",
+                        plan.plugin_id,
+                    )
             source_restored = True
             if manual_entry is not None and source_write_attempted:
                 try:
@@ -595,6 +754,8 @@ class PluginCliService:
                 details=details,
             ) from exc
 
+        # 这条出口是替换/升级/接管，按定义不是全新安装，不登记待批准——升级把一个
+        # 用户早就在用的插件的自启动资格收走，是把回归包装成安全特性。
         response = {
             **result.install_result,
             # Compatibility response for the existing Package Manager UI.
@@ -747,6 +908,9 @@ class PluginCliService:
         async def refresh_registry() -> object:
             from plugin.server.application.plugins.lifecycle_service import plugin_registry_service
 
+            # 换源/回滚之后这一次刷新会重读选中源的 manifest 和 plugin.meta.json。
+            # 曾经要先清一次扫描缓存（缓存键只看插件目录内容，换源它看不见），
+            # 那个缓存已经不存在了。
             return await plugin_registry_service.refresh_registry()
 
         async def validate_promoted_source() -> None:
@@ -757,6 +921,35 @@ class PluginCliService:
                 config_path=target_dir / "plugin.toml",
             )
 
+        # 登记必须排在切换**之前**。switch_builtin_source 在返回前就完成了提升、
+        # 注册并可能启动第三方替换代码；登记放在它返回之后的话，进程若在这中间退出，
+        # 那份代码已经跑过，而且下次开机会继承原插件的自启动资格
+        # （greptile / coderabbit 各自独立指到这一处）。
+        #
+        # 代价是失败路径要还原：切换回滚到内置插件之后，这条待批准记录会把一个用户
+        # 本来就在自启的内置插件拦下来。所以先记下原状态，失败时原样放回去。
+        override_was_approved = await asyncio.to_thread(
+            is_autostart_approved, plan.plugin_id
+        )
+        if not await asyncio.to_thread(mark_autostart_pending, plan.plugin_id):
+            # 登记没落盘就不能往下走。切换会把第三方代码提升成有效源并可能启动它，
+            # 而没有待批准记录的话它下次开机就自启——用户从没批准过（coderabbit）。
+            # 这一步排在切换之前，所以拒绝是干净的：什么都还没动——除了暂存目录，
+            # _stage_builtin_override_sync 已经把整个包解开并改名放进去了。清理挂在
+            # 下面那个 try 的 finally 上，而这里 raise 在它之前，于是每次登记失败都
+            # 留下一份完整的孤儿包，反复重试会越堆越大（codex）。
+            await asyncio.to_thread(
+                self._cleanup_builtin_override_staging_sync, staged
+            )
+            raise ServerDomainError(
+                code="PLUGIN_AUTOSTART_GATE_UNAVAILABLE",
+                message=(
+                    "cannot record the override as awaiting approval; refusing to "
+                    "promote third-party code that would autostart unapproved"
+                ),
+                status_code=500,
+                details={"plugin_id": plan.plugin_id},
+            )
         try:
             switched = await switch_builtin_source(
                 SourceSwitchRequest(
@@ -778,6 +971,26 @@ class PluginCliService:
                 stop=source_switch.stop_plugin_for_source_switch,
                 start=source_switch.start_plugin_for_source_switch,
             )
+        except BaseException:
+            # 只有覆盖真的没留在盘上时才恢复批准。回滚可能删不掉用户目录（占用、
+            # 权限、坏盘），那种情况下第三方源还在，恢复批准等于让它在下次开机
+            # 直接跑起来（greptile）。所以看盘不看意图：目录还在就保持拦截。
+            override_removed = not await asyncio.to_thread(target_dir.exists)
+            if override_was_approved and override_removed:
+                if not await asyncio.to_thread(
+                    clear_autostart_pending, plan.plugin_id
+                ):
+                    # 只能记一笔。这里已经在处理另一个异常，改抛"批准还原失败"会
+                    # 把真正的失败原因换掉，而那才是用户要看的东西（greptile 建议
+                    # 传播，我不采纳这一半）。后果有界且不涉安全：恢复出来的内置
+                    # 插件这一轮不自启，用户手动启动一次就会重试这次写入。
+                    logger.error(
+                        "override rollback could not restore the autostart "
+                        "approval for plugin_id={}; the restored builtin will not "
+                        "autostart until it is started once by hand",
+                        plan.plugin_id,
+                    )
+            raise
         finally:
             await asyncio.to_thread(self._cleanup_builtin_override_staging_sync, staged)
 
@@ -1242,6 +1455,12 @@ class PluginCliService:
                     package_id=str(unpack_result.get("package_id") or ""),
                     profile_dir=str(unpack_result.get("profile_dir") or ""),
                 )
+                if install_mode == "install":
+                    refresh_warning = await _refresh_committed_market_install(
+                        package_plugin_id
+                    )
+                    if refresh_warning is not None:
+                        warnings.append(refresh_warning)
                 return self._compose_install_result(
                     saved=saved,
                     unpack_result=unpack_result,
@@ -1332,6 +1551,12 @@ class PluginCliService:
                     profile_dir=str(unpack_result.get("profile_dir") or ""),
                 )
             warnings.extend(ism_warnings)
+            if install_mode == "install":
+                refresh_warning = await _refresh_committed_market_install(
+                    package_plugin_id
+                )
+                if refresh_warning is not None:
+                    warnings.append(refresh_warning)
 
             install_dict: dict[str, Any] = {
                 "channel": entry.channel,
@@ -1609,6 +1834,33 @@ class PluginCliService:
     @staticmethod
     def _path_policy() -> PluginCliPathPolicy:
         return PluginCliPathPolicy.from_settings()
+
+    def _autostart_gate_root(self, plugins_root: str | None) -> Path | None:
+        """The directory the install rollback checks for leftovers.
+
+        ``None`` means the question could not be asked, and the caller keeps the
+        id gated. Everything is inside the try on purpose: this runs from an
+        except block that is already carrying the install's real failure, and a
+        ``PluginCliPathPolicy.from_settings()`` error escaping here would both
+        replace that cause and skip every restore in the loop (coderabbit).
+        """
+        try:
+            policy = self._path_policy()
+            if not plugins_root:
+                return policy.user_plugins_root
+            return _require_within(
+                Path(plugins_root).expanduser().resolve(),
+                policy.user_plugins_root,
+                field="plugins_root",
+            )
+        except Exception as exc:
+            # 越界的 root 本来就装不进去；能拿到策略就回落到真正的用户插件根去找
+            # 残骸，拿不到就交给调用方按「查不了」处理。
+            logger.error("cannot resolve the install rollback root: {}", exc)
+            try:
+                return self._path_policy().user_plugins_root
+            except Exception:
+                return None
 
     def _resolver(self) -> PluginSourceResolver:
         return PluginSourceResolver(self._path_policy())
@@ -2518,6 +2770,118 @@ class PluginCliService:
             status_code=status_code,
             details={"action": action, "error_type": type(exc).__name__},
         )
+
+
+def _plugin_directory_exists(plugins_root: Path, plugin_id: str) -> bool:
+    """Whether any directory under ``plugins_root`` still holds ``plugin_id``.
+
+    Used by the install rollback to decide whether restoring the plugin's
+    autostart approval is safe. Staging cleanup runs with
+    ``ignore_errors=True``, so a failed install can leave a runnable copy
+    behind; handing that copy its approval back lets it start itself at the
+    next boot without the user ever having run it.
+
+    Fails closed, unlike the manifest reader: every uncertainty here — an
+    unlistable root, an unreadable manifest next to a same-named directory —
+    returns ``True`` and keeps the id gated. The cost of a false positive is
+    one manual start; the cost of a false negative is third-party code running
+    unapproved.
+    """
+    wanted = str(plugin_id or "").strip()
+    if not wanted:
+        return False
+    try:
+        entries = list(plugins_root.iterdir())
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        logger.error(
+            "cannot list {} to check for install remnants of {}: {}",
+            plugins_root,
+            wanted,
+            exc,
+        )
+        return True
+    for entry in entries:
+        try:
+            if not entry.is_dir():
+                continue
+        except OSError:
+            continue
+        if entry.name.startswith("."):
+            # 暂存目录（.neko_staging_*）不是安装产物，注册表也不扫它们。
+            continue
+        manifest_id = _installed_manifest_plugin_id(entry)
+        if manifest_id == wanted:
+            return True
+        if not manifest_id and entry.name == wanted:
+            # manifest 读不出来的同名目录：说不清它是不是这个插件，按在算。
+            return True
+    return False
+
+
+def _installed_manifest_plugin_id(target_dir: object) -> str:
+    """Read ``[plugin].id`` out of an installed plugin's manifest.
+
+    Returns "" when it cannot be read. Every caller here fails open — an
+    unreadable manifest means the plugin autostarts the way it did before this
+    gate existed, which is the safe direction.
+    """
+    if not target_dir:
+        return ""
+    # 用模块顶层那个 tomllib。这里本来写了一段 try/except 回落到 tomli，但这个模块
+    # 顶层就是无条件 import tomllib 的——那段回落既到不了，又暗示了一套本模块并不
+    # 具备的 3.10 兼容性（github-code-quality）。
+    config_path = Path(str(target_dir)) / "plugin.toml"
+    try:
+        with open(config_path, "rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, ValueError):
+        return ""
+    plugin_table = data.get("plugin")
+    if not isinstance(plugin_table, dict):
+        return ""
+    return str(plugin_table.get("id") or "").strip()
+
+
+def _mark_new_install_awaiting_autostart(install_result: dict) -> list[str]:
+    """Withhold autostart from a plugin the user has installed but never run.
+
+    Call this only from the fresh-install path. "Is this plugin new?" is decided
+    by the install plan, which computes it before touching disk: ``install_plan``
+    only says ``"install"`` when nothing is installed under that id, and says
+    ``reinstall`` or ``blocked`` otherwise.
+
+    It deliberately does *not* consult ``state.plugins``. That snapshot answers a
+    different question — "has a refresh seen this yet" — and a refresh that
+    overlaps the install can register the freshly written directory before this
+    runs, at which point the plugin looks pre-existing and skips the gate
+    entirely (greptile); a stale registry produces the mirror error (codex).
+    """
+    from plugin.server.infrastructure.autostart_approvals import mark_autostart_pending
+
+    unrecorded: list[str] = []
+    installed = install_result.get("installed_plugins")
+    if not isinstance(installed, list):
+        return unrecorded
+    for item in installed:
+        if not isinstance(item, dict):
+            continue
+        target_dir = item.get("target_dir")
+        # 注册表按 manifest 里声明的 id 记插件，而安装结果只带目录名
+        # （InstalledPlugin.target_plugin_id 就是 target_dir.name）。仓库允许目录名
+        # 和 plugin.id 不一致，登记错 id 等于这道闸对该插件完全不生效
+        # （coderabbit）。所以直接去读装出来的那份 manifest。
+        plugin_id = _installed_manifest_plugin_id(target_dir)
+        if not plugin_id:
+            plugin_id = str(item.get("target_plugin_id") or "").strip()
+        if not plugin_id and target_dir:
+            plugin_id = Path(str(target_dir)).name
+        if not plugin_id:
+            continue
+        if not mark_autostart_pending(plugin_id):
+            unrecorded.append(plugin_id)
+    return unrecorded
 
 
 def _record_install_source_for_install_result(

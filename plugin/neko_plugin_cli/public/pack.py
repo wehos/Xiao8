@@ -9,6 +9,8 @@ from pathlib import Path
 
 from .models import PackResult, PayloadBuildResult, PluginSource
 from .pack_rules import PackRuleSet, load_pack_rules, should_skip_path
+from ..core.build import _settle_staged_metadata
+from ..core.metadata_probe import write_packaged_metadata
 from .plugin_source import load_plugin_source
 from .profile import write_bundle_profile, write_default_profile
 from .toml_utils import escape_string
@@ -183,6 +185,17 @@ class PluginPacker:
             plugin_payload_dir,
             rules=pack_rules,
         )
+        # 这条向后兼容的打包 API 有自己的 payload 构建，不经过 core.build
+        # （codex）。不在这里写的话，走它打出来的包在用户机器上没有元数据，
+        # 入口 schema 会一路退化成占位。
+        _settle_staged_metadata(
+            staged_files,
+            plugin_payload_dir,
+            write_packaged_metadata(
+                source_dir=source.plugin_dir,
+                target_dir=plugin_payload_dir,
+            ),
+        )
         profile_files = write_default_profile(source, paths.profiles_dir)
         payload_hash = self.compute_payload_hash(paths.payload_dir)
 
@@ -212,6 +225,14 @@ class PluginPacker:
                     plugin_payload_dir,
                     rules=pack_rules,
                 )
+            )
+            _settle_staged_metadata(
+                staged_files,
+                plugin_payload_dir,
+                write_packaged_metadata(
+                    source_dir=source.plugin_dir,
+                    target_dir=plugin_payload_dir,
+                ),
             )
 
         profile_files = write_bundle_profile(sources, paths.profiles_dir)

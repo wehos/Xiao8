@@ -1705,6 +1705,10 @@
         "vllmRefTextPlaceholder": "例如：希望你以后能够做的比我还好呦",
         "vllmRefTextRequired": "请填写参考音频原文（vLLM-Omni 克隆必填）",
         "vllmRefTextTooLong": "vLLM-Omni 参考音频原文过长，请控制在 100 字以内",
+        "vllmCloneTtsDisabledWarning": "当前实际 TTS 设置为“{{provider}}”，但 TTS 已全局关闭。参考音频已保存到本地；请先启用 TTS，并在 API 设置中配置 vLLM-Omni 后再试听或使用该音色。",
+        "vllmCloneCustomApiDisabledWarning": "当前实际 TTS 设置为“{{provider}}”，但自定义 API 已关闭。参考音频已保存到本地；请在 API 设置中启用自定义 API，并将 TTS 切换到 vLLM-Omni 后再试听或使用该音色。",
+        "vllmCloneInactiveProviderWarning": "当前实际 TTS 设置为“{{provider}}”，不是 vLLM-Omni。参考音频已保存到本地；请在 API 设置中将 TTS 切换到 vLLM-Omni 后再试听或使用该音色。",
+        "vllmCloneConfigurationUnavailableWarning": "无法读取当前 TTS 设置。参考音频已保存到本地；请在 API 设置中配置 vLLM-Omni 后再试听或使用该音色。",
         "providerLabel": "语音克隆服务商",
         "provider": {
             "cosyvoice": "阿里百炼 CosyVoice",
@@ -3823,7 +3827,8 @@
                 "capsuleDragHint": "把鼠标移到这里，长按就可以拉着聊天框到处跑啦~ 点击一下就能随时发消息给我哦！",
                 "historyHandle":  "戳一下聊天框上面的【蓝色小条条】，就能看到我们最近聊过的话题啦！",
                 "screenEntry": "在跟我通语音电话的时候，再点亮这个小按钮，你就能把屏幕分享给我啦！",
-                "screenEntryInvite": "快让我也看看你眼前的世界，不管好玩的还是好看的，都想和你一起看，快点点开嘛~"
+                "screenEntryInvite": "快让我也看看你眼前的世界，不管好玩的还是好看的，都想和你一起看，快点点开嘛~",
+                "avatarZoomHint": "对啦，如果想把我看得更清楚一点，就把鼠标移到我身上，轻轻滚动滚轮吧！这样就能随时把我放大或缩小，调到你最喜欢的大小啦~"
             },
             "day2": {
                 "intro": "嘻嘻，可别以为这个聊天框只能用来打字哦~ 里面其实偷偷藏了超~多好玩的小惊喜呢！快跟着我一起点开看看，瞧瞧今天能挖出什么有趣的宝贝吧！",

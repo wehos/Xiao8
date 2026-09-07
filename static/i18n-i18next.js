@@ -29,11 +29,9 @@
     const SUPPORTED_LANGUAGES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'es', 'pt'];
 
     // locale 资源版本（用于 cache-busting，避免客户端长期缓存旧语言包导致新增 key 不生效）
-    // 修改原因：新增本轮图片被裁剪、语音多模态发送失败、OpenClaw 指令下发失败三条
-    // errors.* 文案；递增版本让 Electron、Docker 等长期缓存重新拉取包含完整新 key
-    // 的语言包 —— 不递增的话，缓存住旧语言包的客户端会继续把 errors.TURN_IMAGES_TRIMMED
-    // 这类 key 当字面量渲染出来，正好是本次改动想修掉的那个症状。
-    const LOCALE_VERSION = '2026-09-01-day2-tool-wheel-rotation';
+    // 合并 Day 1/Day 2 引导与 vLLM-Omni 克隆提示后新增了 key；递增版本让 Electron、
+    // Docker 等长期缓存重新拉取完整语言包，避免界面直接显示 voice.* key。
+    const LOCALE_VERSION = '2026-09-02-vllm-omni-clone-tts-state';
     function initDecorativeImageDragGuard() {
         const markImage = (img) => {
             if (!(img instanceof HTMLImageElement)) return;

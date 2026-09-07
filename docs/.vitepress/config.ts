@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitepress'
-import { readdirSync } from 'node:fs'
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { LEGACY_REDIRECTS, SOURCE_REWRITES } from '../route-aliases.mjs'
 import { isNoindexRoute } from './indexing-policy.mjs'
 import { buildSeoHead, buildSeoPageData, SITE_ORIGIN } from './seo'
 
@@ -18,6 +19,77 @@ const SRC_EXCLUDE = new Set([
   'zh-CN/guide/openclaw_guide.zh-TW.md',
 ])
 const SOURCE_DIR_EXCLUDE = new Set(['.vitepress', 'node_modules', 'public'])
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function writeLegacyRedirectPages(outDir: string): void {
+  const labels = {
+    en: {
+      title: 'Plugin documentation moved',
+      description: 'This plugin documentation page has moved to its maintained replacement.',
+      heading: 'This page has moved',
+      link: 'Continue to the current documentation',
+    },
+    'zh-CN': {
+      title: '插件文档已移动',
+      description: '这份插件文档已经合并到持续维护的新页面，请继续前往当前文档。',
+      heading: '此页面已移动',
+      link: '前往当前文档',
+    },
+    ja: {
+      title: 'プラグインドキュメントは移動しました',
+      description: 'このプラグイン文書は、現在保守されている新しいページへ統合されました。',
+      heading: 'このページは移動しました',
+      link: '現在のドキュメントへ進む',
+    },
+  } as const
+
+  for (const [sourceRoute, targetRoute] of Object.entries(LEGACY_REDIRECTS)) {
+    const locale = sourceRoute.startsWith('/zh-CN/')
+      ? 'zh-CN'
+      : sourceRoute.startsWith('/ja/')
+        ? 'ja'
+        : 'en'
+    const copy = labels[locale]
+    const targetUrl = new URL(targetRoute, `${SITE_ORIGIN}/`).href
+    const targetJson = JSON.stringify(targetRoute).replaceAll('<', '\\u003c')
+    const htmlPath = resolve(outDir, `${sourceRoute.slice(1)}.html`)
+    mkdirSync(dirname(htmlPath), { recursive: true })
+    writeFileSync(
+      htmlPath,
+      `<!doctype html>
+<html lang="${locale}">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex,follow">
+    <meta http-equiv="refresh" content="0; url=${escapeHtml(targetRoute)}">
+    <link rel="canonical" href="${escapeHtml(targetUrl)}">
+    <title>${escapeHtml(copy.title)}</title>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(copy.heading)}</h1>
+      <p>${escapeHtml(copy.description)}</p>
+      <p><a href="${escapeHtml(targetRoute)}">${escapeHtml(copy.link)}</a></p>
+    </main>
+    <script>
+      const target = ${targetJson}
+      location.replace(target + location.search + location.hash)
+    </script>
+  </body>
+</html>
+`,
+      'utf8',
+    )
+  }
+}
 
 function filterSitemapItems<T extends { url: string }>(items: T[]): T[] {
   return items.filter((item) => {
@@ -42,7 +114,7 @@ function collectPageRoutes(directory = DOCS_ROOT): string[] {
     const sourcePath = relative(DOCS_ROOT, absolutePath).replaceAll('\\', '/')
     if (SRC_EXCLUDE.has(sourcePath)) continue
 
-    const route = `/${sourcePath}`
+    const route = `/${SOURCE_REWRITES[sourcePath] ?? sourcePath}`
       .replace(/(^|\/)index\.md$/, '$1')
       .replace(/\.md$/, '')
     routes.push(route)
@@ -275,30 +347,27 @@ function pluginsSidebar(lang: 'en' | 'zh-CN' | 'ja') {
   const t = {
     en: {
       group: 'Plugin Development', overview: 'Overview',
-      journey: 'Getting Started', quick: 'Quick Start', cli: 'Publish a Plugin', base: 'Plugin Capabilities',
+      journey: 'Getting Started', anatomy: 'Getting Started with Plugin Development', quick: 'Quick Start', cli: 'Publish a Plugin',
       toml: 'Plugin Config (plugin.toml)',
-      entries: 'Entries & Parameters', router: 'Router (Code Splitting)', lifecycleCfg: 'Lifecycle',
-      sdk: 'SDK Reference', migration: 'v0.9 Migration', dec: 'Decorators', ex: 'Examples', adv: 'Advanced Topics',
-      hosted: 'Hosted UI', tool: 'LLM Tool Calling', claw: 'Agent Automation & QwenPaw', best: 'Best Practices',
-      upgrade: 'Rollback-safe Local Upgrades', gaps: 'Host Capabilities & Gaps',
+      entries: 'Entries & Parameters', router: 'Router (Code Splitting)',
+      sdk: 'Plugin Capabilities & SDK Reference', migration: 'v0.9 Migration', dec: 'Decorators & Lifecycle', ex: 'Examples', adv: 'Adapters & Concurrency',
+      hosted: 'Hosted UI', tool: 'LLM Tool Calling', best: 'Best Practices',
     },
     'zh-CN': {
       group: '插件开发', overview: '概览',
-      journey: '旅程的起点', quick: '快速开始', cli: '发布插件', base: '插件能力',
+      journey: '旅程的起点', anatomy: '插件开发入门文档', quick: '快速开始', cli: '发布插件',
       toml: '插件配置 (plugin.toml)',
-      entries: '入口与参数', router: 'Router（代码拆分）', lifecycleCfg: '生命周期',
-      sdk: 'SDK 参考', migration: 'v0.9 迁移', dec: '装饰器', ex: '示例', adv: '进阶话题',
-      hosted: 'Hosted UI', tool: 'LLM Tool Calling', claw: 'Agent 自动化与 QwenPaw', best: '最佳实践',
-      upgrade: '可回滚的本地插件升级', gaps: '宿主能力与缺口',
+      entries: '入口与参数', router: 'Router（代码拆分）',
+      sdk: '插件能力与 SDK 参考', migration: 'v0.9 迁移', dec: '装饰器与生命周期', ex: '示例', adv: 'Adapter 与并发编程',
+      hosted: 'Hosted UI', tool: 'LLM Tool Calling', best: '最佳实践',
     },
     ja: {
       group: 'プラグイン開発', overview: '概要',
-      journey: 'はじめの一歩', quick: 'クイックスタート', cli: 'プラグインを公開', base: 'プラグイン機能',
+      journey: 'はじめの一歩', anatomy: 'プラグイン開発入門ガイド', quick: 'クイックスタート', cli: 'プラグインを公開',
       toml: 'プラグイン設定 (plugin.toml)',
-      entries: 'エントリーとパラメータ', router: 'Router（コード分割）', lifecycleCfg: 'ライフサイクル',
-      sdk: 'SDK リファレンス', migration: 'v0.9 移行', dec: 'デコレーター', ex: 'サンプル', adv: '高度なトピック',
-      hosted: 'Hosted UI', tool: 'LLM ツール呼び出し', claw: 'Agent Automation & QwenPaw', best: 'ベストプラクティス',
-      upgrade: 'ロールバック可能なローカル更新', gaps: 'ホスト機能とギャップ',
+      entries: 'エントリーとパラメータ', router: 'Router（コード分割）',
+      sdk: 'プラグイン機能と SDK リファレンス', migration: 'v0.9 移行', dec: 'デコレーターとライフサイクル', ex: 'サンプル', adv: 'Adapter と並行処理',
+      hosted: 'Hosted UI', tool: 'LLM ツール呼び出し', best: 'ベストプラクティス',
     },
   }[lang]
   const p = lang === 'en' ? '' : `/${lang}`
@@ -311,25 +380,21 @@ function pluginsSidebar(lang: 'en' | 'zh-CN' | 'ja') {
           text: t.journey,
           collapsed: false,
           items: [
+            { text: t.anatomy, link: `${p}/plugins/plugin-development` },
             { text: t.quick, link: `${p}/plugins/quick-start` },
             { text: t.cli, link: `${p}/plugins/cli` },
             { text: t.toml, link: `${p}/plugins/plugin-toml` },
             { text: t.entries, link: `${p}/plugins/entries` },
             { text: t.router, link: `${p}/plugins/router` },
-            { text: t.lifecycleCfg, link: `${p}/plugins/lifecycle-config` },
-            { text: t.base, link: `${p}/plugins/plugin-base` },
           ],
         },
         { text: t.migration, link: `${p}/plugins/migration-v0.9` },
-        { text: t.upgrade, link: `${p}/plugins/safe-local-upgrades` },
         { text: t.sdk, link: `${p}/plugins/sdk-reference` },
         { text: t.dec, link: `${p}/plugins/decorators` },
         { text: t.tool, link: `${p}/plugins/tool-calling` },
-        ...(lang === 'ja' ? [] : [{ text: t.claw, link: `${p}/plugins/use-claw` }]),
         ...(lang === 'ja' ? [] : [{ text: t.hosted, link: `${p}/plugins/hosted-ui` }]),
         { text: t.ex, link: `${p}/plugins/examples` },
         { text: t.adv, link: `${p}/plugins/advanced` },
-        ...(lang === 'ja' ? [] : [{ text: t.gaps, link: `${p}/plugins/host-capability-gaps` }]),
         { text: t.best, link: `${p}/plugins/best-practices` },
       ],
     },
@@ -581,6 +646,7 @@ function buildNav(lang: 'en' | 'zh-CN' | 'ja') {
 /* ------------------------------------------------------------------ */
 
 export default defineConfig({
+  rewrites: SOURCE_REWRITES,
   title: 'Project N.E.K.O.',
   description: 'Code-backed developer documentation for Project N.E.K.O.',
 
@@ -597,6 +663,9 @@ export default defineConfig({
   sitemap: {
     hostname: SITE_ORIGIN,
     transformItems: filterSitemapItems,
+  },
+  buildEnd(siteConfig) {
+    writeLegacyRedirectPages(siteConfig.outDir)
   },
   transformPageData(pageData) {
     return buildSeoPageData(pageData, DOCS_ROOT)

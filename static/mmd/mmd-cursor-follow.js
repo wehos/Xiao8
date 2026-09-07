@@ -190,8 +190,11 @@ class MMDCursorFollow {
     _setupEventListeners() {
         this._pointerMoveHandler = (e) => {
             const now = performance.now();
-            // 供 mmd-core 空闲低频 governor 判定"光标最近在动"（活动 → 满帧）
-            this._lastPointerMoveTs = now;
+            // 供 mmd-core 空闲低频 governor 判定"光标最近在动"（活动 → 满帧）。
+            // 坐标没变的重复事件（Electron Pet 的 preload 轮询在光标静止时也会转发）不算。
+            if (e.clientX !== this._rawMouseX || e.clientY !== this._rawMouseY) {
+                this._lastPointerMoveTs = now;
+            }
             // 去重：pointermove 后常跟随合成 mousemove（Electron 透明窗口）
             if (e.type === 'mousemove' && now < this._ignoreMouseMoveUntil) return;
             if (e.type === 'pointermove') {

@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,7 @@ class PrepareResult:
     staged_files: tuple[str, ...]
     excluded_paths: tuple[str, ...]
     excluded_modules: tuple[str, ...]
+    skipped_entries: tuple[str, ...]
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -80,6 +82,62 @@ def _module_name(plugin_dir_name: str, relative_path: Path, *, is_dir: bool) -> 
     if not parts or not all(part.isidentifier() for part in parts):
         return None
     return ".".join(parts)
+
+
+def _git_tracked_top_level_names(plugins_root: Path) -> set[str] | None:
+    """Names Git tracks directly under ``plugins_root``.
+
+    Returns ``None`` when Git is unavailable or the tree is not a checkout, in
+    which case the caller falls back to the ``plugin.toml`` requirement alone.
+    """
+
+    try:
+        completed = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=str(plugins_root),
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+
+    names: set[str] = set()
+    for entry in completed.stdout.split(bytes([0])):
+        if not entry:
+            continue
+        relative = entry.decode("utf-8", errors="replace")
+        head = relative.split("/", 1)[0]
+        if head:
+            names.add(head)
+    # An empty index for a directory that is supposed to hold the built-in
+    # plugins means the query answered about some unrelated checkout (a temp
+    # tree nested in a repository, for example).  Fall back rather than treat
+    # every plugin as untracked.
+    return names or None
+
+
+def _skip_reason(entry: Path, *, tracked_names: set[str] | None) -> str | None:
+    """Why ``entry`` must stay out of the desktop payload, or ``None`` to keep it.
+
+    Local-only plugin directories (private experiments, plugins already moved to
+    the marketplace and deleted from the index) stay on a developer machine long
+    after Git stops tracking them.  Copying whatever ``plugin/plugins`` happens
+    to contain shipped those directories in desktop builds, so the stage now
+    mirrors the index instead of the working tree.
+    """
+
+    if tracked_names is not None and entry.name not in tracked_names:
+        return "untracked by git"
+    if not entry.is_dir():
+        return None
+    # ``_shared`` and friends are runtime helper packages, not plugins.
+    if entry.name.startswith("_"):
+        return None
+    if not (entry / "plugin.toml").is_file():
+        return "missing plugin.toml"
+    return None
 
 
 def _copy_plugin_tree(
@@ -196,11 +254,21 @@ def prepare_plugins(
     staged_files: list[str] = []
     excluded_paths: list[str] = []
     excluded_modules: set[str] = set()
+    skipped_entries: list[str] = []
+    tracked_names = _git_tracked_top_level_names(plugins_root)
 
     for source_file in sorted(path for path in plugins_root.iterdir() if path.is_file()):
+        reason = _skip_reason(source_file, tracked_names=tracked_names)
+        if reason is not None:
+            skipped_entries.append(f"{source_file.name} ({reason})")
+            continue
         shutil.copy2(source_file, stage_dir / source_file.name)
 
     for source_dir in sorted(path for path in plugins_root.iterdir() if path.is_dir()):
+        reason = _skip_reason(source_dir, tracked_names=tracked_names)
+        if reason is not None:
+            skipped_entries.append(f"{source_dir.name}/ ({reason})")
+            continue
         plugin_dirs.append(source_dir.name)
         destination_dir = stage_dir / source_dir.name
         destination_dir.mkdir(parents=True, exist_ok=True)
@@ -230,6 +298,7 @@ def prepare_plugins(
         "staged_files": staged_files,
         "excluded_paths": sorted(excluded_paths),
         "excluded_modules": sorted(excluded_modules),
+        "skipped_entries": sorted(skipped_entries),
     }
     (stage_dir.parent / "nuitka-plugin-stage.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -244,6 +313,7 @@ def prepare_plugins(
         staged_files=tuple(staged_files),
         excluded_paths=tuple(sorted(excluded_paths)),
         excluded_modules=tuple(sorted(excluded_modules)),
+        skipped_entries=tuple(sorted(skipped_entries)),
     )
 
 
@@ -313,6 +383,9 @@ def main(argv: list[str] | None = None) -> int:
             f"Prepared {len(result.plugin_dirs)} built-in plugin directories with "
             f"{len(result.staged_files)} files; excluded {len(result.excluded_paths)} paths."
         )
+        for entry in result.skipped_entries:
+            # ``entry`` already carries the reason it was left out.
+            print(f"[WARNING] Not bundled: {entry}")
         print(f"Plugin stage: {result.stage_dir}")
         print(f"Generated launcher: {result.generated_launcher}")
         return 0

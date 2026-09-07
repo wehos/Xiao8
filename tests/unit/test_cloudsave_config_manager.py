@@ -271,7 +271,7 @@ def test_state_save_entrypoints_report_target_directory_blockers(tmp_path):
 
 
 @pytest.mark.unit
-def test_get_documents_directory_preserves_first_readable_legacy_candidate(tmp_path):
+def test_get_documents_directory_preserves_first_readable_legacy_candidate(tmp_path, real_root_resolution):
     import utils.config_manager as config_manager_module
     from utils.config_manager import ConfigManager
 
@@ -313,7 +313,7 @@ def test_get_documents_directory_preserves_first_readable_legacy_candidate(tmp_p
 
 
 @pytest.mark.unit
-def test_get_documents_directory_ignores_non_document_legacy_roots_for_cfa_detection(tmp_path):
+def test_get_documents_directory_ignores_non_document_legacy_roots_for_cfa_detection(tmp_path, real_root_resolution):
     import utils.config_manager as config_manager_module
     from utils.config_manager import ConfigManager
 
@@ -367,7 +367,7 @@ def test_get_documents_directory_ignores_non_document_legacy_roots_for_cfa_detec
 
 
 @pytest.mark.unit
-def test_get_documents_directory_uses_linux_xdg_fallback_when_xdg_data_home_missing(tmp_path):
+def test_get_documents_directory_uses_linux_xdg_fallback_when_xdg_data_home_missing(tmp_path, real_root_resolution):
     import utils.config_manager as config_manager_module
     from utils.config_manager import ConfigManager
 

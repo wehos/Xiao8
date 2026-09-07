@@ -1008,6 +1008,7 @@
         avatar_floating_day7_memory_control: Object.freeze({ zh: 13000, ja: 17162, en: 15203, ko: 16274, ru: 16666 }),
         avatar_floating_day7_memory_review: Object.freeze({ zh: 15500, ja: 20820, en: 19095, ko: 20219, ru: 17241 }),
         avatar_floating_day7_wrap: Object.freeze({ zh: 22100, ja: 23301, en: 26958, ko: 25443, ru: 25469 }),
+        day1_avatar_zoom_hint: Object.freeze({ zh: 11760, ja: 13949, en: 12460, ko: 15491, ru: 12513 }),
         day1_capsule_drag_hint: Object.freeze({ zh: 6936, ja: 11076, en: 9900, ko: 10736, ru: 10423 }),
         day1_history_handle: Object.freeze({ zh: 5580, ja: 8385, en: 5460, ko: 6792, ru: 5877 }),
         day1_screen_entry: Object.freeze({ zh: 6080, ja: 7157, en: 5172, ko: 6896, ru: 6713 }),

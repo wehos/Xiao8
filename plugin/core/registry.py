@@ -540,7 +540,7 @@ def scan_static_metadata(pid: str, cls: type, conf: dict, pdata: dict) -> None:
     if handlers_updated:
         state.invalidate_snapshot_cache("handlers")
 
-    entries = conf.get("entries") or pdata.get("entries") or []
+    entries = _effective_entries(conf, pdata)
     for ent in entries:
         try:
             eid = ent.get("id") if isinstance(ent, dict) else str(ent)
@@ -698,6 +698,21 @@ def _router_entry_preview(
     return preview
 
 
+def _effective_entries(conf: dict, pdata: dict) -> Any:
+    """The ``entries`` table the effective configuration declares.
+
+    Selected by key presence, not by truthiness. An overlay that sets
+    ``entries = []`` is removing them, and ``deep_merge`` keeps that empty list;
+    reading it as "no entries table here" falls through to the manifest and
+    shows the user the very entries their configuration removed (coderabbit).
+    """
+    for table in (conf, pdata):
+        if isinstance(table, dict) and "entries" in table:
+            value = table["entries"]
+            return value if isinstance(value, (list, dict)) else []
+    return []
+
+
 def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> List[Dict[str, Any]]:
     """Extract entry metadata for UI visibility without registering event handlers.
 
@@ -842,7 +857,7 @@ def _extract_entries_preview(pid: str, cls: type, conf: dict, pdata: dict) -> Li
         pass
 
     # 2) Config-specified entries (conf/pdata)
-    entries = conf.get("entries") or pdata.get("entries") or []
+    entries = _effective_entries(conf, pdata)
     for ent in entries:
         try:
             if isinstance(ent, dict):
@@ -1004,6 +1019,8 @@ def _parse_single_plugin_config(
     toml_path: Path,
     processed_paths: set,
     logger: Any,
+    *,
+    apply_user_overlays: bool = True,
 ) -> Optional[PluginContext]:
     """
     解析单个插件的 TOML 配置文件。
@@ -1031,9 +1048,14 @@ def _parse_single_plugin_config(
         logger.warning("Plugin config {} has no 'id' field, skipping", toml_path)
         return None
     
-    # 应用用户配置覆盖
+    # 应用用户配置覆盖。
+    #
+    # apply_user_overlays=False 是给打包用的：那条路要的是暂存目录里那份
+    # plugin.toml 本身，而不是作者这台机器上的运行时配置和激活 profile。带着
+    # 作者的私有覆盖导出去，装它的人会拿到一份按别人配置推出来的入口和 schema，
+    # 而源码指纹还是对得上的（codex）。
     try:
-        if isinstance(conf, dict):
+        if apply_user_overlays and isinstance(conf, dict):
             resolved_conf = resolve_plugin_config_from_path(
                 str(pid),
                 config_path=toml_path,
@@ -1106,7 +1128,7 @@ def _parse_single_plugin_config(
     # 应用用户级运行时开关覆盖（来自 plugin_runtime_overrides.json，
     # 由 plugin manager UI 的 disable/enable 按钮写入；与 manifest 默认值的
     # 关系是 manifest -> profile overlay -> user override，user override 最后生效）
-    override = get_runtime_override(str(pid))
+    override = get_runtime_override(str(pid)) if apply_user_overlays else None
     if override is not None and override != enabled_val:
         logger.info(
             "Plugin {} runtime_enabled overridden by user preference: {} -> {}",
@@ -1116,7 +1138,9 @@ def _parse_single_plugin_config(
         )
         enabled_val = override
 
-    auto_start_override = get_runtime_auto_start_override(str(pid))
+    auto_start_override = (
+        get_runtime_auto_start_override(str(pid)) if apply_user_overlays else None
+    )
     if auto_start_override is not None and auto_start_override != auto_start_val:
         logger.info(
             "Plugin {} runtime_auto_start overridden by user preference: {} -> {}",

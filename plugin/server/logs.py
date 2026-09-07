@@ -237,6 +237,76 @@ def get_plugin_log_files(plugin_id: str) -> list[dict[str, object]]:
     return log_files
 
 
+def list_plugin_log_files_for_export(log_dir: Path, plugin_id: str) -> list[Path]:
+    """返回该 plugin 自己的全部日志文件，用于打包导出。
+
+    与 ``_list_plugin_log_files_for_tail`` 的区别：导出要保留 ``_error.log``
+    系列，用户排障时错误流往往才是关键。pattern 末尾的 ``*`` 覆盖轮转后缀。
+
+    注意：
+    1. plugin_id 必须先经过 sanitize，与实际写入日志时使用的 ID 一致
+    2. 文件名匹配精确到插件边界，防止 foo 匹配到 foo_bar 的日志
+    """
+    from plugin.core.host import _sanitize_plugin_id
+    import re
+
+    # 与日志写入时保持一致：先 sanitize plugin_id
+    safe_id = _sanitize_plugin_id(plugin_id, max_len=64)
+
+    if plugin_id == SERVER_LOG_ID:
+        pattern = "N.E.K.O_PluginServer_*.log*"
+    else:
+        # 精确匹配插件边界：_后必须是 8位日期(YYYYMMDD) 或 error.log
+        # 正确匹配： N.E.K.O_Plugin_foo_20260906.log, N.E.K.O_Plugin_foo_error.log.1
+        # 拒绝匹配： N.E.K.O_Plugin_foo_bar_20260906.log
+        pattern = f"N.E.K.O_Plugin_{safe_id}_*.log*"
+
+    candidates = [p for p in log_dir.glob(pattern) if p.is_file()]
+
+    # 二次过滤：确保 _ 后是日期或 error，防止前缀误匹配
+    if plugin_id != SERVER_LOG_ID:
+        # 匹配 N.E.K.O_Plugin_{safe_id}_{YYYYMMDD}.log[.轮转后缀]
+        # 或     N.E.K.O_Plugin_{safe_id}_error.log[.轮转后缀]
+        # 轮转后缀：RotatingFileHandler 使用 .1, .2, ... 纯数字后缀
+        #           TimedRotatingFileHandler 使用 .YYYY-MM-DD 日期后缀
+        expected_prefix = f"N.E.K.O_Plugin_{safe_id}_"
+        # YYYYMMDD.log 或 YYYYMMDD.log.1 或 YYYYMMDD.log.2026-04-21
+        date_pattern = re.compile(r"^\d{8}\.log(?:\.\d+|\.\d{4}-\d{2}-\d{2})?$")
+        # error.log 或 error.log.1 或 error.log.2026-04-21
+        error_pattern = re.compile(r"^error\.log(?:\.\d+|\.\d{4}-\d{2}-\d{2})?$")
+
+        filtered = []
+        for p in candidates:
+            # 提取 prefix 之后的部分
+            if not p.name.startswith(expected_prefix):
+                continue
+            suffix = p.name[len(expected_prefix):]
+            # 必须是 YYYYMMDD.log* 或 error.log*
+            if date_pattern.match(suffix) or error_pattern.match(suffix):
+                filtered.append(p)
+
+        return filtered
+
+    return candidates
+
+
+def get_plugin_log_directory_path(plugin_id: str) -> str:
+    """
+    获取插件日志目录的绝对路径
+
+    Args:
+        plugin_id: 插件ID（或 SERVER_LOG_ID 表示服务器日志）
+
+    Returns:
+        日志目录的绝对路径字符串
+
+    Raises:
+        HTTPException: 如果 plugin_id 不安全
+    """
+    log_dir = get_plugin_log_dir(plugin_id)
+    return str(log_dir.resolve())
+
+
 def parse_log_line(line: str) -> dict[str, object] | None:
     """
     解析日志行

@@ -56,6 +56,86 @@ test('OperationRegistry built-ins are registered declaratively', async () => {
     assert.equal(await registry.run({ id: 'day2_galgame_games' }), true);
 });
 
+test('Day1 avatar zoom hint temporarily returns wheel interaction and the real cursor', async () => {
+    const calls = [];
+    const previousDocument = global.document;
+    const previousWindow = global.window;
+    const createClassList = (scope) => ({
+        toggle(name, active) {
+            calls.push(['class', scope, name, active]);
+        }
+    });
+    global.document = {
+        documentElement: { classList: createClassList('html') },
+        body: { classList: createClassList('body') }
+    };
+    global.window = {
+        live2dManager: {
+            isLocked: true,
+            setLocked(locked, options) {
+                this.isLocked = locked;
+                calls.push(['live2d-locked', locked, options.updateFloatingButtons]);
+            }
+        }
+    };
+    const registry = new OperationRegistry({
+        overlay: {
+            setInteractionShieldSuppressed(active) {
+                calls.push(['shield', active]);
+            }
+        },
+        clearUserCursorRevealSuppression(resetCursor) {
+            calls.push(['clear-user-cursor-reveal', resetCursor]);
+        },
+        disableInterrupts() {
+            calls.push('disable-interrupts');
+        },
+        cursor: {
+            cancel() {
+                calls.push('cancel-ghost-cursor');
+            },
+            hide() {
+                calls.push('hide-ghost-cursor');
+            }
+        },
+        syncSystemCursorHidden(hidden, reason) {
+            calls.push(['system-cursor-hidden', hidden, reason]);
+        },
+        restoreDay1TakeoverAgentSwitches(reason) {
+            calls.push(['restore-agent-switches', reason]);
+            return Promise.resolve(true);
+        }
+    });
+
+    try {
+        assert.equal(await registry.run({ id: 'day1_avatar_zoom_hint', operation: 'cleanup' }), true);
+        assert.equal(await registry.run({ id: 'day1_takeover_return_control', operation: 'cleanup' }), true);
+    } finally {
+        global.document = previousDocument;
+        global.window = previousWindow;
+    }
+
+    assert.deepEqual(calls, [
+        ['restore-agent-switches', 'day1-before-avatar-zoom-hint'],
+        ['shield', true],
+        ['clear-user-cursor-reveal', true],
+        'disable-interrupts',
+        'cancel-ghost-cursor',
+        'hide-ghost-cursor',
+        ['live2d-locked', false, false],
+        ['class', 'html', 'yui-user-cursor-revealed', true],
+        ['class', 'body', 'yui-user-cursor-revealed', true],
+        ['system-cursor-hidden', false, 'day1-avatar-zoom-hint'],
+        ['shield', false],
+        ['clear-user-cursor-reveal', true],
+        ['live2d-locked', true, false],
+        ['class', 'html', 'yui-user-cursor-revealed', false],
+        ['class', 'body', 'yui-user-cursor-revealed', false],
+        ['system-cursor-hidden', true, 'day1-return-control'],
+        ['restore-agent-switches', 'day1-return-control']
+    ]);
+});
+
 test('Day1 screen share flow opens the mic panel before highlighting the row and moving to its button', async () => {
     const calls = [];
     const screenShareButton = {};

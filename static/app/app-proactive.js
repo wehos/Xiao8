@@ -24,6 +24,8 @@
     const NEW_USER_ICEBREAKER_STORAGE_KEY = 'neko.new_user_icebreaker.v1';
     const NEW_USER_ICEBREAKER_BLOCKING_WINDOW_MS = 2 * 60 * 60 * 1000;
     const MEME_LOAD_FAILED_STICKER_URL = '/static/icons/meme-image-load-failed-sticker.png';
+    const MUSIC_CANDIDATE_FALLBACK_BUDGET_MS = 10000;
+    const MUSIC_CANDIDATE_ATTEMPT_TIMEOUT_MS = 3000;
 
     function isMusicOccupiedNow() {
         if (typeof window.isMusicOccupied === 'function') return window.isMusicOccupied();
@@ -1433,6 +1435,9 @@
                     console.log('主动搭话已发送:', result.message, result.source_mode ? '(来源: ' + result.source_mode + ')' : '');
 
                     var dispatchedTrackUrl = null;
+                    var proactiveMusicCardScopeId = 'proactive:' + (
+                        result.turn_id || (Date.now() + '-' + Math.random().toString(36).slice(2, 8))
+                    );
 
                     // 如果模式包含音乐信号，按顺序尝试音轨；候选 URL 或媒体自身
                     // 的错误（包括加载超时）才回退，播放器/调度错误结束本轮推荐。
@@ -1465,36 +1470,63 @@
                                 if (!unknownTrack || unknownTrack === 'music.unknownTrack') unknownTrack = 'Unknown Track';
                                 if (!unknownArtist || unknownArtist === 'music.unknownArtist') unknownArtist = 'Unknown Artist';
 
-                                for (var musicIndex = 0; musicIndex < musicLinks.length; musicIndex++) {
-                                    var musicLink = musicLinks[musicIndex];
-                                    var track = {
-                                        name: musicLink.title || unknownTrack,
-                                        artist: musicLink.artist || unknownArtist,
-                                        url: musicLink.url,
-                                        cover: musicLink.cover
-                                    };
-                                    console.log('[ProactiveChat] 尝试音乐候选 ' + (musicIndex + 1) + '/' + musicLinks.length + ':', track);
-                                    var dispatchResult;
-                                    if (typeof window.dispatchMusicPlayDetailed === 'function') {
-                                        dispatchResult = await window.dispatchMusicPlayDetailed(track, { source: 'proactive' });
-                                    } else {
-                                        var legacyAccepted = await window.dispatchMusicPlay(track, { source: 'proactive' });
-                                        dispatchResult = {
-                                            ok: legacyAccepted === true,
-                                            reason: legacyAccepted === true ? '' : 'player_error',
-                                            canTryNextCandidate: false
+                                var proactiveMusicFallbackDeadlineAt = Date.now() + MUSIC_CANDIDATE_FALLBACK_BUDGET_MS;
+                                var lastAttemptedMusicTrack = null;
+                                try {
+                                    for (var musicIndex = 0; musicIndex < musicLinks.length; musicIndex++) {
+                                        var musicLink = musicLinks[musicIndex];
+                                        var hasNextMusicCandidate = musicIndex < musicLinks.length - 1;
+                                        var track = {
+                                            name: musicLink.title || unknownTrack,
+                                            artist: musicLink.artist || unknownArtist,
+                                            url: musicLink.url,
+                                            cover: musicLink.cover
                                         };
-                                    }
+                                        lastAttemptedMusicTrack = track;
+                                        console.log('[ProactiveChat] 尝试音乐候选 ' + (musicIndex + 1) + '/' + musicLinks.length + ':', track);
+                                        var dispatchResult;
+                                        if (typeof window.dispatchMusicPlayDetailed === 'function') {
+                                            dispatchResult = await window.dispatchMusicPlayDetailed(track, {
+                                                source: 'proactive',
+                                                cardScopeId: proactiveMusicCardScopeId,
+                                                hasNextCandidate: hasNextMusicCandidate,
+                                                fallbackDeadlineAt: hasNextMusicCandidate
+                                                    ? proactiveMusicFallbackDeadlineAt
+                                                    : undefined,
+                                                candidateTimeoutMs: hasNextMusicCandidate
+                                                    ? MUSIC_CANDIDATE_ATTEMPT_TIMEOUT_MS
+                                                    : undefined
+                                            });
+                                        } else {
+                                            var legacyAccepted = await window.dispatchMusicPlay(track, { source: 'proactive' });
+                                            dispatchResult = {
+                                                ok: legacyAccepted === true,
+                                                reason: legacyAccepted === true ? '' : 'player_error',
+                                                canTryNextCandidate: false
+                                            };
+                                        }
 
-                                    if (dispatchResult.ok === true) {
-                                        dispatchedTrackUrl = musicLink.url;
-                                        break;
+                                        if (dispatchResult.ok === true) {
+                                            dispatchedTrackUrl = musicLink.url;
+                                            break;
+                                        }
+                                        if (dispatchResult.canTryNextCandidate !== true) {
+                                            console.warn('[ProactiveChat] 音乐派发因非候选错误停止:', dispatchResult.reason, musicLink.url);
+                                            break;
+                                        }
+                                        console.warn('[ProactiveChat] 音乐候选不可用，尝试下一条:', dispatchResult.reason, musicLink.url);
                                     }
-                                    if (dispatchResult.canTryNextCandidate !== true) {
-                                        console.warn('[ProactiveChat] 音乐派发因非候选错误停止:', dispatchResult.reason, musicLink.url);
-                                        break;
+                                } finally {
+                                    if (
+                                        !dispatchedTrackUrl
+                                        && lastAttemptedMusicTrack
+                                        && typeof window.finalizeMusicCandidateCardFailure === 'function'
+                                    ) {
+                                        window.finalizeMusicCandidateCardFailure(lastAttemptedMusicTrack, {
+                                            source: 'proactive',
+                                            cardScopeId: proactiveMusicCardScopeId
+                                        });
                                     }
-                                    console.warn('[ProactiveChat] 音乐候选不可用，尝试下一条:', dispatchResult.reason, musicLink.url);
                                 }
                             }
                         }

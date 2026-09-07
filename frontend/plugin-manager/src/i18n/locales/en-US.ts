@@ -648,7 +648,13 @@ export default {
     returnedLines: 'Returned Lines',
     connected: 'Connected',
     disconnected: 'Disconnected',
-    connectionFailed: 'Log stream connection failed'
+    connectionFailed: 'Log stream connection failed',
+    exportLog: 'Export Logs Archive',
+    openLogDirectory: 'Open Log Directory',
+    exportSuccess: 'Log exported successfully',
+    exportFailed: 'Failed to export log',
+    openDirectoryFailed: 'Failed to open directory',
+    noLogFileToExport: 'No log file to export'
   },
   runs: {
     title: 'Runs',

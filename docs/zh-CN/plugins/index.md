@@ -42,61 +42,20 @@ N.E.K.O. 插件系统是一个基于 Python 的插件框架，建立在**进程�
 
 > 从 **Plugin** 开始。迁移原 Extension 时，把 Router 合并进所属 Plugin，或改造成独立 Plugin。
 
-## 加载插件不等于选择运行时入口
+## 开始开发
 
-不同层级都有一个叫 entry 的字段，但含义不同：
-
-| 层级 | 声明 | 用途 |
-|---|---|---|
-| 宿主加载 | `[plugin].entry = "module.path:ClassName"` | 导入一个 `NekoPluginBase` 类并启动它的进程 |
-| 运行时分派 | `@plugin_entry(id="search")` | 标识已加载插件中的一个可调用操作 |
-
-用户插件的 Agent 分派采用两阶段选择。插件描述总量不超过配置阈值时跳过第一阶段；超过阈值时并行运行 BM25 和 LLM 粗筛，再与正则 `keywords` 命中项取并集。第二阶段读取候选插件的完整描述并返回 `plugin_id` 与运行时 `entry_id`。宿主严格按本轮实际候选校验两者，只带纠正提示重试一次，仍不合法就拒绝执行。
-
-`passive = true` 的插件以及没有 Agent 可见入口的插件不会参与选择。这条路由链也不同于使用 `@llm_tool` 注册 LLM 工具。
-
-## 主要特性
-
-- **进程隔离** — Plugin 与 Adapter 均在独立进程中运行
-- **异步支持** — 同时支持同步和异步入口点
-- **Result 类型** — 使用 `Ok`/`Err` 进行类型安全的错误处理（正常流程中无异常）
-- **钩子系统** — `@before_entry`、`@after_entry`、`@around_entry`、`@replace_entry` 实现 AOP
-- **跨插件调用** — `self.plugins.call_entry("other_plugin:entry_id")` 实现插件间通信
-- **系统信息** — `self.system_info` 查询宿主系统元数据
-- **插件存储** — `PluginStore` 提供持久化键值存储
-- **总线系统** — `self.bus` 通过 `messages`、`events`、`lifecycle`、`conversations`、`memory` 读取宿主状态；只有前三者支持 `watch()`，`conversations` 与 `memory` 是只读快照。可重放 watcher 链使用 `get()` → 结构化 `filter(field=value, ...)` → `sort(by=...)` → `limit()` → `watch()`，且只订阅 `add`、`del`、`change` 增量。它没有 publish/emit 接口。`self.bus.memory.get(...)` 读取有容量上限、只保存在内存中的近期用户话语事件（TTL 为一小时），并不是角色的持久记忆档案。`self.ctx.query_memory(...)` 只是已弃用的兼容调用，不提供语义召回。
-- **动态入口** — 在运行时注册/注销入口点
-- **Hosted UI** — 在插件管理器中构建 TSX 交互面板和 Markdown 教程页
-- **静态 UI** — 从插件目录提供旧版 Web UI 服务
-- **生命周期钩子** — `startup`、`shutdown`、`reload`、`freeze`、`unfreeze`、`config_change`
-- **定时任务** — 使用 `@timer_interval` 实现周期性执行
-- **消息处理器** — 响应来自宿主系统的消息
-
-## 插件目录结构
-
-```
-plugin/plugins/
-└── my_plugin/
-    ├── __init__.py      # 插件代码（入口点）
-    ├── plugin.toml      # 插件配置
-    ├── config.json      # 可选：自定义配置
-    ├── data/            # 可选：运行时数据目录
-    ├── ui/              # 可选：Hosted TSX 面板
-    ├── docs/            # 可选：Markdown 或 TSX 教程页
-    ├── i18n/            # 可选：插件本地翻译
-    └── static/          # 可选：旧版 Web UI 文件
-```
+先阅读[插件开发入门文档](./plugin-development)，了解插件的目录构成和完整制作流程；然后跟随[快速开始](./quick-start)动手，并在实现功能时查阅[插件能力与 SDK 参考](./sdk-reference)。
 
 ## 快速链接
 
-- [快速开始](./quick-start) — 5 分钟内创建你的第一个插件
+- [插件开发入门文档](./plugin-development) — 先了解插件由什么组成，以及怎样完成第一个插件
+- [快速开始](./quick-start) — 按步骤创建你的第一个插件
 - [发布插件](/zh-CN/plugins/cli) — 上传 GitHub、提交审核并持续发布新版本
-- [可回滚的本地插件升级](./safe-local-upgrades) — 安装计划、明确确认、profile 保留与失败恢复
 - [v0.9 迁移](./migration-v0.9) — 已删除接口与准确替代方案
 - [SDK 参考](./sdk-reference) — 基类、上下文 API、Result 类型
 - [装饰器](./decorators) — 所有可用的装饰器
 - [Hosted UI](./hosted-ui) — 构建 TSX 面板和 Markdown 教程页
 - [示例](./examples) — 完整的可运行示例
-- [高级主题](./advanced) — Router 组合、适配器、跨插件调用、钩子
+- [Adapter 与并发编程](./advanced) — Adapter 网关、异步入口与线程安全
 - [LLM 工具调用](./tool-calling) — 注册插件功能给 LLM 在对话中调用
 - [最佳实践](./best-practices) — 错误处理、测试、代码组织

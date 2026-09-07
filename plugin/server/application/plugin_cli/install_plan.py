@@ -43,6 +43,10 @@ class PluginInstallPlan:
     reason: str
     legacy_plugin_ids: tuple[str, ...]
     installed_package_id: str = ""
+    # bundle 里每个插件自己的 manifest id。plugin_id 对 bundle 来说是**包** id，
+    # 而注册表按插件各自的 manifest id 记批准状态，所以只有这份清单能在提升之前
+    # 把整组都拦住（coderabbit）。
+    bundle_plugin_ids: tuple[str, ...] = ()
     manifestless_state: bool = False
     current_source: str = ""
     target_source: str = ""
@@ -96,6 +100,11 @@ def build_install_plan(
             confirmation_token="",
             reason="bundle_conflict" if conflicts else "",
             legacy_plugin_ids=(),
+            bundle_plugin_ids=tuple(
+                str(getattr(packaged, "plugin_id", "") or "").strip()
+                for packaged in inspected.plugins
+                if str(getattr(packaged, "plugin_id", "") or "").strip()
+            ),
             target_source="user",
         )
 

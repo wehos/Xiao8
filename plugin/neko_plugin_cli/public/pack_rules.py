@@ -11,6 +11,7 @@ _DEFAULT_EXCLUDE_DIR_NAMES = {
     "__pycache__",
     ".pytest_cache",
     ".mypy_cache",
+    ".ruff_cache",
     ".venv",
     "dist",
     "build",

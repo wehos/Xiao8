@@ -6,7 +6,8 @@ import ast
 import json
 import math
 import re
-from pathlib import Path
+import stat
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from plugin.core.python_dependencies import (
     collect_project_python_requirements,
@@ -166,6 +167,7 @@ def _check_plugin_toml_schema(
         "ui",
         "store",
         "host",
+        "install",
         "safety",
         "config_profiles",
         "dependency",
@@ -196,6 +198,7 @@ def _check_plugin_toml_schema(
     _check_sdk_table(plugin_table.get("sdk"), issues)
     _check_store_table(plugin_table.get("store"), issues)
     _check_i18n_table(plugin_dir, plugin_table.get("i18n"), issues)
+    _check_install_table(plugin_dir, plugin_table.get("install"), issues)
     _check_safety_table(plugin_table.get("safety"), issues)
     _check_config_profiles_table(plugin_table.get("config_profiles"), issues)
     _check_dependency_tables(plugin_table.get("dependency"), issues)
@@ -215,6 +218,11 @@ def _check_plugin_toml_schema(
 def _warn_unknown_keys(table: dict[str, object], allowed: set[str], label: str, issues: list[tuple[str, str]]) -> None:
     for key in sorted(set(table) - allowed):
         issues.append(("warning", f"{label}.{key} is not a recognized plugin.toml field"))
+
+
+def _error_unknown_keys(table: dict[str, object], allowed: set[str], label: str, issues: list[tuple[str, str]]) -> None:
+    for key in sorted(set(table) - allowed):
+        issues.append(("error", f"{label}.{key} is not a recognized plugin.toml field"))
 
 
 def _require_string(
@@ -413,6 +421,153 @@ def _check_i18n_table(plugin_dir: Path, value: object, issues: list[tuple[str, s
             issues.append(("error", "[plugin.i18n].locales_dir must be a non-empty string"))
         elif not (plugin_dir / locales_dir).is_dir():
             issues.append(("warning", f"[plugin.i18n].locales_dir does not exist: {locales_dir}"))
+
+
+def _check_install_table(
+    plugin_dir: Path,
+    value: object,
+    issues: list[tuple[str, str]],
+) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        issues.append(("error", "[plugin.install] must be a table"))
+        return
+
+    _error_unknown_keys(
+        value,
+        {"enabled", "ui_i18n_dir", "tutorial_enabled", "kinds"},
+        "[plugin.install]",
+        issues,
+    )
+    enabled = value.get("enabled")
+    if not isinstance(enabled, bool):
+        issues.append(("error", "[plugin.install].enabled must be a boolean"))
+
+    tutorial_enabled = value.get("tutorial_enabled", False)
+    if not isinstance(tutorial_enabled, bool):
+        issues.append(("error", "[plugin.install].tutorial_enabled must be a boolean"))
+
+    kinds = value.get("kinds", {})
+    if not isinstance(kinds, dict):
+        issues.append(("error", "[plugin.install].kinds must be a table"))
+        kinds = {}
+    else:
+        for kind, declaration in kinds.items():
+            label = f"[plugin.install.kinds.{kind}]"
+            if not isinstance(kind, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", kind):
+                issues.append(
+                    (
+                        "error",
+                        f"[plugin.install].kinds key {kind!r} must match ^[a-z][a-z0-9_]*$",
+                    )
+                )
+            if not isinstance(declaration, dict):
+                issues.append(("error", f"{label} must be a table"))
+                continue
+            _error_unknown_keys(
+                declaration,
+                {"entry_id", "label", "queued_message", "entry_timeout"},
+                label,
+                issues,
+            )
+            for field in ("entry_id", "label", "queued_message"):
+                field_value = declaration.get(field)
+                field_label = f"{label}.{field}"
+                if not isinstance(field_value, str) or not field_value:
+                    issues.append(("error", f"{field_label} must be a non-empty string"))
+                elif field_value.strip() != field_value:
+                    issues.append(
+                        ("error", f"{field_label} must not contain leading/trailing whitespace")
+                    )
+            timeout = declaration.get("entry_timeout")
+            timeout_is_valid = not isinstance(timeout, bool) and isinstance(
+                timeout,
+                (int, float),
+            )
+            if timeout_is_valid:
+                try:
+                    timeout_number = float(timeout)
+                except (OverflowError, ValueError):
+                    timeout_is_valid = False
+                else:
+                    timeout_is_valid = math.isfinite(timeout_number) and timeout_number > 0
+            if not timeout_is_valid:
+                issues.append(
+                    (
+                        "error",
+                        f"{label}.entry_timeout must be a finite number greater than zero",
+                    )
+                )
+
+    ui_i18n_dir = value.get("ui_i18n_dir")
+    if ui_i18n_dir is not None:
+        _check_install_i18n_dir(plugin_dir, ui_i18n_dir, issues)
+
+    if enabled is False:
+        if kinds:
+            issues.append(("error", "disabled [plugin.install] must not define install kinds"))
+        if tutorial_enabled is True:
+            issues.append(("error", "disabled [plugin.install] must not enable tutorials"))
+        if ui_i18n_dir is not None:
+            issues.append(("error", "disabled [plugin.install] must not define ui_i18n_dir"))
+
+
+def _check_install_i18n_dir(
+    plugin_dir: Path,
+    value: object,
+    issues: list[tuple[str, str]],
+) -> None:
+    label = "[plugin.install].ui_i18n_dir"
+    if not isinstance(value, str) or not value or value.strip() != value:
+        issues.append(("error", f"{label} must be a non-empty relative path"))
+        return
+
+    relative = Path(value)
+    posix_path = PurePosixPath(value)
+    windows_path = PureWindowsPath(value)
+    if (
+        posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or ".." in posix_path.parts
+        or ".." in windows_path.parts
+    ):
+        issues.append(("error", f"{label} must stay within the plugin directory"))
+        return
+
+    try:
+        plugin_root = plugin_dir.resolve(strict=True)
+        candidate = (plugin_root / relative).resolve(strict=True)
+        candidate.relative_to(plugin_root)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        issues.append(
+            (
+                "error",
+                f"{label} must resolve to an existing directory inside the plugin directory",
+            )
+        )
+        return
+
+    current = plugin_root
+    for part in relative.parts:
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except OSError:
+            break
+        file_attributes = getattr(metadata, "st_file_attributes", 0)
+        reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if current.is_symlink() or bool(file_attributes & reparse_attribute):
+            try:
+                current.resolve(strict=True).relative_to(plugin_root)
+            except (FileNotFoundError, OSError, RuntimeError, ValueError):
+                issues.append(
+                    ("error", f"{label} must not escape through a link or reparse point")
+                )
+                return
+
+    if not candidate.is_dir():
+        issues.append(("error", f"{label} must point to an existing directory"))
 
 
 def _check_safety_table(value: object, issues: list[tuple[str, str]]) -> None:

@@ -143,6 +143,18 @@
         return normalizeAvatarId(avatarId) + '\u0000' + String(capability || '').trim();
     }
 
+    // 排一帧舞台动画（tween / 漂浮 / 呼吸 / 姿态时间线）：Electron Pet 里渲染后端切到定时器
+    // 驱动时走同周期定时器（frame-pacing.requestPacedFrame），否则 rAF。返回取消函数。
+    // 这些循环在演出期间持续排帧，裸 rAF 会单独把 Blink 主帧顶回显示器刷新率。
+    function scheduleStageFrame(callback) {
+        const pacing = window.nekoFramePacing;
+        if (pacing && typeof pacing.requestPacedFrame === 'function') {
+            return pacing.requestPacedFrame(callback);
+        }
+        const id = window.requestAnimationFrame(callback);
+        return () => window.cancelAnimationFrame(id);
+    }
+
     function now() {
         return (window.performance && typeof window.performance.now === 'function')
             ? window.performance.now()
@@ -395,7 +407,7 @@
                     return;
                 }
 
-                const tween = { rafId: 0, done: false };
+                const tween = { cancelFrame: null, done: false };
                 const tweenKey = sessionId + ':' + now() + ':' + Math.random();
                 this.tweens.set(tweenKey, tween);
                 const startedAt = now();
@@ -424,9 +436,9 @@
                         resolve(true);
                         return;
                     }
-                    tween.rafId = window.requestAnimationFrame(step);
+                    tween.cancelFrame = scheduleStageFrame(step);
                 };
-                tween.rafId = window.requestAnimationFrame(step);
+                tween.cancelFrame = scheduleStageFrame(step);
             });
         }
 
@@ -816,7 +828,7 @@
             const periodMs = Math.max(1200, Number(normalized.periodMs || 5200));
             const phase = Number.isFinite(Number(normalized.phase)) ? Number(normalized.phase) : 0;
             const startedAt = now();
-            const tween = { rafId: 0, done: false };
+            const tween = { cancelFrame: null, done: false };
             const tweenKey = sessionId + ':preset:idleFloat:' + startedAt + ':' + Math.random();
             this.tweens.set(tweenKey, tween);
 
@@ -834,9 +846,9 @@
                     y: base.y + amplitudeY * wave
                 });
                 this.applyFrame(sessionId);
-                tween.rafId = window.requestAnimationFrame(step);
+                tween.cancelFrame = scheduleStageFrame(step);
             };
-            tween.rafId = window.requestAnimationFrame(step);
+            tween.cancelFrame = scheduleStageFrame(step);
             return true;
         }
 
@@ -982,7 +994,7 @@
             const periodMs = Math.max(1600, Number(normalized.periodMs || 4200));
             const phase = Number.isFinite(Number(normalized.phase)) ? Number(normalized.phase) : 0;
             const startedAt = now();
-            const tween = { rafId: 0, done: false };
+            const tween = { cancelFrame: null, done: false };
             const tweenKey = sessionId + ':preset:breathe:' + startedAt + ':' + Math.random();
             this.tweens.set(tweenKey, tween);
 
@@ -1000,9 +1012,9 @@
                     scale: base.scale + scaleAmount * wave
                 });
                 this.applyFrame(sessionId);
-                tween.rafId = window.requestAnimationFrame(step);
+                tween.cancelFrame = scheduleStageFrame(step);
             };
-            tween.rafId = window.requestAnimationFrame(step);
+            tween.cancelFrame = scheduleStageFrame(step);
             return true;
         }
 
@@ -1085,8 +1097,9 @@
             this.tweens.forEach((tween, key) => {
                 if (!sessionId || key.indexOf(sessionId + ':') === 0) {
                     tween.done = true;
-                    if (tween.rafId) {
-                        window.cancelAnimationFrame(tween.rafId);
+                    if (tween.cancelFrame) {
+                        tween.cancelFrame();
+                        tween.cancelFrame = null;
                     }
                     this.tweens.delete(key);
                 }
@@ -1098,8 +1111,9 @@
             this.tweens.forEach((tween, key) => {
                 if (key.indexOf(prefix) === 0) {
                     tween.done = true;
-                    if (tween.rafId) {
-                        window.cancelAnimationFrame(tween.rafId);
+                    if (tween.cancelFrame) {
+                        tween.cancelFrame();
+                        tween.cancelFrame = null;
                     }
                     this.tweens.delete(key);
                 }
@@ -2342,7 +2356,7 @@
             const manager = context.manager;
             const source = 'avatar-performance-pose-' + (options && options.sessionId ? options.sessionId : 'session');
             const previousEyeBlinkSuspended = !!manager._suspendEyeBlinkOverride;
-            let frameId = 0;
+            let cancelFrame = null;
             let settled = false;
             let settleLoop = null;
             let usesTemporaryPoseOverride = false;
@@ -2353,9 +2367,9 @@
                     return;
                 }
                 settled = true;
-                if (frameId) {
-                    window.cancelAnimationFrame(frameId);
-                    frameId = 0;
+                if (cancelFrame) {
+                    cancelFrame();
+                    cancelFrame = null;
                 }
                 if (manager && normalized.suspendEyeBlink !== false) {
                     manager._suspendEyeBlinkOverride = previousEyeBlinkSuspended;
@@ -2492,10 +2506,10 @@
                             return;
                         }
                         if (!settled) {
-                            frameId = window.requestAnimationFrame(tick);
+                            cancelFrame = scheduleStageFrame(tick);
                         }
                     };
-                    frameId = window.requestAnimationFrame(tick);
+                    cancelFrame = scheduleStageFrame(tick);
                 });
                 return true;
             } catch (error) {

@@ -1705,6 +1705,10 @@
         "vllmRefTextPlaceholder": "p.ej. Espero que en el futuro puedas hacerlo aún mejor que yo",
         "vllmRefTextRequired": "Introduzca la transcripción del audio de referencia (obligatorio para clonar con vLLM-Omni)",
         "vllmRefTextTooLong": "La transcripción del audio de referencia es demasiado larga; manténgala dentro de 100 caracteres",
+        "vllmCloneTtsDisabledWarning": "La configuración activa de TTS es \"{{provider}}\", pero TTS está desactivado globalmente. La muestra se guardó localmente; active TTS y configure vLLM-Omni antes de previsualizar o usar esta voz.",
+        "vllmCloneCustomApiDisabledWarning": "La configuración activa de TTS es \"{{provider}}\", pero la API personalizada está desactivada. La muestra se guardó localmente; active la API personalizada y cambie TTS a vLLM-Omni antes de previsualizar o usar esta voz.",
+        "vllmCloneInactiveProviderWarning": "La configuración activa de TTS es \"{{provider}}\", no vLLM-Omni. La muestra se guardó localmente; cambie TTS a vLLM-Omni antes de previsualizar o usar esta voz.",
+        "vllmCloneConfigurationUnavailableWarning": "No se pudo leer la configuración activa de TTS. La muestra se guardó localmente; configure vLLM-Omni en los ajustes de API antes de previsualizar o usar esta voz.",
         "providerLabel": "Proveedor de clonación de voz",
         "provider": {
             "cosyvoice": "Alibaba Bailian CosyVoice",
@@ -3823,7 +3827,8 @@
                 "capsuleDragHint": "Mueve el ratón aquí, mantén pulsado y podrás arrastrar mi caja de chat a donde quieras~ Haz clic una vez y podrás enviarme mensajes cuando quieras.",
                 "historyHandle":  "Toca esa pequeña [barra azul] encima de la caja de chat y verás los temas de los que hemos hablado hace poco.",
                 "screenEntry": "Cuando estemos en una llamada de voz, enciende este botoncito y podrás compartir tu pantalla conmigo.",
-                "screenEntryInvite": "¡Date prisa y déjame ver el mundo que tienes delante! Sea algo divertido o bonito, quiero mirarlo contigo. Ábrelo ya~"
+                "screenEntryInvite": "¡Date prisa y déjame ver el mundo que tienes delante! Sea algo divertido o bonito, quiero mirarlo contigo. Ábrelo ya~",
+                "avatarZoomHint": "Ah, y si quieres verme mejor, mueve el cursor sobre mí y gira suavemente la rueda del ratón. Así podrás hacerme más grande o más pequeña cuando quieras y dejarme justo al tamaño que más te guste~"
             },
             "day2": {
                 "intro": "Jeje, no creas que esta caja de chat solo sirve para escribir~ En realidad esconde muchísimas sorpresitas divertidas. Sígueme y ábrela; veamos qué tesoros interesantes encontramos hoy.",

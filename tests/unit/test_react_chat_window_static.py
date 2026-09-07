@@ -828,12 +828,27 @@ def test_compact_history_size_tokens_are_ratio_based_for_ui_optimization():
         ".compact-export-preview-message.is-system .compact-export-preview-bubble {",
         ".compact-export-preview-meta",
     )
+    link_anchor_block = css_block(
+        styles,
+        ".compact-export-history-anchor:has(.compact-export-history-content > .message-block-link) {",
+        ".compact-export-history-bubble:has(> .compact-export-history-content > .message-block-link)",
+    )
+    active_inline_size_marker = "--compact-export-history-active-inline-size:"
+    assert active_inline_size_marker in link_anchor_block
+    active_inline_size = link_anchor_block.split(active_inline_size_marker, 1)[1].split(";", 1)[0]
 
     assert "--compact-export-history-width-ratio:" in anchor_block
     assert "--compact-export-surface-width: var(--compact-surface-resize-width, var(--desktop-compact-surface-width, var(--compact-surface-width, 430px)));" in anchor_block
     assert "--compact-export-history-inline-size: min(" in anchor_block
     assert "calc(var(--compact-export-surface-width) * var(--compact-export-history-width-ratio))" in anchor_block
-    assert "width: var(--compact-export-history-inline-size);" in anchor_block
+    assert "--compact-export-history-active-inline-size: var(--compact-export-history-inline-size);" in anchor_block
+    assert "width: var(--compact-export-history-active-inline-size);" in anchor_block
+    assert "min(" in active_inline_size
+    assert (
+        "max(var(--compact-export-history-inline-size), var(--compact-export-link-history-min-inline-size))"
+        in active_inline_size
+    )
+    assert "var(--compact-export-history-max-inline-size)" in active_inline_size
     assert "--compact-export-history-max-inline-size: calc(100vw - var(--compact-export-history-viewport-gutter));" in anchor_block
     assert "--compact-export-preview-min-height: 360px;" in anchor_block
     assert "--compact-export-preview-max-height: 78vh;" in anchor_block
@@ -1593,6 +1608,45 @@ def test_galgame_history_excludes_tutorial_guide_messages():
     assert "if (isYuiGuideChatMessage(m)) continue;" in history_block
     assert "if (!m) continue;" in history_block
     assert history_block.index("if (!m) continue;") < history_block.index("if (isYuiGuideChatMessage(m)) continue;")
+
+
+def test_galgame_history_excludes_new_user_icebreaker_messages():
+    react_host = APP_REACT_CHAT_WINDOW_PATH.read_text(encoding="utf-8")
+
+    history_block = react_host.split("function getRecentGalgameMessageHistory()", 1)[1].split(
+        "function pickAcceptLanguage",
+        1,
+    )[0]
+
+    assert "function isNewUserIcebreakerChatMessage(message)" in react_host
+    assert "if (isNewUserIcebreakerChatMessage(m))" in history_block
+    assert "if (!collected.length) return [];" in history_block
+    append_block = react_host.split("function appendMessage(message)", 1)[1].split(
+        "function updateMessage",
+        1,
+    )[0]
+    assert "normalized.role === 'user' || isNewUserIcebreakerChatMessage(normalized)" in append_block
+    assert "invalidatePendingGalgameRequest();" in append_block
+
+
+def test_galgame_turn_end_listener_ignores_new_user_icebreaker():
+    react_host = APP_REACT_CHAT_WINDOW_PATH.read_text(encoding="utf-8")
+
+    guard_block = react_host.split("function isNewUserIcebreakerTurnEndEvent(event)", 1)[1].split(
+        "window.addEventListener('neko-assistant-turn-end'",
+        1,
+    )[0]
+    listener_block = react_host.split(
+        "window.addEventListener('neko-assistant-turn-end', function (event)",
+        1,
+    )[1].split("\n        });", 1)[0]
+
+    assert "detail.meta" in guard_block
+    assert "meta.source === 'new_user_icebreaker'" in guard_block
+    assert "meta.kind === 'new_user_icebreaker'" in guard_block
+    assert "meta.event" in guard_block
+    assert "source === 'new_user_icebreaker'" in guard_block
+    assert "if (isNewUserIcebreakerTurnEndEvent(event)) return;" in listener_block
 
 
 def test_galgame_option_template_follows_interface_language():

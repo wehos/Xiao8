@@ -46,6 +46,7 @@ def build_default_cloudsave_manifest(*, client_id: str = "") -> dict[str, Any]:
         "device_id": "",
         "sequence_number": 0,
         "exported_at_utc": "",
+        "snapshot_kind": "",
         "files": {},
         "fingerprint": "",
     }
@@ -96,6 +97,9 @@ def ensure_cloudsave_manifest(config_manager, *, preserve_existing_client_id: bo
         changed = True
     if "exported_at_utc" not in manifest:
         manifest["exported_at_utc"] = ""
+        changed = True
+    if "snapshot_kind" not in manifest:
+        manifest["snapshot_kind"] = ""
         changed = True
     if "files" not in manifest or not isinstance(manifest.get("files"), dict):
         manifest["files"] = {}

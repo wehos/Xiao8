@@ -4,6 +4,7 @@ import {
   LOCALE_HOME_PATHS,
   SITE_ORIGIN,
 } from '../.vitepress/seo-shared.mjs'
+import { LEGACY_REDIRECTS } from '../route-aliases.mjs'
 
 const DIST_DIR = resolve('.vitepress/dist')
 const PUBLIC_DIR = resolve('public')
@@ -111,6 +112,7 @@ const copiedPublicHtml = new Set(
 )
 let noindexCount = 0
 let indexableCount = 0
+const builtLegacyRedirects = new Set()
 
 for (const htmlPath of filesRecursively(DIST_DIR, '.html')) {
   const file = relative(DIST_DIR, htmlPath).replaceAll('\\', '/')
@@ -133,6 +135,42 @@ for (const htmlPath of filesRecursively(DIST_DIR, '.html')) {
   )
   const canonicalLinks = linkTags.filter((tag) => tag.rel === 'canonical')
   const canonical = canonicalLinks[0]?.href ?? ''
+  const builtRoute = `/${file.slice(0, -'.html'.length)}`
+  const legacyRedirectTarget = LEGACY_REDIRECTS[builtRoute]
+
+  if (legacyRedirectTarget) {
+    const expectedCanonical = new URL(
+      legacyRedirectTarget,
+      `${SITE_ORIGIN}/`,
+    ).href
+    const refreshTags = metaTags.filter(
+      (tag) => tag['http-equiv']?.toLowerCase() === 'refresh',
+    )
+    if (robotsTags.length !== 1 || !robotsDirectives.has('noindex')) {
+      fail(file, 'legacy redirect must contain one noindex robots meta tag')
+    }
+    if (canonicalLinks.length !== 1 || canonical !== expectedCanonical) {
+      fail(file, `legacy redirect canonical must be ${expectedCanonical}`)
+    }
+    if (
+      refreshTags.length !== 1 ||
+      refreshTags[0].content !== `0; url=${legacyRedirectTarget}`
+    ) {
+      fail(file, `legacy redirect refresh must target ${legacyRedirectTarget}`)
+    }
+    if (!sitemapUrls.has(expectedCanonical)) {
+      fail(file, `legacy redirect target is missing from sitemap: ${expectedCanonical}`)
+    }
+    if (titleMatches.length !== 1 || !titleMatches[0][1].trim()) {
+      fail(file, 'legacy redirect must contain one non-empty title')
+    }
+    if (!htmlLang || (html.match(/<h1\b/gi) ?? []).length !== 1) {
+      fail(file, 'legacy redirect must contain html lang and one h1')
+    }
+    builtLegacyRedirects.add(builtRoute)
+    noindexCount += 1
+    continue
+  }
 
   if (robotsTags.length !== 1) {
     fail(file, `expected one robots meta tag, found ${robotsTags.length}`)
@@ -332,6 +370,12 @@ for (const htmlPath of filesRecursively(DIST_DIR, '.html')) {
     fail(file, `canonical is also used by ${pages.get(canonical).file}`)
   }
   pages.set(canonical, { file, canonical, alternates, noindex })
+}
+
+for (const route of Object.keys(LEGACY_REDIRECTS)) {
+  if (!builtLegacyRedirects.has(route)) {
+    fail(route, 'legacy redirect page was not built')
+  }
 }
 
 if (sitemapUrls.size !== indexableCount) {

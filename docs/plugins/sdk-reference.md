@@ -1,4 +1,4 @@
-# SDK Reference
+# Plugin Capabilities and SDK Reference
 
 All plugin development APIs are imported from `plugin.sdk.plugin`.
 
@@ -54,6 +54,49 @@ class MyPlugin(NekoPluginBase):
 | `self.plugins` | `Plugins` | Cross-plugin call helper |
 | `self.system_info` | `SystemInfo` | Host system metadata |
 
+### Everyday capabilities
+
+`NekoPluginBase` provides logging and configuration without extra setup:
+
+```python
+self.logger.info("Processing request: {}", request_id)
+timeout = await self.config.get_int("my_settings.timeout", default=30)
+```
+
+Logs appear in the Plugin Manager and are written to the host-managed log
+directory. The host owns log-file location and rotation. Runtime configuration
+updates use `await self.ctx.update_own_config(...)` or
+`await self.config.update(...)`; after updating, refresh any derived state in
+the same process.
+
+Choose storage by data shape:
+
+| Need | API |
+| --- | --- |
+| Small key-value state | `self.store` after enabling `[plugin.store]` |
+| Structured SQLite data | `self.db` after enabling `[plugin.database]` |
+| Arbitrary persistent files | `self.data_path(...)` |
+| Rebuildable files | `self.cache_path(...)` |
+
+```python
+from plugin.sdk.plugin import unwrap
+
+unwrap(await self.store.set("last_query", "weather"))
+
+async with unwrap(await self.db.session()) as session:
+    await session.execute(
+        "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT)"
+    )
+    await session.commit()
+```
+
+For translated plugin text, configure `[plugin.i18n]`, add locale JSON files,
+and use `self.i18n.t(...)`:
+
+```python
+message = self.i18n.t("greeting", name="Alice")
+```
+
 ### Methods
 
 #### `report_status(status: dict) -> None`
@@ -95,6 +138,31 @@ contains the message body or raw exception text. Rejected results also carry
 `submitted` as the authoritative discriminator.
 
 The v1 fields (`message_type`, `content`, `delivery`, `reply`, and the other legacy aliases) are deprecated but still translated in current source. Migrate now; this documentation does not guarantee an exact removal release. See the [migration guide](./migration-v0.9#push-message-v2).
+
+#### Media parts
+
+- Text and image parts are supported. A small image can be sent inline:
+
+  ```python
+  parts=[{"type": "image", "data": image_bytes, "mime": "image/png"}]
+  ```
+
+- For a non-trivial image, upload it through the host and send the returned part instead:
+
+  ```python
+  image_part = await self.ctx.images.upload(image_bytes, mime="image/png")
+  result = self.push_message(
+      source="my_feature",
+      visibility=["chat"],
+      ai_behavior="read",
+      parts=[image_part],
+  )
+  ```
+
+  Arbitrary external image URLs are not accepted for model delivery; use this temporary host upload. Inline images share the message-plane payload budget, while the uploaded part keeps the image bytes out of that envelope. `ctx.images.upload()` is unavailable in lifecycle handlers because the plugin command loop cannot service the upload response there; call it from a plugin entry, timer, message, or custom event handler.
+- `visibility` controls rendering in the user's chat or HUD; `ai_behavior` independently controls whether the model reads the message or responds.
+- Audio and video message parts are not currently delivered by the host. Do not report them as successfully played or shown.
+- A Hosted UI panel can render user-facing audio or video itself, but that does not deliver media through the native chat or model channel.
 
 #### `data_path(*parts) -> Path`
 

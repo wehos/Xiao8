@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isNoindexRoute } from '../.vitepress/indexing-policy.mjs'
+import { SOURCE_REWRITES } from '../route-aliases.mjs'
 
 export const SITE_ORIGIN = 'https://project-neko.online'
 export const INDEXNOW_ENDPOINT = 'https://api.indexnow.org/indexnow'
@@ -51,7 +52,8 @@ export function documentationPathToUrl(path) {
     return null
   }
 
-  let route = `/${sourcePath}`
+  const routeSourcePath = SOURCE_REWRITES[sourcePath] ?? sourcePath
+  let route = `/${routeSourcePath}`
   if (route === '/index.md') {
     route = '/'
   } else if (route.endsWith('/index.md')) {

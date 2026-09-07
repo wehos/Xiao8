@@ -31,6 +31,7 @@ from main_logic.voice_identity.contracts import SpeakerModelIdentity
 from main_logic.voice_identity.profile import SpeakerProfile
 from main_logic.voice_identity.reference import SpeakerReference
 
+from .audio_contract import desktop_audio_contract_snapshot
 from .profile_store import VoiceIdentityProfileStore
 
 
@@ -124,11 +125,17 @@ async def run_release_smoke() -> None:
         with tempfile.TemporaryDirectory(prefix="neko-voice-identity-smoke-") as temp:
             profile_path = Path(temp) / "voice_identity.profile"
             store = VoiceIdentityProfileStore(profile_path)
-            await store.asave(profile)
+            await store.asave(
+                profile,
+                audio_contract=desktop_audio_contract_snapshot(
+                    noise_reduction_enabled=True,
+                ),
+            )
             _assert_encrypted_envelope(profile_path)
-            loaded_profile = await store.aload()
-            if loaded_profile is None:
+            loaded = await store.aload()
+            if loaded is None:
                 raise RuntimeError("profile_roundtrip_missing")
+            loaded_profile = loaded.profile
             loaded_reference = loaded_profile.clone_reference()
             try:
                 loaded_embedding = loaded_reference.copy_embedding()

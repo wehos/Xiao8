@@ -462,6 +462,11 @@ async def _request_memory_server_block_startup(reason: str = "") -> None:
 
 
 agent_event_bridge: MainServerAgentBridge | None = None
+# Strong ownership for manager terminal-close wrappers that may outlive the
+# bounded FastAPI shutdown wait.  A done callback removes each task and
+# consumes its exception; this avoids weak-ref task loss while the event loop
+# performs its final cancellation pass.
+_manager_terminal_close_tasks: set[asyncio.Task] = set()
 
 from .character_runtime import (  # noqa: F401
     RoleState,
@@ -1240,6 +1245,62 @@ async def on_shutdown():
             await close_voice_identity_runtime()
         except Exception as e:
             logger.debug(f"voice identity cleanup failed: {e}")
+
+        # The voice-identity registry is closed first so it cannot install a
+        # new verifier while managers cross their terminal ownership boundary.
+        # Ordinary session teardown uses IndependentAsrRuntime.stop_session()
+        # and intentionally preserves admission ingress; process shutdown is
+        # where every manager must invoke its terminal ``aclose()`` before the
+        # event loop is torn down.  All managers share one wall-clock budget so
+        # shutdown remains bounded regardless of the character count.
+        terminal_close_tasks: dict[asyncio.Task, str] = {}
+        pending_terminal_close_tasks: set[asyncio.Task] = set()
+
+        async def _terminal_close_manager(name: str, manager) -> None:
+            close = getattr(manager, "aclose", None)
+            if not callable(close):
+                return
+            try:
+                await close()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "terminal close session_manager 失败 (%s): %s",
+                    name,
+                    exc,
+                    exc_info=True,
+                )
+
+        def _release_terminal_close_task(task: asyncio.Task) -> None:
+            _manager_terminal_close_tasks.discard(task)
+            if not task.cancelled():
+                task.exception()
+
+        for manager_name, manager in list(_iter_session_managers()):
+            task = asyncio.create_task(
+                _terminal_close_manager(manager_name, manager),
+                name=f"terminal-close-session-manager:{manager_name}",
+            )
+            _manager_terminal_close_tasks.add(task)
+            task.add_done_callback(_release_terminal_close_task)
+            terminal_close_tasks[task] = manager_name
+
+        if terminal_close_tasks:
+            _done, pending = await asyncio.wait(
+                terminal_close_tasks,
+                timeout=5.0,
+            )
+            if pending:
+                pending_names = sorted(
+                    terminal_close_tasks[task] for task in pending
+                )
+                logger.warning(
+                    "session_manager terminal close exceeded initial 5.0s budget; "
+                    "retaining tasks for final shutdown drain: %s",
+                    ", ".join(pending_names),
+                )
+                pending_terminal_close_tasks = set(pending)
         cleanup()
         try:
             # join_sync_connector_threads 内部已经 gather 并行 join，直接 await
@@ -1445,6 +1506,28 @@ async def on_shutdown():
             logger.warning("external_http_client 清理超时，已强制跳过。")
         except Exception as e:
             logger.debug(f"external_http_client 清理失败: {e}", exc_info=True)
+
+        # Terminal manager closes that missed the initial shared budget stayed
+        # strongly owned while the remaining shutdown phases ran.  Give them a
+        # final bounded drain before returning control to the event loop.  Do
+        # not cancel the wrappers here: IndependentAsrRuntime.close() shields
+        # its own terminal task, so cancelling only the wrapper would hide a
+        # still-running cleanup from this owner.
+        if pending_terminal_close_tasks:
+            _settled, still_pending = await asyncio.wait(
+                pending_terminal_close_tasks,
+                timeout=0.5,
+            )
+            if still_pending:
+                still_pending_names = sorted(
+                    terminal_close_tasks[task] for task in still_pending
+                )
+                logger.error(
+                    "session_manager terminal close still pending at event-loop "
+                    "shutdown boundary (owned tasks retained): %s",
+                    ", ".join(still_pending_names),
+                )
+
 
 
 # 使用 FastAPI 的 app.state 来管理启动配置

@@ -29,6 +29,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from .._infra import AsrSessionConfig, _AsrWorkerEvent, _AsrWorkerRequest
+from .._provider_events import ProviderAudioRange
 from ._shared import is_auth_rejection
 
 _QWEN_MODEL = "qwen3-asr-flash-realtime"
@@ -43,6 +44,9 @@ _QWEN_FINISH_TIMEOUT_SECONDS = 3.0
 # empty final so the upstream utterance lifecycle converges instead of waiting
 # unboundedly. Mirrors the OpenAI worker's stalled-item deadline.
 _QWEN_STALLED_ITEM_TIMEOUT_SECONDS = 30.0
+_QWEN_ITEM_TOMBSTONE_LIMIT = 128
+_QWEN_PROVISIONAL_COMMIT_LIMIT = 8
+_QWEN_SYNTHETIC_ITEM_PREFIX = "__qwen_internal_fallback_"
 _QWEN_SUPPORTED_LANGUAGES = frozenset(
     {
         "ar",
@@ -85,10 +89,25 @@ class _QwenConnectionState:
     next_utterance_id: int
     emit_ready: bool
     item_keys: dict[str, _ItemKey] = field(default_factory=dict)
+    item_start_samples_16k: dict[str, int | None] = field(default_factory=dict)
+    item_boundaries: dict[str, ProviderAudioRange | None] = field(default_factory=dict)
+    provider_item_order: deque[str] = field(default_factory=deque)
+    provider_item_aliases: dict[str, str] = field(default_factory=dict)
+    ambiguous_provider_items: set[str] = field(default_factory=set)
+    completing_provider_items: set[str] = field(default_factory=set)
+    synthetic_provider_items: set[str] = field(default_factory=set)
+    retired_item_ids: set[str] = field(default_factory=set)
+    retired_item_order: deque[str] = field(default_factory=deque)
+    next_synthetic_item_id: int = 1
     pending_manual_commits: deque[_ItemKey] = field(default_factory=deque)
     # Monotonic timestamps of provider endpoints whose transcription final is
     # still outstanding, keyed by item id (see _qwen_watch_stalled_items).
     item_deadlines: dict[str, float] = field(default_factory=dict)
+    # ``committed`` is weaker than speech_stopped: it carries no trustworthy
+    # audio range and may precede speech_started. Keep it private until a
+    # stronger event proves that a public utterance exists.
+    provisional_commits: dict[str, float] = field(default_factory=dict)
+    anonymous_provisional_commits: deque[float] = field(default_factory=deque)
     stalled_deadline_armed: asyncio.Event = field(default_factory=asyncio.Event)
     configured: asyncio.Event = field(default_factory=asyncio.Event)
     finish_received: asyncio.Event = field(default_factory=asyncio.Event)
@@ -178,10 +197,284 @@ async def _emit_qwen_error_once(
 def _qwen_arm_stalled_item_deadline(
     state: _QwenConnectionState,
     item_id: str,
+    *,
+    armed_at: float | None = None,
 ) -> None:
     if item_id and item_id in state.item_keys and item_id not in state.item_deadlines:
-        state.item_deadlines[item_id] = time.monotonic()
+        state.item_deadlines[item_id] = (
+            time.monotonic() if armed_at is None else armed_at
+        )
         state.stalled_deadline_armed.set()
+
+
+def _qwen_audio_ms_to_sample_16k(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value * 16
+
+
+def _qwen_record_provisional_commit(
+    state: _QwenConnectionState,
+    raw_item_id: str,
+) -> None:
+    armed_at = time.monotonic()
+    if raw_item_id:
+        state.provisional_commits.setdefault(raw_item_id, armed_at)
+    else:
+        state.anonymous_provisional_commits.append(armed_at)
+
+    while (
+        len(state.provisional_commits)
+        + len(state.anonymous_provisional_commits)
+        > _QWEN_PROVISIONAL_COMMIT_LIMIT
+    ):
+        named_oldest = (
+            min(state.provisional_commits.items(), key=lambda item: item[1])
+            if state.provisional_commits
+            else None
+        )
+        anonymous_oldest = (
+            state.anonymous_provisional_commits[0]
+            if state.anonymous_provisional_commits
+            else None
+        )
+        if anonymous_oldest is not None and (
+            named_oldest is None or anonymous_oldest <= named_oldest[1]
+        ):
+            state.anonymous_provisional_commits.popleft()
+        elif named_oldest is not None:
+            state.provisional_commits.pop(named_oldest[0], None)
+    state.stalled_deadline_armed.set()
+
+
+def _qwen_take_provisional_commit(
+    state: _QwenConnectionState,
+    raw_item_id: str,
+    *,
+    allow_anonymous: bool,
+) -> float | None:
+    if raw_item_id:
+        armed_at = state.provisional_commits.pop(raw_item_id, None)
+        if armed_at is not None:
+            return armed_at
+    if allow_anonymous and state.anonymous_provisional_commits:
+        return state.anonymous_provisional_commits.popleft()
+    return None
+
+
+def _qwen_expire_provisional_commits(
+    state: _QwenConnectionState,
+    now: float,
+) -> None:
+    expired_named = tuple(
+        item_id
+        for item_id, armed_at in state.provisional_commits.items()
+        if now - armed_at >= _QWEN_STALLED_ITEM_TIMEOUT_SECONDS
+    )
+    for item_id in expired_named:
+        state.provisional_commits.pop(item_id, None)
+    while (
+        state.anonymous_provisional_commits
+        and now - state.anonymous_provisional_commits[0]
+        >= _QWEN_STALLED_ITEM_TIMEOUT_SECONDS
+    ):
+        state.anonymous_provisional_commits.popleft()
+
+
+def _qwen_remember_retired_item(
+    state: _QwenConnectionState,
+    item_id: str,
+) -> None:
+    if not item_id or item_id in state.retired_item_ids:
+        return
+    state.retired_item_ids.add(item_id)
+    state.retired_item_order.append(item_id)
+    while len(state.retired_item_order) > _QWEN_ITEM_TOMBSTONE_LIMIT:
+        expired = state.retired_item_order.popleft()
+        state.retired_item_ids.discard(expired)
+
+
+def _qwen_next_synthetic_item(state: _QwenConnectionState) -> str:
+    while True:
+        item_id = f"{_QWEN_SYNTHETIC_ITEM_PREFIX}{state.next_synthetic_item_id}"
+        state.next_synthetic_item_id += 1
+        if (
+            item_id not in state.item_keys
+            and item_id not in state.provider_item_aliases
+            and item_id not in state.retired_item_ids
+        ):
+            return item_id
+
+
+def _qwen_oldest_provider_item(state: _QwenConnectionState) -> str | None:
+    while state.provider_item_order:
+        item_id = state.provider_item_order[0]
+        if item_id in state.item_keys:
+            return item_id
+        state.provider_item_order.popleft()
+    return None
+
+
+async def _qwen_open_provider_item(
+    response_queue: asyncio.Queue[_AsrWorkerEvent],
+    state: _QwenConnectionState,
+    item_id: str,
+    *,
+    start_sample_16k: int | None,
+    ambiguous: bool,
+    terminal: bool = False,
+) -> str | None:
+    if item_id and item_id in state.retired_item_ids:
+        return None
+    canonical_item_id = item_id or _qwen_next_synthetic_item(state)
+    if canonical_item_id in state.item_keys:
+        return canonical_item_id
+    key = (
+        state.generation,
+        state.buffer_epoch,
+        state.next_utterance_id,
+    )
+    state.next_utterance_id += 1
+    state.last_utterance_id = key[2]
+    state.item_keys[canonical_item_id] = key
+    canonical_start = None if ambiguous else start_sample_16k
+    state.item_start_samples_16k[canonical_item_id] = canonical_start
+    state.provider_item_order.append(canonical_item_id)
+    if item_id:
+        state.provider_item_aliases[item_id] = canonical_item_id
+    else:
+        state.synthetic_provider_items.add(canonical_item_id)
+    if ambiguous:
+        state.ambiguous_provider_items.add(canonical_item_id)
+    if terminal:
+        # Claim terminal ownership before the first potentially blocking put;
+        # the watchdog must never retire this item while completed is queued.
+        state.completing_provider_items.add(canonical_item_id)
+        state.item_deadlines.pop(canonical_item_id, None)
+    await response_queue.put(
+        _AsrWorkerEvent(
+            kind="utterance_started",
+            generation=key[0],
+            buffer_epoch=key[1],
+            utterance_id=key[2],
+            audio_start_sample_16k=canonical_start,
+        )
+    )
+    return canonical_item_id
+
+
+async def _qwen_mark_provider_item_ambiguous(
+    response_queue: asyncio.Queue[_AsrWorkerEvent],
+    state: _QwenConnectionState,
+    item_id: str,
+) -> None:
+    if item_id in state.ambiguous_provider_items:
+        return
+    state.ambiguous_provider_items.add(item_id)
+    state.item_start_samples_16k[item_id] = None
+    # Boundary revocation is the single ordered poison event for late start
+    # conflicts. Emitting a second started event here would require two queue
+    # slots atomically and can deadlock a bounded worker response queue.
+    await _qwen_emit_provider_endpoint(response_queue, state, item_id, None)
+
+
+async def _qwen_resolve_provider_item(
+    response_queue: asyncio.Queue[_AsrWorkerEvent],
+    state: _QwenConnectionState,
+    raw_item_id: str,
+    *,
+    terminal: bool = False,
+) -> str | None:
+    if raw_item_id:
+        if raw_item_id in state.retired_item_ids:
+            return None
+        item_id = state.provider_item_aliases.get(raw_item_id)
+        if item_id is not None and item_id in state.item_keys:
+            if terminal:
+                state.completing_provider_items.add(item_id)
+                state.item_deadlines.pop(item_id, None)
+            return item_id
+    item_id = _qwen_oldest_provider_item(state)
+    if item_id is None:
+        item_id = await _qwen_open_provider_item(
+            response_queue,
+            state,
+            raw_item_id,
+            start_sample_16k=None,
+            ambiguous=True,
+            terminal=terminal,
+        )
+        if terminal and item_id is not None:
+            state.completing_provider_items.add(item_id)
+            state.item_deadlines.pop(item_id, None)
+        return item_id
+    if raw_item_id:
+        state.provider_item_aliases[raw_item_id] = item_id
+    if terminal:
+        state.completing_provider_items.add(item_id)
+        state.item_deadlines.pop(item_id, None)
+    await _qwen_mark_provider_item_ambiguous(response_queue, state, item_id)
+    return item_id if item_id in state.item_keys else None
+
+
+def _qwen_retire_provider_item(
+    state: _QwenConnectionState,
+    item_id: str,
+) -> _ItemKey | None:
+    key = state.item_keys.pop(item_id, None)
+    if key is None:
+        return None
+    state.item_deadlines.pop(item_id, None)
+    state.item_start_samples_16k.pop(item_id, None)
+    state.item_boundaries.pop(item_id, None)
+    state.ambiguous_provider_items.discard(item_id)
+    state.completing_provider_items.discard(item_id)
+    is_synthetic = item_id in state.synthetic_provider_items
+    state.synthetic_provider_items.discard(item_id)
+    try:
+        state.provider_item_order.remove(item_id)
+    except ValueError:
+        pass
+    aliases = tuple(
+        alias
+        for alias, canonical_item_id in state.provider_item_aliases.items()
+        if canonical_item_id == item_id
+    )
+    for alias in aliases:
+        state.provider_item_aliases.pop(alias, None)
+        state.provisional_commits.pop(alias, None)
+        _qwen_remember_retired_item(state, alias)
+    state.provisional_commits.pop(item_id, None)
+    if not is_synthetic:
+        _qwen_remember_retired_item(state, item_id)
+    return key
+
+
+async def _qwen_emit_provider_endpoint(
+    response_queue: asyncio.Queue[_AsrWorkerEvent],
+    state: _QwenConnectionState,
+    item_id: str,
+    audio_range: ProviderAudioRange | None,
+) -> None:
+    key = state.item_keys.get(item_id)
+    if key is None:
+        return
+    if item_id in state.item_boundaries:
+        existing = state.item_boundaries[item_id]
+        if existing is None or existing == audio_range:
+            return
+        audio_range = None
+    state.item_boundaries[item_id] = audio_range
+    await response_queue.put(
+        _AsrWorkerEvent(
+            kind="provider_endpoint",
+            generation=key[0],
+            buffer_epoch=key[1],
+            utterance_id=key[2],
+            boundary_quality="exact" if audio_range is not None else "unknown",
+            audio_range=audio_range,
+        )
+    )
 
 
 async def _qwen_expire_stalled_items(
@@ -189,16 +482,29 @@ async def _qwen_expire_stalled_items(
     state: _QwenConnectionState,
 ) -> None:
     now = time.monotonic()
+    _qwen_expire_provisional_commits(state, now)
     expired_ids = [
         item_id
         for item_id, armed_at in state.item_deadlines.items()
-        if now - armed_at >= _QWEN_STALLED_ITEM_TIMEOUT_SECONDS
+        if item_id not in state.completing_provider_items
+        and now - armed_at >= _QWEN_STALLED_ITEM_TIMEOUT_SECONDS
     ]
     for item_id in expired_ids:
-        del state.item_deadlines[item_id]
-        # Popping the key tombstones the item: a late completed event finds
-        # no mapping and is dropped instead of resurrecting the closed turn.
-        key = state.item_keys.pop(item_id, None)
+        if (
+            item_id not in state.item_deadlines
+            or item_id in state.completing_provider_items
+        ):
+            continue
+        if item_id not in state.item_boundaries:
+            await _qwen_emit_provider_endpoint(response_queue, state, item_id, None)
+        if (
+            item_id not in state.item_deadlines
+            or item_id in state.completing_provider_items
+        ):
+            continue
+        # Retirement records every observed provider alias before releasing
+        # the key, so a late start/completed pair cannot resurrect the turn.
+        key = _qwen_retire_provider_item(state, item_id)
         if key is None:
             continue
         await response_queue.put(
@@ -221,14 +527,17 @@ async def _qwen_watch_stalled_items(
     # of speech would otherwise never trigger the sweep, leaving the
     # upstream turn open unboundedly.
     while True:
-        if not state.item_deadlines:
+        deadline_values = (
+            *state.item_deadlines.values(),
+            *state.provisional_commits.values(),
+            *state.anonymous_provisional_commits,
+        )
+        if not deadline_values:
             await state.stalled_deadline_armed.wait()
             state.stalled_deadline_armed.clear()
             continue
-        earliest = min(state.item_deadlines.values())
-        remaining = (
-            earliest + _QWEN_STALLED_ITEM_TIMEOUT_SECONDS - time.monotonic()
-        )
+        earliest = min(deadline_values)
+        remaining = earliest + _QWEN_STALLED_ITEM_TIMEOUT_SECONDS - time.monotonic()
         if remaining > 0:
             await asyncio.sleep(remaining)
             continue
@@ -438,25 +747,45 @@ async def _qwen_receiver(
             if event_type == "input_audio_buffer.speech_started":
                 if config.endpointing_mode != "provider":
                     continue
-                item_id = str(event.get("item_id") or "")
-                if not item_id or item_id in state.item_keys:
+                raw_item_id = str(event.get("item_id") or "")
+                start_sample_16k = _qwen_audio_ms_to_sample_16k(
+                    event.get("audio_start_ms")
+                )
+                if raw_item_id and raw_item_id in state.retired_item_ids:
                     continue
-                key = (
-                    state.generation,
-                    state.buffer_epoch,
-                    state.next_utterance_id,
+                canonical_item_id = state.provider_item_aliases.get(raw_item_id)
+                if (
+                    canonical_item_id is not None
+                    and canonical_item_id in state.item_keys
+                ):
+                    if (
+                        state.item_start_samples_16k.get(canonical_item_id)
+                        != start_sample_16k
+                    ):
+                        await _qwen_mark_provider_item_ambiguous(
+                            response_queue,
+                            state,
+                            canonical_item_id,
+                        )
+                    continue
+                provisional_armed_at = _qwen_take_provisional_commit(
+                    state,
+                    raw_item_id,
+                    allow_anonymous=True,
                 )
-                state.next_utterance_id += 1
-                state.last_utterance_id = key[2]
-                state.item_keys[item_id] = key
-                await response_queue.put(
-                    _AsrWorkerEvent(
-                        kind="utterance_started",
-                        generation=key[0],
-                        buffer_epoch=key[1],
-                        utterance_id=key[2],
+                opened_item_id = await _qwen_open_provider_item(
+                    response_queue,
+                    state,
+                    raw_item_id,
+                    start_sample_16k=start_sample_16k,
+                    ambiguous=not raw_item_id,
+                )
+                if opened_item_id is not None and provisional_armed_at is not None:
+                    _qwen_arm_stalled_item_deadline(
+                        state,
+                        opened_item_id,
+                        armed_at=provisional_armed_at,
                     )
-                )
                 continue
 
             if event_type == "input_audio_buffer.speech_stopped":
@@ -466,26 +795,95 @@ async def _qwen_receiver(
                 # still outstanding. Arm the stalled-item deadline so a
                 # delayed or missing completed event cannot leave the
                 # upstream turn open unboundedly.
-                _qwen_arm_stalled_item_deadline(state, str(event.get("item_id") or ""))
+                raw_item_id = str(event.get("item_id") or "")
+                if raw_item_id and raw_item_id in state.retired_item_ids:
+                    continue
+                canonical_item_id = (
+                    state.provider_item_aliases.get(raw_item_id)
+                    if raw_item_id
+                    else _qwen_oldest_provider_item(state)
+                )
+                provisional_armed_at: float | None = None
+                if (
+                    canonical_item_id is None
+                    or canonical_item_id not in state.item_keys
+                ):
+                    provisional_armed_at = _qwen_take_provisional_commit(
+                        state,
+                        raw_item_id,
+                        allow_anonymous=(
+                            _qwen_oldest_provider_item(state) is None
+                        ),
+                    )
+                if provisional_armed_at is not None:
+                    item_id = await _qwen_open_provider_item(
+                        response_queue,
+                        state,
+                        raw_item_id,
+                        start_sample_16k=None,
+                        ambiguous=True,
+                    )
+                else:
+                    item_id = await _qwen_resolve_provider_item(
+                        response_queue,
+                        state,
+                        raw_item_id,
+                    )
+                if item_id is None:
+                    continue
+                _qwen_arm_stalled_item_deadline(
+                    state,
+                    item_id,
+                    armed_at=provisional_armed_at,
+                )
+                start_sample_16k = state.item_start_samples_16k.get(item_id)
+                end_sample_16k = _qwen_audio_ms_to_sample_16k(event.get("audio_end_ms"))
+                audio_range = None
+                if (
+                    item_id not in state.ambiguous_provider_items
+                    and start_sample_16k is not None
+                    and end_sample_16k is not None
+                    and end_sample_16k > start_sample_16k
+                ):
+                    audio_range = ProviderAudioRange(
+                        start_sample_16k=start_sample_16k,
+                        end_sample_16k=end_sample_16k,
+                    )
+                await _qwen_emit_provider_endpoint(
+                    response_queue,
+                    state,
+                    item_id,
+                    audio_range,
+                )
                 continue
 
             if event_type == "input_audio_buffer.committed":
-                item_id = str(event.get("item_id") or "")
+                raw_item_id = str(event.get("item_id") or "")
                 if config.endpointing_mode == "provider":
-                    # Some server VAD turns publish committed without (or
-                    # after) speech_stopped; either event is the endpoint.
-                    _qwen_arm_stalled_item_deadline(state, item_id)
+                    if raw_item_id and raw_item_id in state.retired_item_ids:
+                        continue
+                    item_id = (
+                        state.provider_item_aliases.get(raw_item_id)
+                        if raw_item_id
+                        else _qwen_oldest_provider_item(state)
+                    )
+                    if item_id is not None and item_id in state.item_keys:
+                        _qwen_arm_stalled_item_deadline(state, item_id)
+                    else:
+                        _qwen_record_provisional_commit(state, raw_item_id)
                     continue
                 if (
                     config.endpointing_mode == "manual"
-                    and item_id
-                    and item_id not in state.item_keys
+                    and raw_item_id
+                    and raw_item_id not in state.item_keys
                     and state.pending_manual_commits
                 ):
-                    state.item_keys[item_id] = state.pending_manual_commits.popleft()
+                    state.item_keys[raw_item_id] = (
+                        state.pending_manual_commits.popleft()
+                    )
                 elif (
                     config.endpointing_mode == "manual"
-                    and not item_id
+                    and not raw_item_id
                     and state.legacy_manual_key is None
                     and state.pending_manual_commits
                 ):
@@ -493,10 +891,55 @@ async def _qwen_receiver(
                 continue
 
             if event_type == "conversation.item.input_audio_transcription.text":
-                item_id = str(event.get("item_id") or "")
-                key = (
-                    state.item_keys.get(item_id) if item_id else state.legacy_manual_key
-                )
+                raw_item_id = str(event.get("item_id") or "")
+                if config.endpointing_mode == "provider":
+                    if raw_item_id and raw_item_id in state.retired_item_ids:
+                        continue
+                    canonical_item_id = (
+                        state.provider_item_aliases.get(raw_item_id)
+                        if raw_item_id
+                        else _qwen_oldest_provider_item(state)
+                    )
+                    provisional_armed_at: float | None = None
+                    if (
+                        canonical_item_id is None
+                        or canonical_item_id not in state.item_keys
+                    ):
+                        provisional_armed_at = _qwen_take_provisional_commit(
+                            state,
+                            raw_item_id,
+                            allow_anonymous=(
+                                _qwen_oldest_provider_item(state) is None
+                            ),
+                        )
+                    if provisional_armed_at is not None:
+                        item_id = await _qwen_open_provider_item(
+                            response_queue,
+                            state,
+                            raw_item_id,
+                            start_sample_16k=None,
+                            ambiguous=True,
+                        )
+                        if item_id is not None:
+                            _qwen_arm_stalled_item_deadline(
+                                state,
+                                item_id,
+                                armed_at=provisional_armed_at,
+                            )
+                    else:
+                        item_id = await _qwen_resolve_provider_item(
+                            response_queue,
+                            state,
+                            raw_item_id,
+                        )
+                    key = state.item_keys.get(item_id) if item_id else None
+                else:
+                    item_id = raw_item_id
+                    key = (
+                        state.item_keys.get(item_id)
+                        if item_id
+                        else state.legacy_manual_key
+                    )
                 if key is not None:
                     if item_id in state.item_deadlines:
                         # Streaming text proves the transcription is alive;
@@ -516,14 +959,62 @@ async def _qwen_receiver(
                 continue
 
             if event_type == "conversation.item.input_audio_transcription.completed":
-                item_id = str(event.get("item_id") or "")
-                if item_id:
-                    state.item_deadlines.pop(item_id, None)
-                key = (
-                    state.item_keys.pop(item_id, None)
-                    if item_id
-                    else state.legacy_manual_key
-                )
+                raw_item_id = str(event.get("item_id") or "")
+                if config.endpointing_mode == "provider":
+                    if raw_item_id and raw_item_id in state.retired_item_ids:
+                        continue
+                    canonical_item_id = (
+                        state.provider_item_aliases.get(raw_item_id)
+                        if raw_item_id
+                        else _qwen_oldest_provider_item(state)
+                    )
+                    provisional_armed_at: float | None = None
+                    if (
+                        canonical_item_id is None
+                        or canonical_item_id not in state.item_keys
+                    ):
+                        provisional_armed_at = _qwen_take_provisional_commit(
+                            state,
+                            raw_item_id,
+                            allow_anonymous=(
+                                _qwen_oldest_provider_item(state) is None
+                            ),
+                        )
+                    if provisional_armed_at is not None:
+                        item_id = await _qwen_open_provider_item(
+                            response_queue,
+                            state,
+                            raw_item_id,
+                            start_sample_16k=None,
+                            ambiguous=True,
+                            terminal=True,
+                        )
+                    else:
+                        item_id = await _qwen_resolve_provider_item(
+                            response_queue,
+                            state,
+                            raw_item_id,
+                            terminal=True,
+                        )
+                    if item_id is None:
+                        continue
+                    if item_id not in state.item_boundaries:
+                        await _qwen_emit_provider_endpoint(
+                            response_queue,
+                            state,
+                            item_id,
+                            None,
+                        )
+                    key = _qwen_retire_provider_item(state, item_id)
+                else:
+                    item_id = raw_item_id
+                    if item_id:
+                        state.item_deadlines.pop(item_id, None)
+                    key = (
+                        state.item_keys.pop(item_id, None)
+                        if item_id
+                        else state.legacy_manual_key
+                    )
                 if key is not None:
                     await response_queue.put(
                         _AsrWorkerEvent(
@@ -534,13 +1025,16 @@ async def _qwen_receiver(
                             text=str(event.get("transcript") or ""),
                         )
                     )
-                    if not item_id:
+                    if config.endpointing_mode == "manual" and not item_id:
                         state.legacy_manual_key = None
                         if (
                             state.pending_manual_commits
                             and state.pending_manual_commits[0] == key
                         ):
                             state.pending_manual_commits.popleft()
+                if config.endpointing_mode == "manual" and item_id:
+                    state.item_start_samples_16k.pop(item_id, None)
+                    state.item_boundaries.pop(item_id, None)
                 continue
 
             if event_type == "session.finished":

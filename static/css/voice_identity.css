@@ -245,6 +245,137 @@ input:focus-visible,
     max-width: 620px;
 }
 
+.enrollment-hints {
+    display: grid;
+    max-width: 520px;
+    margin: 18px auto 0;
+    padding: 0;
+    color: var(--voice-muted);
+    font-size: 0.92rem;
+    line-height: 1.55;
+    list-style: none;
+    gap: 4px;
+}
+
+.enrollment-hints li::before {
+    margin-right: 7px;
+    color: var(--voice-blue-dark);
+    content: "✓";
+    font-weight: 800;
+}
+
+.step-progress {
+    display: flex;
+    width: min(420px, 100%);
+    align-items: center;
+    margin-top: 24px;
+}
+
+.step-dot {
+    display: inline-flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 2px solid var(--voice-border);
+    border-radius: 50%;
+    color: var(--voice-muted);
+    background: var(--voice-panel);
+    font-weight: 800;
+}
+
+.step-dot.current {
+    border-color: var(--voice-blue-dark);
+    color: var(--voice-focus);
+    box-shadow: 0 0 0 5px rgba(36, 184, 242, 0.12);
+}
+
+.step-dot.completed {
+    border-color: #168c5b;
+    color: white;
+    background: #168c5b;
+}
+
+.step-dot.verification {
+    border-style: double;
+}
+
+.step-line {
+    height: 2px;
+    flex: 1 1 auto;
+    background: var(--voice-border);
+}
+
+.progress-label,
+.phase-label,
+.remaining-label {
+    margin: 10px 0 0;
+    color: var(--voice-muted);
+    line-height: 1.4;
+}
+
+.progress-label {
+    color: var(--voice-blue-dark);
+    font-weight: 800;
+}
+
+.phase-label {
+    min-height: 1.4em;
+    font-weight: 600;
+}
+
+.reading-prompt {
+    display: grid;
+    width: min(560px, 100%);
+    margin-top: 14px;
+    padding: 16px 20px;
+    border: 1px solid var(--voice-border);
+    border-radius: 16px;
+    color: var(--voice-ink);
+    background: rgba(36, 184, 242, 0.09);
+    line-height: 1.6;
+    gap: 4px;
+}
+
+.reading-prompt[hidden] {
+    display: none;
+}
+
+.reading-prompt-label {
+    color: var(--voice-blue-dark);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+#voice-identity-reading-text {
+    font-size: clamp(1.05rem, 2.4vw, 1.3rem);
+    font-weight: 700;
+}
+
+#voice-identity-reading-text::before,
+#voice-identity-reading-text::after {
+    color: var(--voice-muted);
+}
+
+.verification-help {
+    width: min(560px, 100%);
+    margin: 8px 0 0;
+    color: var(--voice-muted);
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+.verification-help[hidden] {
+    display: none;
+}
+
+.remaining-label {
+    min-height: 1.4em;
+    font-size: 0.88rem;
+}
+
 .eyebrow {
     margin: 0 0 9px;
     color: var(--voice-blue-dark);
@@ -280,6 +411,16 @@ input:focus-visible,
     animation: pulse 0.9s ease-in-out infinite alternate;
 }
 
+.capture-status.preparing {
+    color: var(--voice-muted);
+    background: rgba(97, 121, 138, 0.12);
+}
+
+.capture-status.preparing .record-icon {
+    background: var(--voice-muted);
+    animation: none;
+}
+
 .capture-status.saving .record-icon {
     background: var(--voice-blue-dark);
     animation: none;
@@ -308,7 +449,7 @@ input:focus-visible,
 
 .enrollment-message {
     min-height: 1.5em;
-    margin: 16px 0 0;
+    margin: 0;
     color: var(--voice-blue-dark);
     font-weight: 600;
 }
@@ -454,6 +595,11 @@ button:disabled {
     .enrollment-card {
         min-height: 300px;
         padding: 30px 20px;
+    }
+
+    .step-dot {
+        width: 29px;
+        height: 29px;
     }
 
     .filter-row {

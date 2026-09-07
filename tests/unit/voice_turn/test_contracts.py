@@ -93,3 +93,29 @@ def test_partial_event_exposes_read_only_epoch_from_full_turn_identity() -> None
 
     assert event.turn_token is token
     assert event.session_epoch == 7
+
+
+def test_asr_control_events_carry_ordering_and_incident_identity() -> None:
+    status = AsrStatusEvent(
+        code="ASR_DENY_CLEANUP_FAILED",
+        provider="qwen",
+        session_epoch=7,
+        transport_generation=11,
+        lifecycle_revision=13,
+        reason_code="ASR_DENY_CLEANUP_FAILED",
+        incident_id="incident-17",
+    )
+    lifecycle = AsrLifecycleNotification(
+        state="blocked",
+        provider="qwen",
+        session_epoch=7,
+        transport_generation=11,
+        lifecycle_revision=12,
+        reason_code="ASR_DENY_CLEANUP_FAILED",
+        incident_id="incident-17",
+    )
+
+    assert status.transport_generation == lifecycle.transport_generation == 11
+    assert status.lifecycle_revision > lifecycle.lifecycle_revision
+    assert status.reason_code == lifecycle.reason_code
+    assert status.incident_id == lifecycle.incident_id

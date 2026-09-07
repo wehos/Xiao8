@@ -36,6 +36,14 @@ from ._registry_meta import (
     AsrCoreCapabilities,
     AsrEndpointingMode as _AsrEndpointingMode,
     AsrProviderAvailability as _AsrProviderAvailability,
+    AsrSpeakerExactIntervalCapability,
+)
+from ._provider_events import (
+    ProviderEndpointNotification,
+    ProviderFinalNotification,
+    ProviderStartedSettlement,
+    ProviderUtteranceKey,
+    ProviderUtteranceStartedNotification,
 )
 from .endpointing.detector_runtime import _create_voice_turn_adapter
 from .provider_policy import resolve_provider_policy
@@ -75,6 +83,7 @@ class VoiceIdentityActivationResult(Enum):
     """Outcome of applying a profile to the currently active ASR route."""
 
     READY = "ready"
+    ACTIVATION_PENDING = "activation_pending"
     UNSUPPORTED_ASR_ROUTE = "unsupported_asr_route"
     RUNTIME_DEGRADED = "runtime_degraded"
 
@@ -420,6 +429,19 @@ def _create_asr_session_from_selection(
     on_status_message: Callable[[str], Awaitable[None]] | None = None,
     on_speech_activity: Callable[[SpeechActivityEvent], Awaitable[None]] | None = None,
     on_turn_endpointed: Callable[[], Awaitable[None]] | None = None,
+    on_provider_utterance_started: Callable[
+        [ProviderUtteranceStartedNotification],
+        Awaitable[ProviderStartedSettlement | None],
+    ]
+    | None = None,
+    on_provider_endpoint: Callable[[ProviderEndpointNotification], Awaitable[None]]
+    | None = None,
+    on_provider_final: Callable[[ProviderUtteranceKey, str], Awaitable[None]]
+    | None = None,
+    on_provider_final_ready: Callable[
+        [ProviderFinalNotification], Awaitable[None]
+    ]
+    | None = None,
     external_endpointing_runtime: bool = False,
     user_language: str | None = None,
 ) -> RealtimeAsrSession:
@@ -467,6 +489,10 @@ def _create_asr_session_from_selection(
         on_connection_error=on_connection_error,
         on_status_message=on_status_message,
         on_turn_endpointed=on_turn_endpointed,
+        on_provider_utterance_started=on_provider_utterance_started,
+        on_provider_endpoint=on_provider_endpoint,
+        on_provider_final=on_provider_final,
+        on_provider_final_ready=on_provider_final_ready,
         voice_turn_factory=(
             partial(
                 _create_voice_turn_adapter,

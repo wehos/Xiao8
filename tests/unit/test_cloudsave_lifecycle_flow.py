@@ -1024,7 +1024,10 @@ async def test_main_server_shutdown_releases_live_sessions_then_uploads_existing
 
     fake_tracker = SimpleNamespace(save=Mock())
     run_cloudsave_action = AsyncMock(return_value={"success": True, "action": "uploaded"})
-    manager_with_resampler = SimpleNamespace(audio_resampler=object())
+    manager_with_resampler = SimpleNamespace(
+        audio_resampler=object(),
+        aclose=AsyncMock(),
+    )
     existing_steamworks = SimpleNamespace()
 
     with patch.object(main_server, "_IS_MAIN_PROCESS", True), \
@@ -1040,6 +1043,7 @@ async def test_main_server_shutdown_releases_live_sessions_then_uploads_existing
         await main_server.on_shutdown()
 
     assert manager_with_resampler.audio_resampler is None
+    manager_with_resampler.aclose.assert_awaited_once_with()
     run_cloudsave_action.assert_awaited_once_with(
         "upload_existing_snapshot",
         reason="main_server_shutdown_remote_upload",

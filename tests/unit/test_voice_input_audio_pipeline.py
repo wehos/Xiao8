@@ -19,6 +19,7 @@ class _Processor:
         self.rnnoise_probability_mean = 0.6
         self.rnnoise_probability_last = 0.2
         self.rnnoise_probability_ema = 0.55
+        self.finalize_calls = 0
 
     def process_chunk(self, pcm16: bytes) -> bytes:
         self.inputs.append(pcm16)
@@ -26,6 +27,10 @@ class _Processor:
 
     def close(self) -> None:
         self.closed = True
+
+    def finalize_stream(self) -> bytes:
+        self.finalize_calls += 1
+        return b"tail"
 
 
 async def test_pipeline_passes_16k_without_creating_rnnoise_processor() -> None:
@@ -43,6 +48,20 @@ async def test_pipeline_passes_16k_without_creating_rnnoise_processor() -> None:
     assert frame.rnnoise_evidence is not None
     assert frame.rnnoise_evidence.available is False
     assert created == []
+
+
+async def test_pipeline_preserves_core_capture_identity() -> None:
+    pipeline = VoiceInputAudioPipeline()
+
+    frame = await pipeline.process(
+        b"\x01\x00" * 160,
+        sample_rate_hz=16_000,
+        ingress_sequence=41,
+        captured_at=1234.5,
+    )
+
+    assert frame.ingress_sequence == 41
+    assert frame.captured_at == 1234.5
 
 
 async def test_pipeline_owns_48k_processor_and_exposes_rnnoise_probability() -> None:
@@ -139,6 +158,90 @@ async def test_pipeline_close_waits_for_cancelled_processing_thread() -> None:
         await process_task
     await close_task
 
+    assert processor.closed is True
+
+
+async def test_pipeline_finalize_returns_bytes_and_enters_terminal_state() -> None:
+    processor = _Processor()
+    pipeline = VoiceInputAudioPipeline(processor_factory=lambda: processor)
+
+    with pytest.raises(RuntimeError, match="VOICE_AUDIO_PIPELINE_EMPTY"):
+        await pipeline.finalize_stream()
+    assert processor.finalize_calls == 0
+
+    await pipeline.process(b"\x01\x00" * 480, sample_rate_hz=48_000)
+
+    tail = await pipeline.finalize_stream()
+
+    assert type(tail) is bytes
+    assert tail == b"tail"
+    assert processor.finalize_calls == 1
+    with pytest.raises(RuntimeError, match="VOICE_AUDIO_PIPELINE_FINALIZED"):
+        await pipeline.finalize_stream()
+    with pytest.raises(RuntimeError, match="VOICE_AUDIO_PIPELINE_FINALIZED"):
+        await pipeline.process(b"\x01\x00" * 480, sample_rate_hz=48_000)
+    await pipeline.close()
+
+
+async def test_concurrent_pipeline_finalize_enters_native_processor_once() -> None:
+    finalize_started = threading.Event()
+    release_finalize = threading.Event()
+
+    class _BlockingFinalizeProcessor(_Processor):
+        def finalize_stream(self) -> bytes:
+            self.finalize_calls += 1
+            finalize_started.set()
+            assert release_finalize.wait(5)
+            return b"tail"
+
+    processor = _BlockingFinalizeProcessor()
+    pipeline = VoiceInputAudioPipeline(processor_factory=lambda: processor)
+    await pipeline.process(b"\x01\x00" * 480, sample_rate_hz=48_000)
+
+    first = asyncio.create_task(pipeline.finalize_stream())
+    assert await asyncio.to_thread(finalize_started.wait, 5)
+    second = asyncio.create_task(pipeline.finalize_stream())
+    await asyncio.sleep(0)
+
+    assert not first.done()
+    assert not second.done()
+    release_finalize.set()
+    assert await first == b"tail"
+    with pytest.raises(RuntimeError, match="VOICE_AUDIO_PIPELINE_FINALIZED"):
+        await second
+    assert processor.finalize_calls == 1
+    await pipeline.close()
+
+
+async def test_cancelled_pipeline_finalize_waits_for_native_completion() -> None:
+    finalize_started = threading.Event()
+    release_finalize = threading.Event()
+
+    class _BlockingFinalizeProcessor(_Processor):
+        def finalize_stream(self) -> bytes:
+            self.finalize_calls += 1
+            finalize_started.set()
+            assert release_finalize.wait(5)
+            return b"tail"
+
+    processor = _BlockingFinalizeProcessor()
+    pipeline = VoiceInputAudioPipeline(processor_factory=lambda: processor)
+    await pipeline.process(b"\x01\x00" * 480, sample_rate_hz=48_000)
+    finalize_task = asyncio.create_task(pipeline.finalize_stream())
+    assert await asyncio.to_thread(finalize_started.wait, 5)
+
+    finalize_task.cancel()
+    close_task = asyncio.create_task(pipeline.close())
+    await asyncio.sleep(0)
+
+    assert not finalize_task.done()
+    assert not close_task.done()
+    assert processor.closed is False
+    release_finalize.set()
+    with pytest.raises(asyncio.CancelledError):
+        await finalize_task
+    await close_task
+    assert processor.finalize_calls == 1
     assert processor.closed is True
 
 

@@ -116,7 +116,7 @@ def test_voice_identity_header_keeps_title_bounded() -> None:
     assert "text-overflow: ellipsis" in title_layers.group(1)
 
 
-def test_voice_identity_template_is_a_single_action_enrollment_flow() -> None:
+def test_voice_identity_template_is_an_accessible_four_segment_enrollment_flow() -> None:
     template = (ROOT / "templates/voice_identity.html").read_text(encoding="utf-8")
     stylesheet = (ROOT / "static/css/voice_identity.css").read_text(encoding="utf-8")
 
@@ -132,12 +132,27 @@ def test_voice_identity_template_is_a_single_action_enrollment_flow() -> None:
     assert 'aria-labelledby="voice-filter-title"' in template
     assert 'aria-describedby="voice-filter-help"' in template
     assert 'role="status" aria-live="polite" aria-atomic="true"' in template
-    assert "step-progress" not in template
+    assert 'class="step-progress"' in template
+    assert template.count('data-voice-segment="') == 4
+    assert 'id="voice-identity-progress-label"' in template
+    assert 'id="voice-identity-phase" aria-live="polite"' in template
+    assert 'id="voice-identity-remaining" aria-live="polite"' in template
+    assert 'id="voice-identity-reading-prompt"' in template
+    assert 'id="voice-identity-reading-text"' in template
+    assert 'data-i18n="voiceIdentity.readingPromptLabel"' in template
+    assert 'id="voice-identity-verification-help"' in template
+    assert 'data-i18n="voiceIdentity.verificationScoreHelp"' in template
+    assert (
+        'id="voice-identity-capture-label" role="status"\n'
+        '                            aria-live="polite" aria-atomic="true"'
+        in template
+    )
+    assert 'id="voice-identity-timer" aria-hidden="true"' in template
+    assert 'data-i18n="voiceIdentity.hintSameMicrophone"' in template
+    assert 'data-i18n="voiceIdentity.hintDifferentSentence"' in template
     assert "voice-identity-record" not in template
-    assert "voice-identity-prompt" not in template
     assert "embedding" not in template.lower()
     assert "similarity" not in template.lower()
-
     assert ".switch input:focus-visible + .switch-track" in stylesheet
     assert "--voice-blue-dark: #075b80" in stylesheet
     assert "--voice-danger: #b4233b" in stylesheet
@@ -151,8 +166,71 @@ def test_voice_identity_template_is_a_single_action_enrollment_flow() -> None:
     assert "--voice-panel: rgba(27, 39, 48, 0.96)" in stylesheet
     assert "padding: 18px 24px" in stylesheet
     assert "linear-gradient(to right, #4bd4fd, #17a7ff)" in stylesheet
+    preparing_status = re.search(
+        r"\.capture-status\.preparing\s*\{(?P<body>[^}]*)\}", stylesheet
+    )
+    preparing_icon = re.search(
+        r"\.capture-status\.preparing \.record-icon\s*\{(?P<body>[^}]*)\}",
+        stylesheet,
+    )
+    assert preparing_status is not None
+    assert "var(--voice-muted)" in preparing_status.group("body")
+    assert preparing_icon is not None
+    assert "background: var(--voice-muted)" in preparing_icon.group("body")
+    assert "animation: none" in preparing_icon.group("body")
+    assert "var(--voice-danger)" not in preparing_icon.group("body")
+    assert "pulse" not in preparing_icon.group("body")
     assert "/static/js/voice_identity.js" in template
     assert "/static/css/voice_identity.css" in template
+
+
+def test_voice_identity_message_is_a_shared_accessible_plain_text_status() -> None:
+    template = (ROOT / "templates/voice_identity.html").read_text(encoding="utf-8")
+    script = (ROOT / "static/js/voice_identity.js").read_text(encoding="utf-8")
+
+    message_id = 'id="voice-identity-message"'
+    assert template.count(message_id) == 1
+
+    enrollment = re.search(
+        r'<section class="enrollment-card" id="voice-identity-enrollment".*?</section>',
+        template,
+        re.DOTALL,
+    )
+    shared_message = re.search(
+        r'<p id="voice-identity-message"(?P<attributes>[^>]*)></p>',
+        template,
+    )
+    assert enrollment is not None
+    assert shared_message is not None
+    assert message_id not in enrollment.group(0)
+    assert shared_message.start() > enrollment.end()
+    assert re.search(
+        r'</section>\s*<p id="voice-identity-message"',
+        template[template.index('id="voice-identity-profile-controls"') :],
+    )
+
+    attributes = shared_message.group("attributes")
+    assert 'role="status"' in attributes
+    assert 'aria-live="polite"' in attributes
+    assert 'aria-atomic="true"' in attributes
+    assert "data-i18n" not in attributes
+    assert "innerHTML" not in script
+
+
+def test_voice_identity_reading_prompts_exist_in_every_supported_locale() -> None:
+    for locale in LOCALES:
+        messages = json.loads(
+            (ROOT / "static" / "locales" / f"{locale}.json").read_text(encoding="utf-8")
+        )
+        voice_identity = messages["voiceIdentity"]
+        assert voice_identity["readingPromptLabel"].strip()
+        assert voice_identity["verificationPrompt"].strip()
+        assert voice_identity["verificationScoreHelp"].strip()
+        assert "{{percent}}" in voice_identity["verificationPassed"]
+        assert "{{percent}}" in voice_identity["verificationRetry"]
+        prompts = [voice_identity[f"readingPrompt{index}"] for index in range(1, 13)]
+        assert all(prompt.strip() for prompt in prompts)
+        assert len(set(prompts)) == 12
 
 
 def test_voice_identity_enrollment_focus_target_is_programmatically_focusable() -> None:
@@ -163,7 +241,7 @@ def test_voice_identity_enrollment_focus_target_is_programmatically_focusable() 
     assert "#voice-identity-enrollment-title:focus-visible" in stylesheet
 
 
-def test_browser_capture_is_one_click_audio_worklet_pcm16_and_cancels_on_close() -> None:
+def test_browser_capture_is_one_permission_four_segment_pcm16_and_cancels_on_close() -> None:
     script = (ROOT / "static/js/voice_identity.js").read_text(encoding="utf-8")
     processor = (ROOT / "static/audio-processor.js").read_text(encoding="utf-8")
 
@@ -173,17 +251,27 @@ def test_browser_capture_is_one_click_audio_worklet_pcm16_and_cancels_on_close()
         "AudioWorkletNode",
         "audioWorklet.addModule('/static/audio-processor.js')",
         "Int16Array",
-        "TARGET_SAMPLE_RATE = 16000",
-        "RECORDING_MS = 4000",
+        "TARGET_SAMPLE_RATE = 48000",
+        "REFERENCE_RECORDING_MS = 3000",
+        "VERIFICATION_RECORDING_MS = 5000",
+        "STREAMING_RESAMPLE_MARGIN_MS = 100",
         "API_ROOT = '/api/voice-identity'",
         "'/enrollment/start'",
-        "'/enrollment/profile'",
+        "'/enrollment/segment'",
         "'/enrollment/cancel'",
         "'/profile'",
         "'/filter'",
         "X-Voice-Identity-Enrollment",
         "X-Voice-Identity-Profile",
-        "audio/pcm;format=pcm_s16le;rate=16000;channels=1",
+        "X-Voice-Identity-Segment",
+        "X-Voice-Audio-Contract",
+        "owner-campplus-desktop-v1",
+        "audio/pcm;format=pcm_s16le;rate=48000;channels=1",
+        "neko_selected_microphone",
+        "neko_mic_gain_db",
+        "noiseSuppression: false",
+        "echoCancellation: true",
+        "autoGainControl: true",
         "X-CSRF-Token",
         "window.nekoBeforeWindowClose",
         "pagehide",
@@ -191,16 +279,23 @@ def test_browser_capture_is_one_click_audio_worklet_pcm16_and_cancels_on_close()
     ):
         assert contract in script
 
-    assert "RECORDING_MS + CAPTURE_TIMEOUT_GRACE_MS" in script
-    assert "targetSamples = TARGET_SAMPLE_RATE * RECORDING_MS / 1000" in script
+    assert "captureDurationMs + CAPTURE_TIMEOUT_GRACE_MS" in script
+    assert "targetSamples = TARGET_SAMPLE_RATE * captureDurationMs / 1000" in script
+    assert "new AudioContextClass({ sampleRate: TARGET_SAMPLE_RATE })" in script
+    assert "context.sampleRate !== TARGET_SAMPLE_RATE" in script
+    assert "source.connect(gain); gain.connect(processor)" in script
+    assert "processor.port.close()" in script
     assert "capturedSamples < targetSamples" in script
-    assert "state.profileId || createProfileId()" in script
+    assert "state.profileId = valueFrom([enrollment, status], ['profile_id']" in script
     assert "['has_profile', 'profile_available', 'available']" in script
-    assert "const replacementConfirmed = uploadStarted" in script
-    assert "state.profileRevision !== profileRevisionBefore" in script
+    assert "payload.last_completed_enrollment_id === enrollmentId" in script
+    assert "payload.profile_generation === profileId" in script
+    assert "startTtlClock()" in script
+    assert "stopTtlClock()" in script
+    assert "new Uint8Array(pcm).fill(0)" in script
     assert "MediaRecorder" not in script
     assert "createScriptProcessor" not in script
-    assert "'/enrollment/segment'" not in script
+    assert "'/enrollment/profile'" not in script
     assert "'/enrollment/verify'" not in script
     assert "'/enrollment/commit'" not in script
     assert "fixedPrompts" not in script
@@ -351,7 +446,25 @@ def test_all_locales_define_complete_voice_identity_copy() -> None:
         "localOnly",
         "privacyTitle",
         "privacyBody",
+        "recordingHints",
+        "progressLabel",
+        "hintSameMicrophone",
+        "hintNormalVolume",
+        "hintDifferentSentence",
+        "verificationPrompt",
+        "verificationScoreHelp",
+        "verificationPassed",
+        "verificationRetry",
         "enrollAndEnable",
+        "continueEnrollment",
+        "segmentProgress",
+        "phaseCollectingReference",
+        "phaseCheckingConsistency",
+        "phaseVerifying",
+        "phaseCommitting",
+        "expiresInSeconds",
+        "preparingRecording",
+        "recordingStartsInSeconds",
         "recording",
         "cancel",
         "delete",
@@ -366,6 +479,7 @@ def test_all_locales_define_complete_voice_identity_copy() -> None:
         "reasonDisabled",
         "reasonModelUnavailable",
         "reasonProfileIncompatible",
+        "reasonAudioContractMismatch",
         "reasonSecureStorageUnavailable",
         "reasonEnrollmentActive",
         "reasonRuntimeDegraded",
@@ -374,6 +488,20 @@ def test_all_locales_define_complete_voice_identity_copy() -> None:
         "enrollmentComplete",
         "microphoneDenied",
         "requestFailed",
+        "errorModelUnavailable",
+        "errorAudioProcessingUnavailable",
+        "errorInvalidPcm",
+        "errorAudioTooLong",
+        "errorSpeechTooShort",
+        "errorVolumeTooLow",
+        "errorSevereClipping",
+        "errorNoSpeechDetected",
+        "errorVoiceSamplesInconsistent",
+        "errorOwnerVerificationFailed",
+        "errorSegmentOutOfOrder",
+        "errorSegmentInProgress",
+        "errorStaleEnrollment",
+        "errorSecureStorageUnavailable",
         "deleteConfirm",
     }
     removed_wizard_keys = {
@@ -385,8 +513,6 @@ def test_all_locales_define_complete_voice_identity_copy() -> None:
         "freePrompt1",
         "freePrompt2",
         "stepCount",
-        "verificationPassed",
-        "verificationRetry",
     }
     for locale in LOCALES:
         payload = json.loads(
@@ -396,6 +522,7 @@ def test_all_locales_define_complete_voice_identity_copy() -> None:
         assert required <= set(copy)
         assert removed_wizard_keys.isdisjoint(copy)
         assert all(isinstance(copy[key], str) and copy[key].strip() for key in required)
+        assert "{{seconds}}" in copy["recordingStartsInSeconds"]
         assert payload["settings"]["menu"]["voiceIdentity"]
 
 
@@ -408,4 +535,5 @@ def test_locale_bootstrap_declares_a_non_empty_locale_cache_key() -> None:
     bootstrap = (ROOT / "static/i18n-i18next.js").read_text(encoding="utf-8")
     locale_version = re.search(r"const\s+LOCALE_VERSION\s*=\s*'([^']+)'", bootstrap)
     assert locale_version and locale_version.group(1).strip()
+    assert locale_version.group(1) == "2026-09-03-voice-identity-five-second-verification"
     assert locale_version.group(1) != "2026-08-07-credentials-console-guide"

@@ -103,6 +103,17 @@ _Command: TypeAlias = AsrActivateCommand | AsrAudioCommand | AsrSealCommand
 _Validator: TypeAlias = Callable[["VoiceTurnToken", Any], bool]
 _WireCallback: TypeAlias = Callable[["VoiceTurnToken", Any, int], Awaitable[None]]
 _FailureCallback: TypeAlias = Callable[["VoiceTurnToken", BaseException], Awaitable[None]]
+_CloseSessionCallback: TypeAlias = Callable[[], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class AudioRetirementReceipt:
+    """Proof that one dispatcher transport was fenced and retired."""
+
+    transport_generation: int
+    discarded_commands: int
+    active_writer_joined: bool
+    session_closed: bool
 
 
 class AsrAudioDispatcher:
@@ -129,6 +140,9 @@ class AsrAudioDispatcher:
         self._session_ref: Any = None
         self._state: Literal["idle", "active", "sealed", "aborted"] = "idle"
         self._last_sequence = 0
+        self._active_writer_generation: int | None = None
+        self._active_writer_done = asyncio.Event()
+        self._active_writer_done.set()
         # Keyed by id(command). Sound because no path leaves an entry alive
         # past its command: _put writes the key AFTER put_nowait with no await
         # between (Queue.put_nowait only schedules a wakeup, never runs the
@@ -144,6 +158,10 @@ class AsrAudioDispatcher:
     @property
     def active_turn(self) -> VoiceTurnToken | None:
         return self._turn_token if self._state in {"active", "sealed"} else None
+
+    @property
+    def transport_generation(self) -> int:
+        return self._generation
 
     def activate(
         self,
@@ -245,6 +263,67 @@ class AsrAudioDispatcher:
         self._state = "aborted"
         self._last_sequence = 0
 
+    async def abort_and_join(
+        self,
+        turn_token: VoiceTurnToken | None = None,
+        *,
+        close_session: _CloseSessionCallback | None = None,
+        transport_generation: int | None = None,
+    ) -> AudioRetirementReceipt:
+        """Fence one transport, discard its queue, and join its active writer.
+
+        ``abort()`` is deliberately executed before the first await so the
+        generation fence is visible immediately to enqueue and worker paths.
+        Provider close runs alongside the writer join because closing the
+        socket may be what releases an already-entered ``stream_audio()``.
+        Callers own the timeout and quarantine policy.
+        """
+
+        retired_generation = self._generation
+        retired_turn = self._turn_token
+        if (
+            transport_generation is not None
+            and transport_generation != retired_generation
+        ):
+            raise RuntimeError("ASR_AUDIO_RETIREMENT_GENERATION_MISMATCH")
+        if turn_token is not None and retired_turn != turn_token:
+            raise RuntimeError("ASR_AUDIO_RETIREMENT_TURN_MISMATCH")
+
+        discarded_before = self.asr_abort_discarded_command_count
+        self.abort(turn_token)
+        discarded_commands = (
+            self.asr_abort_discarded_command_count - discarded_before
+        )
+
+        async def join_active_writer() -> bool:
+            # abort() has synchronously task_done()'d every queued command, so
+            # join now waits only for the command already owned by the worker.
+            # Using Queue.join is the proof carried by active_writer_joined.
+            await self._queue.join()
+            return True
+
+        async def close_provider_session() -> bool:
+            if close_session is None:
+                return False
+            try:
+                await close_session()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                return False
+            return True
+
+        active_writer_joined, session_closed = await asyncio.gather(
+            join_active_writer(),
+            close_provider_session(),
+        )
+        return AudioRetirementReceipt(
+            transport_generation=retired_generation,
+            discarded_commands=discarded_commands,
+            active_writer_joined=active_writer_joined,
+            session_closed=session_closed,
+        )
+
     async def wait_idle(self) -> None:
         await self._queue.join()
 
@@ -294,6 +373,8 @@ class AsrAudioDispatcher:
     async def _run(self) -> None:
         while True:
             command = await self._queue.get()
+            self._active_writer_generation = command.generation
+            self._active_writer_done.clear()
             try:
                 queued_at = self._enqueued_at.pop(id(command), None)
                 if queued_at is not None:
@@ -343,13 +424,28 @@ class AsrAudioDispatcher:
                     name="asr-audio-dispatch-failure",
                 )
             finally:
+                self._active_writer_generation = None
+                self._active_writer_done.set()
                 self._queue.task_done()
 
     def _command_is_current(self, command: _Command) -> bool:
+        before_validator = bool(
+            command.generation == self._generation
+            and self._state in {"active", "sealed"}
+            and self._turn_token == command.turn_token
+            and self._session_ref is command.session_ref
+        )
+        if not before_validator or not self._validator(
+            command.turn_token,
+            command.session_ref,
+        ):
+            return False
+        # The validator is user-supplied synchronous code and can itself trip
+        # a fence. Recheck the dispatcher-owned identity after it returns so a
+        # DENY between validation and provider invocation cannot start a write.
         return bool(
             command.generation == self._generation
             and self._state in {"active", "sealed"}
             and self._turn_token == command.turn_token
             and self._session_ref is command.session_ref
-            and self._validator(command.turn_token, command.session_ref)
         )

@@ -13,6 +13,7 @@ import main_logic.asr_client as asr_client
 import main_logic.asr_client._infra as asr_infra
 import main_logic.asr_client.runtime as asr_runtime_module
 from main_logic.asr_client import AsrSessionConfig, create_asr_session
+from main_logic.asr_client.admission.contracts import AdmissionDisposition
 from main_logic.asr_client._infra import (
     _AsrRequestQueue,
     _AsrWorkerEvent,
@@ -36,7 +37,11 @@ from main_logic.asr_client.runtime import (
     IndependentAsrRuntime,
 )
 from main_logic.asr_client.transcript import TranscriptDispatcher
-from main_logic.voice_turn.contracts import SpeechActivityEvent
+from main_logic.voice_turn.contracts import (
+    SpeechActivityEvent,
+    VoiceIngressToken,
+    VoiceTurnToken,
+)
 
 
 async def _scripted_worker(request_queue, response_queue, api_key, config):
@@ -1916,6 +1921,225 @@ def _patch_runtime_start(
     )
 
 
+async def test_runtime_stop_session_preserves_ingress_and_allows_restart(
+    monkeypatch,
+) -> None:
+    first = _RuntimeStartCandidate()
+    second = _RuntimeStartCandidate()
+    _patch_runtime_start(monkeypatch, [first, second])
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    ingress = runtime._asr_admission_ingress
+
+    first_result = await runtime.start(
+        route_key="qwen",
+        resource_optimization_enabled=True,
+    )
+    ingress_worker = ingress._worker
+    await runtime.stop_session()
+
+    assert first_result.status is AsrStartStatus.READY
+    assert runtime._asr_admission_ingress is ingress
+    assert runtime._asr_admission_ingress_started is True
+    assert ingress_worker is not None and ingress_worker.done() is False
+
+    second_result = await runtime.start(
+        route_key="qwen",
+        resource_optimization_enabled=True,
+    )
+
+    assert second_result.status is AsrStartStatus.READY
+    assert runtime._asr_admission_ingress is ingress
+    assert ingress._worker is ingress_worker
+    first.close.assert_awaited_once_with()
+    second.close.assert_not_awaited()
+
+    await runtime.close()
+    assert ingress_worker.done() is True
+
+
+async def test_runtime_retires_twelve_admission_turns_across_session_cycles(
+    monkeypatch,
+) -> None:
+    candidates = [_RuntimeStartCandidate() for _ in range(12)]
+    _patch_runtime_start(monkeypatch, candidates)
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    ingress = runtime._asr_admission_ingress
+
+    for cycle in range(12):
+        result = await runtime.start(
+            route_key="qwen",
+            resource_optimization_enabled=True,
+        )
+        assert result.status is AsrStartStatus.READY
+        token = VoiceTurnToken(
+            VoiceIngressToken(
+                runtime._asr_session_epoch,
+                "capacity-test",
+                cycle + 1,
+                cycle + 1,
+                runtime._asr_audio_generation,
+            ),
+            1,
+        )
+        await ingress.open_turn(token)
+        await runtime.stop_session()
+        assert await runtime._asr_admission.live_turn_tokens() == ()
+
+    assert runtime._asr_admission_ingress is ingress
+    assert ingress._worker is not None and ingress._worker.done() is False
+    assert all(candidate.close.await_count == 1 for candidate in candidates)
+    await runtime.close()
+
+
+async def test_runtime_terminal_close_is_idempotent_and_cannot_restart() -> None:
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+
+    await runtime.close()
+    terminal_close = runtime._asr_terminal_close_task
+
+    assert terminal_close is not None and terminal_close.done() is True
+    assert terminal_close not in runtime._asr_owned_cleanup_tasks
+    assert runtime._asr_terminal_close_requested is True
+    assert runtime._asr_admission_ingress_started is False
+
+    await runtime.close()
+    result = await runtime.start(
+        route_key="qwen",
+        resource_optimization_enabled=True,
+    )
+
+    assert runtime._asr_terminal_close_task is terminal_close
+    assert result.status is AsrStartStatus.FAILED
+    assert result.failure_code == "ASR_START_STALE"
+
+
+async def test_runtime_terminal_close_waits_for_admission_settlement() -> None:
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    await runtime._asr_admission_ingress.start()
+    runtime._asr_admission_ingress_started = True
+    settlement_entered = asyncio.Event()
+    release_settlement = asyncio.Event()
+
+    async def settle() -> None:
+        settlement_entered.set()
+        await release_settlement.wait()
+
+    settlement = asyncio.create_task(settle())
+    runtime._track_admission_effect_task(settlement, None)
+    settlement.add_done_callback(runtime._admission_effect_done)
+
+    closing = asyncio.create_task(runtime.close())
+    await asyncio.wait_for(settlement_entered.wait(), 1)
+    await asyncio.sleep(0)
+
+    assert closing.done() is False
+    assert runtime._asr_admission_ingress._closing is False
+
+    release_settlement.set()
+    await asyncio.wait_for(closing, 1)
+
+    assert settlement.done() is True
+    assert runtime._asr_admission_ingress._closed is True
+    assert settlement not in runtime._asr_admission_effect_tasks
+
+
+async def test_terminal_timeout_keeps_unsettled_effect_task_owned(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_ASR_TERMINAL_CLOSE_TIMEOUT_SECONDS",
+        0.08,
+    )
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_ASR_TERMINAL_HARD_CLOSE_RESERVE_SECONDS",
+        0.04,
+    )
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_ASR_TERMINAL_CLOSE_JOIN_SLICE_SECONDS",
+        0.01,
+    )
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    release_settlement = asyncio.Event()
+
+    async def resist_one_cancellation() -> None:
+        try:
+            await release_settlement.wait()
+        except asyncio.CancelledError:
+            await release_settlement.wait()
+
+    settlement = asyncio.create_task(resist_one_cancellation())
+    runtime._track_admission_effect_task(settlement, None)
+    settlement.add_done_callback(runtime._admission_effect_done)
+
+    await asyncio.wait_for(runtime.close(), 0.5)
+
+    assert settlement.done() is False
+    assert settlement in runtime._asr_admission_effect_tasks
+    assert settlement in runtime._asr_admission_effect_task_turns
+
+    release_settlement.set()
+    await asyncio.wait_for(settlement, 1)
+    assert settlement not in runtime._asr_admission_effect_tasks
+    assert settlement not in runtime._asr_admission_effect_task_turns
+
+
+async def test_terminal_timeout_keeps_blocked_ingress_close_owner_tracked(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_ASR_TERMINAL_CLOSE_TIMEOUT_SECONDS",
+        0.08,
+    )
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_ASR_TERMINAL_HARD_CLOSE_RESERVE_SECONDS",
+        0.04,
+    )
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_ASR_TERMINAL_CLOSE_JOIN_SLICE_SECONDS",
+        0.01,
+    )
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    ingress = runtime._asr_admission_ingress
+    await ingress.start()
+    runtime._asr_admission_ingress_started = True
+    token = VoiceTurnToken(
+        VoiceIngressToken(0, "blocked-ingress", 1, 1, 0),
+        1,
+    )
+
+    await runtime._asr_admission._lock.acquire()
+    opened = ingress.open_turn_nowait(token)
+    while not ingress._items:
+        await asyncio.sleep(0)
+
+    await asyncio.wait_for(runtime.close(), 0.5)
+
+    owners = {
+        task
+        for task in runtime._asr_close_tasks
+        if task.get_name() == "independent-asr-terminal-admission-ingress-close"
+    }
+    assert len(owners) == 1
+    ingress_owner = owners.pop()
+    assert ingress_owner.done() is False
+    assert ingress._worker is not None and ingress._worker.done() is False
+    assert ingress._closing is True
+
+    runtime._asr_admission._lock.release()
+    await asyncio.wait_for(opened, 1)
+    await asyncio.wait_for(ingress_owner, 1)
+    await asyncio.sleep(0)
+
+    assert ingress._closed is True
+    assert ingress_owner not in runtime._asr_close_tasks
+
+
 async def test_runtime_start_closed_during_lifecycle_returns_stale_without_ready(
     monkeypatch,
 ) -> None:
@@ -2011,7 +2235,7 @@ async def test_cancelled_runtime_close_retry_waits_for_same_cleanup() -> None:
 
     first_close = asyncio.create_task(runtime.close())
     await close_started.wait()
-    owned_close = runtime._asr_runtime_close_task
+    owned_close = runtime._asr_terminal_close_task
     first_close.cancel()
     with pytest.raises(asyncio.CancelledError):
         await first_close
@@ -2024,7 +2248,7 @@ async def test_cancelled_runtime_close_retry_waits_for_same_cleanup() -> None:
 
     retry_close = asyncio.create_task(retry_runtime_close())
     await retry_started.wait()
-    assert runtime._asr_runtime_close_task is owned_close
+    assert runtime._asr_terminal_close_task is owned_close
     assert retry_close.done() is False
 
     release_close.set()
@@ -2132,7 +2356,7 @@ async def test_runtime_close_invalidates_start_waiting_for_predecessor_cleanup(
 
     def observe_explicit_close(awaitable, *, name):
         task = original_schedule(awaitable, name=name)
-        if name == "independent-asr-close":
+        if name == "independent-asr-stop-session":
             explicit_close_scheduled.set()
         return task
 
@@ -2154,7 +2378,7 @@ async def test_runtime_close_invalidates_start_waiting_for_predecessor_cleanup(
     closing = asyncio.create_task(runtime.close())
     await asyncio.wait_for(explicit_close_scheduled.wait(), timeout=1)
 
-    assert runtime._asr_runtime_close_task is not predecessor_cleanup
+    assert runtime._asr_terminal_close_task is not predecessor_cleanup
     assert closing.done() is False
 
     release_detector_close.set()
@@ -2396,6 +2620,42 @@ def _install_runtime_prepare_state(
     )
 
 
+async def test_stale_open_turn_cannot_reserve_on_successor_dispatcher() -> None:
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    _install_runtime_prepare_state(runtime)
+    runtime._asr_session.close = AsyncMock()
+    old_dispatcher = runtime._asr_transcript_dispatcher
+    lifecycle = runtime._asr_lifecycle
+    assert lifecycle is not None
+    turn_token = runtime._capture_turn_token(lifecycle)
+    final_key = asr_runtime_module.FinalKey.from_turn(turn_token)
+
+    # Hold the reducer lock after open_turn has entered the FIFO. stop_session()
+    # can then synchronously detach/swap dispatchers and queue RouteReplaced
+    # behind that open, reproducing the exact cross-session resume ordering.
+    await runtime._asr_admission._lock.acquire()
+    prepare = asyncio.create_task(
+        runtime._prepare_independent_asr_turn(runtime._asr_session_epoch)
+    )
+    while not runtime._asr_admission_ingress._items:
+        await asyncio.sleep(0)
+
+    stopping = asyncio.create_task(runtime.stop_session())
+    while runtime._asr_transcript_dispatcher is old_dispatcher:
+        await asyncio.sleep(0)
+    successor_dispatcher = runtime._asr_transcript_dispatcher
+    runtime._asr_admission._lock.release()
+
+    await asyncio.wait_for(asyncio.gather(prepare, stopping), 1)
+
+    assert final_key not in old_dispatcher._reservations
+    assert final_key not in successor_dispatcher._reservations
+    assert final_key not in runtime._asr_admission_reservation_dispatchers
+    assert runtime._asr_turn_prepared is False
+    assert await runtime._asr_admission.get_record(turn_token) is None
+    await runtime.close()
+
+
 @pytest.mark.parametrize("raises", [False, True])
 async def test_stale_prepare_unwind_only_releases_old_reservation(raises) -> None:
     prepare_entered = asyncio.Event()
@@ -2415,21 +2675,48 @@ async def test_stale_prepare_unwind_only_releases_old_reservation(raises) -> Non
         runtime._prepare_independent_asr_turn(runtime._asr_session_epoch)
     )
     await asyncio.wait_for(prepare_entered.wait(), 1)
-    old_final_key = runtime._asr_reserved_final_key
-    assert old_final_key is not None
+    old_turn_token = runtime._capture_turn_token(runtime._asr_lifecycle)
+    old_final_key = asr_runtime_module.FinalKey.from_turn(old_turn_token)
+    assert runtime._asr_admission_reservation_dispatchers[old_final_key] is (
+        old_dispatcher
+    )
+    old_dispatcher.resolve_reserved = MagicMock(
+        wraps=old_dispatcher.resolve_reserved
+    )
 
     new_dispatcher = TranscriptDispatcher(runtime._dispatch_asr_transcript_envelope)
     runtime._asr_transcript_dispatcher = new_dispatcher
-    new_final_key = replace(old_final_key, turn_id=old_final_key.turn_id + 1)
-    runtime._asr_reserved_final_key = new_final_key
+    new_final_key = replace(
+        old_final_key,
+        turn_token=replace(
+            old_final_key.turn_token,
+            turn_id=old_final_key.turn_token.turn_id + 1,
+        ),
+    )
+    assert new_dispatcher.try_reserve(new_final_key)
+    runtime._asr_admission_reservation_dispatchers[new_final_key] = new_dispatcher
     runtime._asr_turn_prepared = True
     release_prepare.set()
     await asyncio.wait_for(prepare_task, 1)
 
+    async def wait_for_old_resolution() -> None:
+        while old_final_key not in old_dispatcher._resolved:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_for_old_resolution(), 1)
+    await old_dispatcher.wait_idle()
+
     assert runtime._asr_transcript_dispatcher is new_dispatcher
-    assert runtime._asr_reserved_final_key == new_final_key
+    assert runtime._asr_admission_reservation_dispatchers[new_final_key] is (
+        new_dispatcher
+    )
     assert runtime._asr_turn_prepared is True
     assert old_final_key not in old_dispatcher._reservations
+    assert old_final_key not in runtime._asr_admission_reservation_dispatchers
+    assert new_final_key in new_dispatcher._reservations
+    resolution = old_dispatcher.resolve_reserved.call_args
+    assert resolution.args == (old_final_key, AdmissionDisposition.ABANDON)
+    assert resolution.kwargs == {"envelope": None}
 
 
 @pytest.mark.parametrize("raises", [False, True])
@@ -2444,12 +2731,23 @@ async def test_current_prepare_failure_releases_current_reservation(raises) -> N
     dispatcher = runtime._asr_transcript_dispatcher
     turn_token = runtime._capture_turn_token(runtime._asr_lifecycle)
     final_key = asr_runtime_module.FinalKey.from_turn(turn_token)
+    dispatcher.resolve_reserved = MagicMock(wraps=dispatcher.resolve_reserved)
 
     await runtime._prepare_independent_asr_turn(runtime._asr_session_epoch)
 
-    assert runtime._asr_reserved_final_key is None
+    async def wait_for_resolution() -> None:
+        while final_key not in dispatcher._resolved:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_for_resolution(), 1)
+    await dispatcher.wait_idle()
+
     assert runtime._asr_turn_prepared is False
     assert final_key not in dispatcher._reservations
+    assert final_key not in runtime._asr_admission_reservation_dispatchers
+    resolution = dispatcher.resolve_reserved.call_args
+    assert resolution.args == (final_key, AdmissionDisposition.ABANDON)
+    assert resolution.kwargs == {"envelope": None}
 
 
 class _RuntimeDetectorStub:
@@ -2506,9 +2804,11 @@ def _patch_runtime_detector_start(
 def _install_pending_runtime_state(
     runtime: IndependentAsrRuntime,
     detector: _RuntimeDetectorStub,
+    *,
+    endpointing_mode: str = "manual",
 ) -> None:
     lifecycle = VoiceInputLifecycleController(
-        provider_policy=resolve_provider_policy("qwen", "manual"),
+        provider_policy=resolve_provider_policy("qwen", endpointing_mode),
         shadow_mode=False,
     )
     lifecycle.open(route_mode=VoiceRouteMode.INDEPENDENT)
@@ -2518,7 +2818,11 @@ def _install_pending_runtime_state(
     lifecycle.mark_pending_turn_speech()
     lifecycle.accept_audio(b"\x01\x00" * 160, sample_rate_hz=16_000)
     lifecycle.transition(VoiceLifecycleEvent.PROVIDER_FINAL)
-    runtime._asr_session = SimpleNamespace(is_ready=True, close=AsyncMock())
+    runtime._asr_session = SimpleNamespace(
+        is_ready=True,
+        close=AsyncMock(),
+        stream_audio=AsyncMock(),
+    )
     runtime._asr_provider = "qwen"
     runtime._asr_lifecycle = lifecycle
     runtime._asr_detector = detector
@@ -2666,15 +2970,21 @@ async def test_stale_pending_candidate_bind_none_cannot_fail_new_runtime() -> No
     assert statuses == []
 
 
-async def test_current_pending_candidate_bind_none_fails_closed_once() -> None:
+@pytest.mark.parametrize("raises", [False, True])
+async def test_current_pending_candidate_bind_failure_fails_closed_once(
+    raises: bool,
+) -> None:
     failures = []
     statuses = []
     runtime = IndependentAsrRuntime(
         _runtime_callbacks(failures=failures, statuses=statuses)
     )
-    detector = _RuntimeDetectorStub(
-        bind_candidate=AsyncMock(return_value=None),
+    bind_candidate = (
+        AsyncMock(side_effect=RuntimeError("bind failed"))
+        if raises
+        else AsyncMock(return_value=None)
     )
+    detector = _RuntimeDetectorStub(bind_candidate=bind_candidate)
     _install_pending_runtime_state(runtime, detector)
 
     await runtime._activate_pending_independent_turn(runtime._asr_session_epoch)
@@ -2684,6 +2994,82 @@ async def test_current_pending_candidate_bind_none_fails_closed_once() -> None:
     assert runtime._asr_detector is None
     assert [event.code for event in failures] == ["ASR_ENDPOINTING_FAILED"]
     assert [event.code for event in statuses] == ["ASR_ENDPOINTING_FAILED"]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+async def test_current_provider_pending_candidate_bind_failure_fails_open(
+    raises: bool,
+) -> None:
+    failures = []
+    statuses = []
+    runtime = IndependentAsrRuntime(
+        _runtime_callbacks(failures=failures, statuses=statuses)
+    )
+    bind_candidate = (
+        AsyncMock(side_effect=RuntimeError("bind failed"))
+        if raises
+        else AsyncMock(return_value=None)
+    )
+    detector = _RuntimeDetectorStub(bind_candidate=bind_candidate)
+    _install_pending_runtime_state(runtime, detector, endpointing_mode="provider")
+    session = runtime._asr_session
+    lifecycle = runtime._asr_lifecycle
+
+    await runtime._activate_pending_independent_turn(runtime._asr_session_epoch)
+    await runtime._asr_audio_dispatcher.wait_idle()
+
+    detector.bind_candidate.assert_awaited_once()
+    assert runtime._asr_session is session
+    assert runtime._asr_lifecycle is lifecycle
+    assert lifecycle.snapshot.state.value == "active"
+    assert failures == []
+    assert statuses == []
+    await runtime.close()
+
+
+async def test_provider_candidate_waits_for_confirmed_pending_turn() -> None:
+    runtime = IndependentAsrRuntime(_runtime_callbacks())
+    detector = _RuntimeDetectorStub()
+    detector.detector_epoch = 7
+    _install_pending_runtime_state(runtime, detector, endpointing_mode="provider")
+    lifecycle = runtime._asr_lifecycle
+    assert lifecycle is not None
+    lifecycle.discard_pending_turn()
+    runtime._asr_pending_detector_candidate = None
+    lifecycle.transition(VoiceLifecycleEvent.SOFT_WAKE)
+    lifecycle.transition(VoiceLifecycleEvent.SPEECH_CONFIRMED)
+    lifecycle.transition(VoiceLifecycleEvent.TURN_SEALED)
+    ingress = runtime._asr_current_ingress_token
+    assert ingress is not None
+    detector_identity = SimpleNamespace(
+        ingress_token=ingress,
+        detector_epoch=7,
+    )
+    candidate = SimpleNamespace(detector_epoch=7)
+    identity = runtime._capture_runtime_identity(ingress_token=ingress)
+
+    assert await runtime._bind_provider_detector_candidate(
+        lifecycle,
+        detector,
+        detector_identity=detector_identity,
+        candidate=candidate,
+        expected_identity=identity,
+    )
+    assert runtime._asr_pending_detector_candidate is None
+    detector.bind_candidate.assert_not_awaited()
+
+    lifecycle.mark_pending_turn_speech()
+    assert await runtime._bind_provider_detector_candidate(
+        lifecycle,
+        detector,
+        detector_identity=detector_identity,
+        candidate=candidate,
+        expected_identity=identity,
+        pending_speech_confirmed=True,
+    )
+    assert runtime._asr_pending_detector_candidate is candidate
+    detector.bind_candidate.assert_not_awaited()
+    await runtime.close()
 
 
 async def test_stale_deferred_turn_release_error_cannot_fail_new_runtime() -> None:
@@ -2898,10 +3284,17 @@ async def test_stale_final_lease_unwind_uses_old_dispatcher_only() -> None:
     )
     await runtime._handle_independent_asr_endpoint(epoch)
     old_dispatcher = runtime._asr_transcript_dispatcher
-    old_final_key = runtime._asr_reserved_final_key
+    sealed_token = runtime._asr_sealed_turn_token
+    assert sealed_token is not None
+    old_final_key = asr_runtime_module.FinalKey.from_turn(sealed_token.turn)
     old_lease = runtime._asr_smart_turn_lease
-    assert old_final_key is not None
     assert old_lease is not None
+    assert runtime._asr_admission_reservation_dispatchers[old_final_key] is (
+        old_dispatcher
+    )
+    old_dispatcher.resolve_reserved = MagicMock(
+        wraps=old_dispatcher.resolve_reserved
+    )
     release_started = asyncio.Event()
     release_lease = asyncio.Event()
 
@@ -2914,23 +3307,30 @@ async def test_stale_final_lease_unwind_uses_old_dispatcher_only() -> None:
         runtime._handle_independent_asr_final("final", epoch, "glm")
     )
     await asyncio.wait_for(release_started.wait(), 1)
-    await runtime.abort("hard_mute")
+    detached_cleanup = runtime._detach_independent_asr()
+    assert detached_cleanup is not None
+    new_dispatcher = runtime._asr_transcript_dispatcher
+    new_dispatcher.resolve_reserved = MagicMock(
+        wraps=new_dispatcher.resolve_reserved
+    )
     new_session, new_lifecycle, new_detector = _replace_runtime_identity_same_epoch(
         runtime
     )
-    new_dispatcher = TranscriptDispatcher(runtime._dispatch_asr_transcript_envelope)
-    new_dispatcher.submit = MagicMock(wraps=new_dispatcher.submit)
-    runtime._asr_transcript_dispatcher = new_dispatcher
     lifecycle_callback.reset_mock()
 
     release_lease.set()
-    await asyncio.wait_for(final, 1)
+    await asyncio.wait_for(asyncio.gather(final, detached_cleanup), 1)
 
     assert runtime._asr_session is new_session
     assert runtime._asr_lifecycle is new_lifecycle
     assert runtime._asr_detector is new_detector
     assert old_final_key not in old_dispatcher._reservations
-    new_dispatcher.submit.assert_not_called()
+    assert old_final_key in old_dispatcher._resolved
+    assert old_final_key not in runtime._asr_admission_reservation_dispatchers
+    old_resolution = old_dispatcher.resolve_reserved.call_args
+    assert old_resolution.args[0] == old_final_key
+    assert old_resolution.args[1] is AdmissionDisposition.FORWARD
+    new_dispatcher.resolve_reserved.assert_not_called()
     lifecycle_callback.assert_not_awaited()
     assert failures == []
     assert statuses == []

@@ -38,6 +38,13 @@ class AsrProviderAvailability(str, Enum):
     MISSING_CREDENTIALS = "missing_credentials"
 
 
+class AsrSpeakerExactIntervalCapability(str, Enum):
+    """Speaker-proof interval authority exposed by an ASR provider."""
+
+    UNSUPPORTED = "unsupported"
+    CANONICAL_16K_EXACT_INTERVAL = "canonical_16k_exact_interval"
+
+
 @dataclass(frozen=True, slots=True)
 class AsrCoreCapabilities:
     """Feature capabilities owned by one Core-to-ASR route."""
@@ -68,6 +75,9 @@ class AsrProviderMeta:
     wire_sample_rate_hz: int
     supported_endpointing_modes: frozenset[AsrEndpointingMode]
     implementation_status: AsrImplementationStatus
+    speaker_exact_interval_capability: AsrSpeakerExactIntervalCapability = (
+        AsrSpeakerExactIntervalCapability.UNSUPPORTED
+    )
     requires_smart_turn: bool = False
     max_segment_ms: int | None = None
     warm_transport_ms: int = 25_000
@@ -179,6 +189,9 @@ ASR_PROVIDER_REGISTRY: dict[str, AsrProviderMeta] = {
         wire_sample_rate_hz=16_000,
         supported_endpointing_modes=frozenset({"manual", "provider"}),
         implementation_status="implemented",
+        speaker_exact_interval_capability=(
+            AsrSpeakerExactIntervalCapability.CANONICAL_16K_EXACT_INTERVAL
+        ),
     ),
     "openai": AsrProviderMeta(
         provider_key="openai",

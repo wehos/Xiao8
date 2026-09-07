@@ -76,14 +76,45 @@
                     <div class="enrollment-copy">
                         <p class="eyebrow" data-i18n="voiceIdentity.localOnly">仅在本机处理</p>
                         <h2 id="voice-identity-enrollment-title" tabindex="-1"
-                            data-i18n="voiceIdentity.privacyTitle">说几句话，即可完成</h2>
+                            data-i18n="voiceIdentity.privacyTitle">四段短语音，完成本机声纹录入</h2>
                         <p class="enrollment-help" data-i18n="voiceIdentity.privacyBody">
-                            点击后自然说话约 4 秒。声纹会加密保存在本机，不会发送给 ASR Provider，也不用于身份认证。
+                            使用同一麦克风，以正常音量说四句不同的完整话。语音仅在本机处理，验证成功后才会加密保存声纹。
                         </p>
+                        <ul class="enrollment-hints" aria-label="录音提示"
+                            data-i18n-aria="voiceIdentity.recordingHints">
+                            <li data-i18n="voiceIdentity.hintSameMicrophone">保持使用同一麦克风</li>
+                            <li data-i18n="voiceIdentity.hintNormalVolume">使用正常音量</li>
+                            <li data-i18n="voiceIdentity.hintDifferentSentence">每段说一句不同的完整话</li>
+                        </ul>
                     </div>
+                    <div class="step-progress" aria-label="声纹录入进度"
+                        data-i18n-aria="voiceIdentity.progressLabel">
+                        <span class="step-dot current" data-voice-segment="1">1</span>
+                        <span class="step-line" aria-hidden="true"></span>
+                        <span class="step-dot" data-voice-segment="2">2</span>
+                        <span class="step-line" aria-hidden="true"></span>
+                        <span class="step-dot" data-voice-segment="3">3</span>
+                        <span class="step-line" aria-hidden="true"></span>
+                        <span class="step-dot verification" data-voice-segment="4">4</span>
+                    </div>
+                    <p class="progress-label" id="voice-identity-progress-label">第 1/4 段</p>
+                    <p class="phase-label" id="voice-identity-phase" aria-live="polite"></p>
+                    <div class="reading-prompt" id="voice-identity-reading-prompt"
+                        role="status" aria-live="polite" aria-atomic="true" hidden>
+                        <span class="reading-prompt-label"
+                            data-i18n="voiceIdentity.readingPromptLabel">请朗读</span>
+                        <q id="voice-identity-reading-text"></q>
+                    </div>
+                    <p class="verification-help" id="voice-identity-verification-help"
+                        data-i18n="voiceIdentity.verificationScoreHelp" hidden>
+                        结果取本次录音三个检查点中的最低值，不代表身份认证准确率。
+                    </p>
+                    <p class="remaining-label" id="voice-identity-remaining" aria-live="polite"></p>
                     <div class="capture-status" id="voice-identity-capture-status" hidden>
                         <span class="record-icon" aria-hidden="true"></span>
-                        <span id="voice-identity-capture-label" data-i18n="voiceIdentity.recording">正在录音…</span>
+                        <span id="voice-identity-capture-label" role="status"
+                            aria-live="polite" aria-atomic="true"
+                            data-i18n="voiceIdentity.recording">正在录音…</span>
                         <span class="recording-timer" id="voice-identity-timer" aria-hidden="true"></span>
                     </div>
                     <div class="enrollment-actions">
@@ -92,8 +123,6 @@
                         <button type="button" class="secondary-button" id="voice-identity-cancel" hidden
                             data-i18n="voiceIdentity.cancel">取消录入</button>
                     </div>
-                    <p id="voice-identity-message" class="enrollment-message"
-                        role="status" aria-live="polite" aria-atomic="true"></p>
                 </section>
 
                 <section class="profile-card" id="voice-identity-profile-controls"
@@ -119,6 +148,8 @@
                             data-i18n="voiceIdentity.delete">删除声纹</button>
                     </div>
                 </section>
+                <p id="voice-identity-message" class="enrollment-message"
+                    role="status" aria-live="polite" aria-atomic="true"></p>
             </div>
         </div>
     </main>

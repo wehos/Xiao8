@@ -13,6 +13,9 @@ from main_logic.asr_client import VoiceIdentityActivationResult
 from main_logic.voice_identity.contracts import SpeakerModelIdentity
 from main_logic.voice_identity.profile import SpeakerProfile
 from main_logic.voice_identity.reference import SpeakerReference
+from main_logic.voice_identity_service.audio_contract import (
+    desktop_audio_contract_snapshot,
+)
 
 
 @dataclass
@@ -119,6 +122,42 @@ def _fake_composition_factory(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runtime_module, "_service", None)
 
 
+def test_missing_registry_diagnostics_preserve_fixed_schema() -> None:
+    diagnostics = runtime_module.get_voice_identity_diagnostics()
+
+    assert diagnostics == {
+        **{
+            name: 0
+            for name in runtime_module._VOICE_IDENTITY_DIAGNOSTIC_COUNTERS
+        },
+        "registered_manager_count": 0,
+        "diagnostic_runtime_count": 0,
+    }
+
+
+def test_voice_identity_diagnostics_include_admission_and_completion_counters() -> None:
+    expected = {
+        "admission_terminal_forward_count",
+        "admission_terminal_drop_count",
+        "admission_terminal_abandon_count",
+        "admission_deadline_forward_count",
+        "admission_rejection_applied_active_count",
+        "admission_rejection_applied_sealed_count",
+        "admission_core_settlement_degraded_count",
+        "admission_transport_settlement_degraded_count",
+        "admission_lifecycle_settlement_degraded_count",
+        "admission_boundary_proof_retired_count",
+        "admission_boundary_proof_overflow_count",
+        "admission_late_operation_ignored_count",
+        "speaker_completion_count",
+        "speaker_completion_before_first_checkpoint_count",
+        "speaker_completion_after_first_checkpoint_count",
+        "speaker_completion_stale_count",
+    }
+
+    assert expected <= runtime_module._VOICE_IDENTITY_DIAGNOSTIC_COUNTERS
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_activation_updates_current_and_future_managers() -> None:
@@ -219,6 +258,58 @@ async def test_activation_status_tracks_live_route_and_runtime_degradation() -> 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_diagnostics_snapshot_aggregates_only_safe_counters_once_per_runtime() -> None:
+    registry = OwnerVoiceRuntimeRegistry(enforce=True)
+    runtime = SimpleNamespace(
+        _speaker_verifier_diagnostics=lambda: {
+            "observation_count": 4,
+            "low_checkpoint_count": 2,
+            "rejection_task_applied_count": 1,
+            "admission_terminal_forward_count": 2,
+            "admission_terminal_drop_count": 1,
+            "admission_deadline_forward_count": 1,
+            "admission_rejection_applied_sealed_count": 1,
+            "admission_core_settlement_degraded_count": 0,
+            "admission_late_operation_ignored_count": 1,
+            "provider_candidate_bind_missing_identity_count": 3,
+            "rejection_seal_snapshot_unbound_count": 2,
+            "similarity": 0.12,
+            "unexpected": 99,
+        }
+    )
+    first = _Manager()
+    first._asr_runtime = runtime
+    duplicate = _Manager()
+    duplicate._asr_runtime = runtime
+    await registry.register_manager(first)
+    await registry.register_manager(duplicate)
+
+    diagnostics = registry.diagnostics_snapshot()
+
+    assert diagnostics["registered_manager_count"] == 2
+    assert diagnostics["diagnostic_runtime_count"] == 1
+    assert diagnostics["observation_count"] == 4
+    assert diagnostics["low_checkpoint_count"] == 2
+    assert diagnostics["rejection_task_applied_count"] == 1
+    assert diagnostics["admission_terminal_forward_count"] == 2
+    assert diagnostics["admission_terminal_drop_count"] == 1
+    assert diagnostics["admission_deadline_forward_count"] == 1
+    assert diagnostics["admission_rejection_applied_sealed_count"] == 1
+    assert diagnostics["admission_core_settlement_degraded_count"] == 0
+    assert diagnostics["admission_late_operation_ignored_count"] == 1
+    assert diagnostics["diagnostic_runtime_missing_identity_count"] == 1
+    assert diagnostics["diagnostic_runtime_seal_unbound_count"] == 1
+    assert (
+        diagnostics["diagnostic_runtime_missing_identity_and_seal_unbound_count"]
+        == 1
+    )
+    assert "similarity" not in diagnostics
+    assert "unexpected" not in diagnostics
+    await registry.close()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_inactive_blocked_managers_do_not_override_active_route_status() -> None:
     registry = OwnerVoiceRuntimeRegistry(enforce=True)
     active = _Manager()
@@ -251,7 +342,7 @@ async def test_inactive_blocked_managers_do_not_override_active_route_status() -
     )
     assert (
         await registry.register_manager(late_inactive)
-        is VoiceIdentityActivationResult.READY
+        is VoiceIdentityActivationResult.ACTIVATION_PENDING
     )
     assert registry.activation_status() is VoiceIdentityActivationResult.READY
 
@@ -1733,7 +1824,12 @@ def test_unavailable_profile_store_never_falls_back_to_plaintext(
         with pytest.raises(RuntimeError, match="secure_storage_unavailable"):
             store.load()
         with pytest.raises(RuntimeError, match="secure_storage_unavailable"):
-            store.stage(profile)
+            store.stage(
+                profile,
+                audio_contract=desktop_audio_contract_snapshot(
+                    noise_reduction_enabled=True,
+                ),
+            )
         with pytest.raises(RuntimeError, match="secure_storage_unavailable"):
             store.delete()
     finally:
@@ -1771,10 +1867,19 @@ async def test_runtime_install_and_wrapper_lifecycle(
             *args,
             runtime_mode: str,
             runtime_status_callback,
-        ) -> None:
+            activation_transaction,
+            enrollment_ttl_seconds: float,
+            speech_validator_factory,
+            enrollment_noise_reduction_enabled: bool,
+            ) -> None:
             self.args = args
             self.runtime_mode = runtime_mode
             self.runtime_status_callback = runtime_status_callback
+            self.enrollment_ttl_seconds = enrollment_ttl_seconds
+            self.speech_validator_factory = speech_validator_factory
+            self.enrollment_noise_reduction_enabled = (
+                enrollment_noise_reduction_enabled
+            )
             self.initialized = 0
             self.closed = 0
 
@@ -1806,8 +1911,18 @@ async def test_runtime_install_and_wrapper_lifecycle(
 
     service = runtime_module.install_voice_identity_runtime(config)
     assert service.runtime_mode == "off"
+    assert service.enrollment_noise_reduction_enabled
     assert "Unsupported NEKO_VOICE_IDENTITY_MODE" in caplog.text
     assert isinstance(service.args[0], runtime_module._UnavailableProfileStore)
+    assert service.enrollment_ttl_seconds == 45.0
+    assert (
+        service.speech_validator_factory
+        is runtime_module.SileroEnrollmentSpeechValidator
+    )
+    assert service.args[2].kwargs == {
+        "default_ttl_seconds": 45.0,
+        "hard_ttl_seconds": 60.0,
+    }
     assert installed == [service]
     assert runtime_module.install_voice_identity_runtime(config) is service
 

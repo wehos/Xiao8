@@ -1,0 +1,1 @@
+"""Admission state-machine tests."""

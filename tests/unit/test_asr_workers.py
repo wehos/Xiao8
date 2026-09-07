@@ -17,6 +17,7 @@ from main_logic.asr_client._infra import (
     _AsrWorkerRequest,
     _RealtimeAsrSessionImpl,
 )
+from main_logic.asr_client._provider_events import ProviderAudioRange
 from main_logic.asr_client.workers import gemini, grok, openai, qwen, soniox, step
 
 
@@ -141,6 +142,45 @@ async def _stop_worker(
     await asyncio.wait_for(task, 1)
     await asyncio.wait_for(requests.join(), 1)
     return closed
+
+
+async def _qwen_provider_lifecycle_on_send(
+    ws: _FakeWebSocket,
+    payload: str | bytes,
+) -> None:
+    if not isinstance(payload, str):
+        return
+    message = json.loads(payload)
+    if message["type"] == "session.update":
+        await ws.server_send({"type": "session.updated"})
+    elif message["type"] == "session.finish":
+        await ws.server_send({"type": "session.finished"})
+
+
+async def _start_qwen_provider_worker(
+    monkeypatch,
+    *websockets_: _FakeWebSocket,
+) -> tuple[
+    asyncio.Task[None],
+    asyncio.Queue[_AsrWorkerRequest],
+    asyncio.Queue[_AsrWorkerEvent],
+    _FakeConnector,
+]:
+    connector = _FakeConnector(*websockets_)
+    monkeypatch.setattr(qwen.websockets, "connect", connector)
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    ready = await _next_event(responses)
+    assert ready.kind == "ready"
+    return task, requests, responses, connector
 
 
 async def test_qwen_duplicate_item_created_preserves_next_manual_commit(
@@ -404,6 +444,1043 @@ async def test_qwen_server_vad_maps_items_and_reconnects_on_clear(monkeypatch) -
     )
 
 
+async def test_qwen_server_vad_emits_exact_canonical_boundary(monkeypatch) -> None:
+    async def on_send(ws: _FakeWebSocket, payload: str | bytes) -> None:
+        if isinstance(payload, str):
+            message = json.loads(payload)
+            if message["type"] == "session.update":
+                await ws.server_send({"type": "session.updated"})
+            elif message["type"] == "session.finish":
+                await ws.server_send({"type": "session.finished"})
+
+    websocket = _FakeWebSocket(on_send=on_send)
+    monkeypatch.setattr(qwen.websockets, "connect", _FakeConnector(websocket))
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    await _next_event(responses, "ready")
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "exact",
+            "audio_start_ms": 20,
+        }
+    )
+    started = await _next_event(responses, "utterance_started")
+    assert started.audio_start_sample_16k == 320
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "exact",
+            "audio_end_ms": 170,
+        }
+    )
+    boundary = await _next_event(responses, "provider_endpoint")
+    assert boundary.utterance_id == started.utterance_id
+    assert boundary.boundary_quality == "exact"
+    assert boundary.audio_range == ProviderAudioRange(320, 2_720)
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "exact",
+            "transcript": "hello",
+        }
+    )
+    final = await _next_event(responses)
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        started.utterance_id,
+        "hello",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_conflicting_duplicate_boundary_revokes_exact_authority(
+    monkeypatch,
+) -> None:
+    async def on_send(ws: _FakeWebSocket, payload: str | bytes) -> None:
+        if isinstance(payload, str):
+            message = json.loads(payload)
+            if message["type"] == "session.update":
+                await ws.server_send({"type": "session.updated"})
+            elif message["type"] == "session.finish":
+                await ws.server_send({"type": "session.finished"})
+
+    websocket = _FakeWebSocket(on_send=on_send)
+    monkeypatch.setattr(qwen.websockets, "connect", _FakeConnector(websocket))
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    await _next_event(responses, "ready")
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "conflict",
+            "audio_start_ms": 0,
+        }
+    )
+    await _next_event(responses, "utterance_started")
+    stopped = {
+        "type": "input_audio_buffer.speech_stopped",
+        "item_id": "conflict",
+        "audio_end_ms": 100,
+    }
+    await websocket.server_send(stopped)
+    exact = await _next_event(responses, "provider_endpoint")
+    assert exact.boundary_quality == "exact"
+    await websocket.server_send(stopped)
+    await websocket.server_send({**stopped, "audio_end_ms": 120})
+    invalidated = await _next_event(responses)
+    assert invalidated.kind == "provider_endpoint"
+    assert invalidated.boundary_quality == "unknown"
+    assert invalidated.audio_range is None
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "conflict",
+            "transcript": "done",
+        }
+    )
+    assert (await _next_event(responses)).kind == "final"
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_conflicting_late_speech_start_revokes_exact_authority(
+    monkeypatch,
+) -> None:
+    async def on_send(ws: _FakeWebSocket, payload: str | bytes) -> None:
+        if isinstance(payload, str):
+            message = json.loads(payload)
+            if message["type"] == "session.update":
+                await ws.server_send({"type": "session.updated"})
+            elif message["type"] == "session.finish":
+                await ws.server_send({"type": "session.finished"})
+
+    websocket = _FakeWebSocket(on_send=on_send)
+    monkeypatch.setattr(qwen.websockets, "connect", _FakeConnector(websocket))
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    await _next_event(responses, "ready")
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "start-conflict",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses, "utterance_started")
+    assert started.audio_start_sample_16k == 0
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "start-conflict",
+            "audio_end_ms": 100,
+        }
+    )
+    exact = await _next_event(responses, "provider_endpoint")
+    assert exact.boundary_quality == "exact"
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "start-conflict",
+            "audio_start_ms": 20,
+        }
+    )
+    invalidated = await _next_event(responses)
+    assert invalidated.kind == "provider_endpoint"
+    assert invalidated.utterance_id == started.utterance_id
+    assert invalidated.boundary_quality == "unknown"
+    assert invalidated.audio_range is None
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "start-conflict",
+            "transcript": "safe",
+        }
+    )
+    final = await _next_event(responses, "final")
+    assert (final.utterance_id, final.text) == (started.utterance_id, "safe")
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_missing_item_ids_use_unknown_fifo_without_losing_final(
+    monkeypatch,
+) -> None:
+    async def on_send(ws: _FakeWebSocket, payload: str | bytes) -> None:
+        if isinstance(payload, str):
+            message = json.loads(payload)
+            if message["type"] == "session.update":
+                await ws.server_send({"type": "session.updated"})
+            elif message["type"] == "session.finish":
+                await ws.server_send({"type": "session.finished"})
+
+    websocket = _FakeWebSocket(on_send=on_send)
+    monkeypatch.setattr(qwen.websockets, "connect", _FakeConnector(websocket))
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    await _next_event(responses, "ready")
+    await websocket.server_send(
+        {"type": "input_audio_buffer.speech_started", "audio_start_ms": 0}
+    )
+    started = await _next_event(responses, "utterance_started")
+    await websocket.server_send(
+        {"type": "input_audio_buffer.speech_stopped", "audio_end_ms": 100}
+    )
+    boundary = await _next_event(responses, "provider_endpoint")
+    assert boundary.utterance_id == started.utterance_id
+    assert boundary.boundary_quality == "unknown"
+    assert boundary.audio_range is None
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "preserved",
+        }
+    )
+    final = await _next_event(responses, "final")
+    assert (final.utterance_id, final.text) == (
+        started.utterance_id,
+        "preserved",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_unmatched_completed_item_uses_fifo_and_revokes_exact(
+    monkeypatch,
+) -> None:
+    async def on_send(ws: _FakeWebSocket, payload: str | bytes) -> None:
+        if isinstance(payload, str):
+            message = json.loads(payload)
+            if message["type"] == "session.update":
+                await ws.server_send({"type": "session.updated"})
+            elif message["type"] == "session.finish":
+                await ws.server_send({"type": "session.finished"})
+
+    websocket = _FakeWebSocket(on_send=on_send)
+    monkeypatch.setattr(qwen.websockets, "connect", _FakeConnector(websocket))
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    await _next_event(responses, "ready")
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "audio-item",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses, "utterance_started")
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "audio-item",
+            "audio_end_ms": 100,
+        }
+    )
+    assert (await _next_event(responses, "provider_endpoint")).boundary_quality == (
+        "exact"
+    )
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "transcription-item",
+            "transcript": "same turn",
+        }
+    )
+    invalidated = await _next_event(responses, "provider_endpoint")
+    assert invalidated.utterance_id == started.utterance_id
+    assert invalidated.boundary_quality == "unknown"
+    final = await _next_event(responses, "final")
+    assert (final.utterance_id, final.text) == (
+        started.utterance_id,
+        "same turn",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_retired_item_tombstone_blocks_late_resurrection(
+    monkeypatch,
+) -> None:
+    async def on_send(ws: _FakeWebSocket, payload: str | bytes) -> None:
+        if isinstance(payload, str):
+            message = json.loads(payload)
+            if message["type"] == "session.update":
+                await ws.server_send({"type": "session.updated"})
+            elif message["type"] == "session.finish":
+                await ws.server_send({"type": "session.finished"})
+
+    websocket = _FakeWebSocket(on_send=on_send)
+    monkeypatch.setattr(qwen.websockets, "connect", _FakeConnector(websocket))
+    requests: asyncio.Queue[_AsrWorkerRequest] = asyncio.Queue()
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        qwen.qwen_asr_worker(
+            requests,
+            responses,
+            "key",
+            AsrSessionConfig(endpointing_mode="provider"),
+        )
+    )
+    await _next_event(responses, "ready")
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "retired",
+            "audio_start_ms": 0,
+        }
+    )
+    await _next_event(responses, "utterance_started")
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "retired",
+            "transcript": "once",
+        }
+    )
+    await _next_event(responses, "provider_endpoint")
+    assert (await _next_event(responses, "final")).text == "once"
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "retired",
+            "audio_start_ms": 0,
+        }
+    )
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "retired",
+            "transcript": "duplicate",
+        }
+    )
+    await asyncio.sleep(0.05)
+    assert responses.empty()
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "fresh",
+            "audio_start_ms": 100,
+        }
+    )
+    fresh = await _next_event(responses, "utterance_started")
+    assert fresh.utterance_id == 2
+    await _stop_worker(task, requests, responses, utterance_id=3)
+
+
+def test_qwen_retired_item_tombstone_is_bounded() -> None:
+    state = qwen._QwenConnectionState(
+        generation=0,
+        buffer_epoch=0,
+        next_utterance_id=1,
+        emit_ready=False,
+    )
+    for index in range(qwen._QWEN_ITEM_TOMBSTONE_LIMIT + 2):
+        qwen._qwen_remember_retired_item(state, f"item-{index}")
+
+    assert len(state.retired_item_ids) == qwen._QWEN_ITEM_TOMBSTONE_LIMIT
+    assert len(state.retired_item_order) == qwen._QWEN_ITEM_TOMBSTONE_LIMIT
+    assert "item-0" not in state.retired_item_ids
+    assert "item-1" not in state.retired_item_ids
+    assert f"item-{qwen._QWEN_ITEM_TOMBSTONE_LIMIT + 1}" in state.retired_item_ids
+
+
+def test_qwen_provisional_commits_are_globally_bounded() -> None:
+    state = qwen._QwenConnectionState(
+        generation=0,
+        buffer_epoch=0,
+        next_utterance_id=1,
+        emit_ready=False,
+    )
+    for index in range(qwen._QWEN_PROVISIONAL_COMMIT_LIMIT + 2):
+        qwen._qwen_record_provisional_commit(state, f"named-{index}")
+        qwen._qwen_record_provisional_commit(state, "")
+
+    assert (
+        len(state.provisional_commits)
+        + len(state.anonymous_provisional_commits)
+        == qwen._QWEN_PROVISIONAL_COMMIT_LIMIT
+    )
+    assert "named-0" not in state.provisional_commits
+
+
+async def test_qwen_terminal_fifo_claim_beats_stalled_expiry_during_unknown_put(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(qwen, "_QWEN_STALLED_ITEM_TIMEOUT_SECONDS", 0.0)
+    state = qwen._QwenConnectionState(
+        generation=0,
+        buffer_epoch=0,
+        next_utterance_id=2,
+        emit_ready=False,
+    )
+    key = (0, 0, 1)
+    state.item_keys["audio-item"] = key
+    state.item_start_samples_16k["audio-item"] = 0
+    state.item_boundaries["audio-item"] = ProviderAudioRange(0, 1_600)
+    state.provider_item_order.append("audio-item")
+    state.provider_item_aliases["audio-item"] = "audio-item"
+    state.item_deadlines["audio-item"] = 0.0
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue(maxsize=1)
+    await responses.put(_AsrWorkerEvent(kind="ready", generation=0))
+
+    resolve_task = asyncio.create_task(
+        qwen._qwen_resolve_provider_item(
+            responses,
+            state,
+            "transcription-item",
+            terminal=True,
+        )
+    )
+    await _wait_until(lambda: "audio-item" in state.completing_provider_items)
+    await qwen._qwen_expire_stalled_items(responses, state)
+    assert state.item_keys["audio-item"] == key
+
+    assert (await _next_event(responses)).kind == "ready"
+    assert await resolve_task == "audio-item"
+    invalidated = await _next_event(responses, "provider_endpoint")
+    assert invalidated.boundary_quality == "unknown"
+    assert state.item_keys["audio-item"] == key
+
+
+async def test_qwen_terminal_open_claim_precedes_started_queue_put() -> None:
+    state = qwen._QwenConnectionState(
+        generation=0,
+        buffer_epoch=0,
+        next_utterance_id=1,
+        emit_ready=False,
+    )
+    responses: asyncio.Queue[_AsrWorkerEvent] = asyncio.Queue(maxsize=1)
+    await responses.put(_AsrWorkerEvent(kind="ready", generation=0))
+
+    open_task = asyncio.create_task(
+        qwen._qwen_open_provider_item(
+            responses,
+            state,
+            "completed-without-start",
+            start_sample_16k=None,
+            ambiguous=True,
+            terminal=True,
+        )
+    )
+    await _wait_until(
+        lambda: "completed-without-start" in state.completing_provider_items
+    )
+    assert not open_task.done()
+    assert state.item_keys["completed-without-start"] == (0, 0, 1)
+
+    assert (await _next_event(responses)).kind == "ready"
+    assert await open_task == "completed-without-start"
+    started = await _next_event(responses)
+    assert (started.kind, started.utterance_id) == ("utterance_started", 1)
+
+
+async def test_qwen_committed_before_stopped_keeps_single_key_and_exact_boundary(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "committed-first",
+            "audio_start_ms": 20,
+        }
+    )
+    started = await _next_event(responses)
+    assert (started.kind, started.utterance_id) == ("utterance_started", 1)
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "committed-first"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "committed-first",
+            "audio_end_ms": 170,
+        }
+    )
+    boundary = await _next_event(responses)
+    assert boundary.kind == "provider_endpoint"
+    assert boundary.utterance_id == started.utterance_id
+    assert boundary.boundary_quality == "exact"
+    assert boundary.audio_range == ProviderAudioRange(320, 2_720)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "committed-first",
+            "transcript": "done",
+        }
+    )
+    final = await _next_event(responses)
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        started.utterance_id,
+        "done",
+    )
+    assert responses.empty()
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_stopped_before_committed_preserves_exact_boundary(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "stopped-first",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses)
+    assert started.kind == "utterance_started"
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "stopped-first",
+            "audio_end_ms": 100,
+        }
+    )
+    boundary = await _next_event(responses)
+    assert boundary.boundary_quality == "exact"
+    assert boundary.audio_range == ProviderAudioRange(0, 1_600)
+
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "stopped-first"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "stopped-first",
+            "transcript": "kept exact",
+        }
+    )
+    final = await _next_event(responses)
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        started.utterance_id,
+        "kept exact",
+    )
+    assert responses.empty()
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_committed_without_stopped_fails_open_only_on_completed(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "completed-fallback",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses)
+    assert started.kind == "utterance_started"
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.committed",
+            "item_id": "completed-fallback",
+        }
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "completed-fallback",
+            "transcript": "safe text",
+        }
+    )
+    boundary = await _next_event(responses)
+    final = await _next_event(responses)
+    assert (
+        boundary.kind,
+        boundary.utterance_id,
+        boundary.boundary_quality,
+        boundary.audio_range,
+    ) == ("provider_endpoint", started.utterance_id, "unknown", None)
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        started.utterance_id,
+        "safe text",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+@pytest.mark.parametrize("payload", [{"item_id": "orphan"}, {}])
+async def test_qwen_orphan_committed_expires_without_ghost_turn(
+    monkeypatch,
+    payload: dict[str, str],
+) -> None:
+    monkeypatch.setattr(qwen, "_QWEN_STALLED_ITEM_TIMEOUT_SECONDS", 0.03)
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send({"type": "input_audio_buffer.committed", **payload})
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.1)
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "fresh-after-orphan",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses)
+    assert (started.kind, started.utterance_id) == ("utterance_started", 1)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "fresh-after-orphan",
+            "transcript": "fresh",
+        }
+    )
+    boundary = await _next_event(responses)
+    final = await _next_event(responses)
+    assert boundary.boundary_quality == "unknown"
+    assert (final.kind, final.utterance_id, final.text) == ("final", 1, "fresh")
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_anonymous_committed_promotes_started_item_without_ghost(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send({"type": "input_audio_buffer.committed"})
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "promoted",
+            "audio_start_ms": 10,
+        }
+    )
+    started = await _next_event(responses)
+    assert (started.kind, started.utterance_id) == ("utterance_started", 1)
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "promoted",
+            "audio_end_ms": 110,
+        }
+    )
+    boundary = await _next_event(responses)
+    assert boundary.boundary_quality == "exact"
+    assert boundary.audio_range == ProviderAudioRange(160, 1_760)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "promoted",
+            "transcript": "one turn",
+        }
+    )
+    final = await _next_event(responses)
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        started.utterance_id,
+        "one turn",
+    )
+    assert responses.empty()
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_committed_completed_without_started_preserves_text(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "no-start"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "no-start",
+            "transcript": "preserved",
+        }
+    )
+    started = await _next_event(responses)
+    boundary = await _next_event(responses)
+    final = await _next_event(responses)
+    assert (started.kind, started.utterance_id) == ("utterance_started", 1)
+    assert (
+        boundary.kind,
+        boundary.utterance_id,
+        boundary.boundary_quality,
+    ) == ("provider_endpoint", 1, "unknown")
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        1,
+        "preserved",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_named_provisional_completed_keeps_distinct_overlapping_key(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "active-a",
+            "audio_start_ms": 0,
+        }
+    )
+    first_started = await _next_event(responses)
+    assert (first_started.kind, first_started.utterance_id) == (
+        "utterance_started",
+        1,
+    )
+
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "provisional-b"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "provisional-b",
+            "transcript": "second",
+        }
+    )
+    second_started = await _next_event(responses)
+    second_boundary = await _next_event(responses)
+    second_final = await _next_event(responses)
+    assert (second_started.kind, second_started.utterance_id) == (
+        "utterance_started",
+        2,
+    )
+    assert (
+        second_boundary.kind,
+        second_boundary.utterance_id,
+        second_boundary.boundary_quality,
+    ) == ("provider_endpoint", 2, "unknown")
+    assert (second_final.kind, second_final.utterance_id, second_final.text) == (
+        "final",
+        2,
+        "second",
+    )
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "active-a",
+            "transcript": "first",
+        }
+    )
+    first_boundary = await _next_event(responses)
+    first_final = await _next_event(responses)
+    assert (
+        first_boundary.kind,
+        first_boundary.utterance_id,
+        first_boundary.boundary_quality,
+    ) == ("provider_endpoint", 1, "unknown")
+    assert (first_final.kind, first_final.utterance_id, first_final.text) == (
+        "final",
+        1,
+        "first",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=3)
+
+
+async def test_qwen_expired_named_provisional_allows_late_completed_text(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(qwen, "_QWEN_STALLED_ITEM_TIMEOUT_SECONDS", 0.03)
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "expired"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.1)
+
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "expired",
+            "transcript": "late but real",
+        }
+    )
+    started = await _next_event(responses)
+    boundary = await _next_event(responses)
+    final = await _next_event(responses)
+    assert (started.kind, started.utterance_id) == ("utterance_started", 1)
+    assert (
+        boundary.kind,
+        boundary.utterance_id,
+        boundary.boundary_quality,
+    ) == ("provider_endpoint", 1, "unknown")
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        1,
+        "late but real",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=2)
+
+
+async def test_qwen_completed_before_stopped_ignores_late_boundary(
+    monkeypatch,
+) -> None:
+    websocket = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, _connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        websocket,
+    )
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "early-completed",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses)
+    assert started.kind == "utterance_started"
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "early-completed"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "early-completed",
+            "transcript": "first",
+        }
+    )
+    boundary = await _next_event(responses)
+    final = await _next_event(responses)
+    assert boundary.boundary_quality == "unknown"
+    assert (final.kind, final.utterance_id, final.text) == (
+        "final",
+        started.utterance_id,
+        "first",
+    )
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "early-completed",
+            "audio_end_ms": 100,
+        }
+    )
+    await websocket.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "early-completed"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "fresh-after-late",
+            "audio_start_ms": 100,
+        }
+    )
+    fresh_started = await _next_event(responses)
+    assert (fresh_started.kind, fresh_started.utterance_id) == (
+        "utterance_started",
+        2,
+    )
+    await websocket.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "fresh-after-late",
+            "audio_end_ms": 200,
+        }
+    )
+    fresh_boundary = await _next_event(responses)
+    assert fresh_boundary.boundary_quality == "exact"
+    assert fresh_boundary.audio_range == ProviderAudioRange(1_600, 3_200)
+    await websocket.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "fresh-after-late",
+            "transcript": "second",
+        }
+    )
+    fresh_final = await _next_event(responses)
+    assert (fresh_final.kind, fresh_final.utterance_id, fresh_final.text) == (
+        "final",
+        2,
+        "second",
+    )
+    await _stop_worker(task, requests, responses, utterance_id=3)
+
+
+async def test_qwen_clear_discards_provisional_commit_timeline(monkeypatch) -> None:
+    first = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    second = _FakeWebSocket(on_send=_qwen_provider_lifecycle_on_send)
+    task, requests, responses, connector = await _start_qwen_provider_worker(
+        monkeypatch,
+        first,
+        second,
+    )
+    await first.server_send(
+        {"type": "input_audio_buffer.committed", "item_id": "same-id"}
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+
+    await requests.put(
+        _AsrWorkerRequest(
+            kind="clear",
+            generation=0,
+            buffer_epoch=1,
+            utterance_id=1,
+        )
+    )
+    await _wait_until(lambda: len(connector.calls) == 2)
+    await first.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "same-id",
+            "audio_end_ms": 100,
+        }
+    )
+    await first.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "same-id",
+            "transcript": "stale",
+        }
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await _next_event(responses, timeout=0.03)
+
+    await second.server_send(
+        {
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "same-id",
+            "audio_start_ms": 0,
+        }
+    )
+    started = await _next_event(responses)
+    assert (
+        started.kind,
+        started.buffer_epoch,
+        started.utterance_id,
+    ) == ("utterance_started", 1, 1)
+    await second.server_send(
+        {
+            "type": "input_audio_buffer.speech_stopped",
+            "item_id": "same-id",
+            "audio_end_ms": 100,
+        }
+    )
+    boundary = await _next_event(responses)
+    assert (
+        boundary.kind,
+        boundary.buffer_epoch,
+        boundary.utterance_id,
+        boundary.boundary_quality,
+    ) == ("provider_endpoint", 1, 1, "exact")
+    await second.server_send(
+        {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "same-id",
+            "transcript": "fresh",
+        }
+    )
+    final = await _next_event(responses)
+    assert (
+        final.kind,
+        final.buffer_epoch,
+        final.utterance_id,
+        final.text,
+    ) == ("final", 1, 1, "fresh")
+    await _stop_worker(
+        task,
+        requests,
+        responses,
+        buffer_epoch=1,
+        utterance_id=2,
+    )
+
+
 async def test_qwen_server_vad_speech_stopped_without_completed_expires_empty_final(
     monkeypatch,
 ) -> None:
@@ -443,7 +1520,14 @@ async def test_qwen_server_vad_speech_stopped_without_completed_expires_empty_fi
     # Server VAD sealed the turn but the transcription completed event never
     # arrives: the stalled-item deadline must close the turn with an empty
     # final instead of leaving the upstream session waiting unboundedly.
-    expired = await _next_event(responses, "final")
+    boundary = await _next_event(responses)
+    assert (
+        boundary.kind,
+        boundary.utterance_id,
+        boundary.boundary_quality,
+    ) == ("provider_endpoint", started.utterance_id, "unknown")
+    expired = await _next_event(responses)
+    assert expired.kind == "final"
     assert expired.text == ""
     assert expired.utterance_id == started.utterance_id
 

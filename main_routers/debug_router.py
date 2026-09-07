@@ -56,9 +56,12 @@ import sys
 import time
 from collections import Counter, deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter
+from main_logic.voice_identity_service.diagnostics import (
+    VOICE_IDENTITY_DIAGNOSTIC_COUNTERS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +76,7 @@ _PROCESS_START_MONO = time.monotonic()
 _HEALTH_RING: deque[dict[str, Any]] = deque(maxlen=200)
 _WATCHDOG_TASK: asyncio.Task | None = None
 _WATCHDOG_INTERVAL_SECONDS = 5 * 60  # 5 分钟
+_VOICE_IDENTITY_DIAGNOSTICS_PROVIDER: Callable[[], dict[str, int]] | None = None
 # 「Deep」字段（``gc.get_objects()`` 45ms + Windows ``num_threads()`` 8ms）
 # 是 C 调用不释放 GIL，watchdog 跑就直接阻塞 event loop 50ms+。本来想降频
 # 到 30min 一次缓和，但用户体感「致命」否决——索性 watchdog **不收**这俩，
@@ -352,6 +356,38 @@ def _safe_proactive_history_size() -> dict[str, int]:
     return out
 
 
+def set_voice_identity_diagnostics_provider(
+    provider: Callable[[], dict[str, int]] | None,
+) -> None:
+    """Install the app-owned aggregate diagnostics reader."""
+
+    if provider is not None and not callable(provider):
+        raise TypeError("provider must be callable or None")
+    global _VOICE_IDENTITY_DIAGNOSTICS_PROVIDER
+    _VOICE_IDENTITY_DIAGNOSTICS_PROVIDER = provider
+
+
+def _safe_voice_identity_diagnostics() -> dict[str, int]:
+    """Read aggregate voice-filter counters without biometric material."""
+
+    provider = _VOICE_IDENTITY_DIAGNOSTICS_PROVIDER
+    if provider is None:
+        return {}
+    try:
+        raw = provider()
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        name: value
+        for name, value in raw.items()
+        if name in VOICE_IDENTITY_DIAGNOSTIC_COUNTERS
+        and type(value) is int
+        and value >= 0
+    }
+
+
 def _collect_snapshot(include_deep: bool = False, channel: str = "watchdog") -> dict[str, Any]:
     """Take a single snapshot. Every field is individually try-wrapped — one blowing up does not affect the others.
 
@@ -387,6 +423,7 @@ def _collect_snapshot(include_deep: bool = False, channel: str = "watchdog") -> 
     snap["is_responding"] = _safe_is_responding_map()
     snap["ack_waiters"] = _safe_ack_waiters_size()
     snap["proactive_history"] = _safe_proactive_history_size()
+    snap["voice_identity"] = _safe_voice_identity_diagnostics()
     try:
         from main_logic.widget_mode_runtime import widget_mode_coordinator
 

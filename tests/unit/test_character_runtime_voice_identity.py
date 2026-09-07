@@ -18,11 +18,16 @@ async def test_remove_one_catgirl_unregisters_voice_identity_manager(monkeypatch
     from app.main_server import character_runtime, voice_identity_runtime
 
     name = "NekoVoiceDelete"
-    manager = object()
-    unregistered = []
+    calls = []
+
+    class Manager:
+        async def aclose(self):
+            calls.append(("close", self))
+
+    manager = Manager()
 
     async def unregister(target):
-        unregistered.append(target)
+        calls.append(("unregister", target))
 
     async def refresh_globals():
         return None
@@ -47,7 +52,7 @@ async def test_remove_one_catgirl_unregisters_voice_identity_manager(monkeypatch
 
     await character_runtime.remove_one_catgirl(name)
 
-    assert unregistered == [manager]
+    assert calls == [("unregister", manager), ("close", manager)]
     assert role.websocket_lock.locked() is False
     assert name not in character_runtime.role_state
 
@@ -60,9 +65,15 @@ async def test_initialize_character_data_unregisters_removed_voice_managers(
 
     removed_name = "NekoVoiceRemoved"
     calls = []
+
+    class Manager:
+        async def aclose(self):
+            calls.append(("close", self))
+
+    manager = Manager()
     role = SimpleNamespace(
         websocket_lock=asyncio.Lock(),
-        session_manager=object(),
+        session_manager=manager,
         sync_task=None,
         sync_message_queue=SimpleNamespace(empty=lambda: True),
     )
@@ -105,9 +116,181 @@ async def test_initialize_character_data_unregisters_removed_voice_managers(
 
     assert calls == [
         ("stop", removed_name),
-        ("unregister", role.session_manager),
+        ("unregister", manager),
+        ("close", manager),
     ]
     assert removed_name not in character_runtime.role_state
+
+
+@pytest.mark.asyncio
+async def test_inactive_manager_replacement_closes_terminal_before_install(monkeypatch):
+    from app.main_server import character_runtime, voice_identity_runtime
+
+    name = "NekoVoiceReplace"
+    calls = []
+
+    class OldManager:
+        websocket = None
+        is_active = False
+        is_starting = False
+        user_language = "zh-CN"
+        _user_language_explicit = True
+
+        async def aclose(self):
+            calls.append(("close", self))
+
+    class NewManager:
+        websocket = None
+        is_active = False
+        is_starting = False
+
+        def __init__(self, queue, lanlan_name, prompt):
+            calls.append(("construct", self))
+            self.queue = queue
+            self.lanlan_name = lanlan_name
+            self.prompt = prompt
+            self.websocket_lock = None
+
+    old_manager = OldManager()
+    role = SimpleNamespace(
+        websocket_lock=asyncio.Lock(),
+        session_manager=old_manager,
+        sync_task=SimpleNamespace(done=lambda: False),
+        sync_message_queue=object(),
+    )
+
+    async def unregister(target):
+        calls.append(("unregister", target))
+
+    async def register(target):
+        calls.append(("register", target))
+        return True
+
+    monkeypatch.setitem(character_runtime.role_state, name, role)
+    monkeypatch.setattr(character_runtime, "lanlan_prompt", {name: "prompt"})
+    monkeypatch.setattr(character_runtime, "master_name", "Master")
+    monkeypatch.setattr(character_runtime.core, "LLMSessionManager", NewManager)
+    monkeypatch.setattr(
+        voice_identity_runtime,
+        "unregister_voice_identity_manager",
+        unregister,
+    )
+    monkeypatch.setattr(
+        voice_identity_runtime,
+        "register_voice_identity_manager",
+        register,
+    )
+
+    await character_runtime._init_character_resources(name, False)
+
+    new_manager = role.session_manager
+    assert isinstance(new_manager, NewManager)
+    assert calls == [
+        ("unregister", old_manager),
+        ("close", old_manager),
+        ("construct", new_manager),
+        ("register", new_manager),
+    ]
+    assert new_manager.user_language == "zh-CN"
+    assert new_manager._user_language_explicit is True
+
+
+@pytest.mark.asyncio
+async def test_remove_preserves_slot_when_terminal_manager_close_fails(monkeypatch):
+    from app.main_server import character_runtime, voice_identity_runtime
+
+    name = "NekoVoiceDeleteCloseFailure"
+    calls = []
+
+    class Manager:
+        async def aclose(self):
+            calls.append(("close", self))
+            raise RuntimeError("terminal close failed")
+
+    manager = Manager()
+    role = SimpleNamespace(
+        websocket_lock=asyncio.Lock(),
+        session_manager=manager,
+        sync_task=None,
+        sync_message_queue=SimpleNamespace(empty=lambda: True),
+    )
+
+    async def unregister(target):
+        calls.append(("unregister", target))
+
+    async def refresh_globals():
+        return None
+
+    monkeypatch.setitem(character_runtime.role_state, name, role)
+    monkeypatch.setattr(
+        voice_identity_runtime,
+        "unregister_voice_identity_manager",
+        unregister,
+    )
+    monkeypatch.setattr(
+        character_runtime,
+        "_refresh_character_globals",
+        refresh_globals,
+    )
+
+    with pytest.raises(RuntimeError, match="terminal close failed"):
+        await character_runtime.remove_one_catgirl(name)
+
+    assert calls == [("unregister", manager), ("close", manager)]
+    assert character_runtime.role_state[name] is role
+    assert role.session_manager is manager
+    assert role.websocket_lock.locked() is False
+
+
+@pytest.mark.asyncio
+async def test_inactive_replacement_preserves_owner_when_terminal_close_fails(
+    monkeypatch,
+):
+    from app.main_server import character_runtime, voice_identity_runtime
+
+    name = "NekoVoiceReplaceCloseFailure"
+    calls = []
+
+    class OldManager:
+        websocket = None
+        is_active = False
+        is_starting = False
+
+        async def aclose(self):
+            calls.append(("close", self))
+            raise RuntimeError("terminal close failed")
+
+    class NewManager:
+        def __init__(self, *_args, **_kwargs):
+            calls.append(("construct", self))
+
+    old_manager = OldManager()
+    role = SimpleNamespace(
+        websocket_lock=asyncio.Lock(),
+        session_manager=old_manager,
+        sync_task=SimpleNamespace(done=lambda: False),
+        sync_message_queue=object(),
+    )
+
+    async def unregister(target):
+        calls.append(("unregister", target))
+
+    monkeypatch.setitem(character_runtime.role_state, name, role)
+    monkeypatch.setattr(character_runtime, "lanlan_prompt", {name: "prompt"})
+    monkeypatch.setattr(character_runtime, "master_name", "Master")
+    monkeypatch.setattr(character_runtime.core, "LLMSessionManager", NewManager)
+    monkeypatch.setattr(
+        voice_identity_runtime,
+        "unregister_voice_identity_manager",
+        unregister,
+    )
+
+    with pytest.raises(RuntimeError, match="terminal close failed"):
+        await character_runtime._init_character_resources(name, False)
+
+    assert calls == [("unregister", old_manager), ("close", old_manager)]
+    assert role.session_manager is old_manager
+    assert role.websocket_lock.locked() is False
 
 
 @pytest.mark.asyncio

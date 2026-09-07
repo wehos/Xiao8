@@ -6,6 +6,7 @@ import threading
 
 import numpy as np
 import pytest
+import soxr
 
 from main_logic.omni_realtime_client import OmniRealtimeClient
 from utils.audio_processor import AudioProcessor, _LiteDenoiser
@@ -62,6 +63,147 @@ def test_audio_processor_close_releases_owned_buffers_and_denoiser() -> None:
     assert processor._frame_buffer.size == 0
     assert processor._debug_audio_before == []
     assert processor._debug_audio_after == []
+
+
+def test_audio_processor_finalize_stream_flushes_real_soxr_tail_once() -> None:
+    processor = AudioProcessor(
+        input_sample_rate=48_000,
+        output_sample_rate=16_000,
+        noise_reduce_enabled=False,
+        agc_enabled=False,
+        limiter_enabled=False,
+    )
+    source = np.random.default_rng(20_260_903).integers(
+        -32_768,
+        32_768,
+        size=48_000 * 5,
+        dtype=np.int16,
+    )
+
+    body = bytearray()
+    for offset in range(0, source.size, 480):
+        body.extend(processor.process_chunk(source[offset : offset + 480].tobytes()))
+    tail = processor.finalize_stream()
+    streamed = np.frombuffer(bytes(body) + tail, dtype=np.int16)
+    offline_float = soxr.resample(
+        source.astype(np.float32) / 32768.0,
+        48_000,
+        16_000,
+        quality="HQ",
+    )
+    offline = (offline_float * 32768.0).clip(-32768, 32767).astype(np.int16)
+
+    assert tail
+    assert streamed.size == 80_000
+    np.testing.assert_array_equal(streamed, offline)
+    with pytest.raises(RuntimeError, match="AUDIO_PROCESSOR_STREAM_FINALIZED"):
+        processor.finalize_stream()
+    processor.close()
+
+
+def test_audio_processor_finalize_uses_normal_pcm16_conversion() -> None:
+    class _Resampler:
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, bool]] = []
+
+        def resample_chunk(
+            self,
+            audio: np.ndarray,
+            *,
+            last: bool = False,
+        ) -> np.ndarray:
+            self.calls.append((len(audio), last))
+            return np.array([-1.0, -0.5, 0.0, 0.5, 1.0], dtype=np.float32)
+
+    processor = AudioProcessor(
+        input_sample_rate=48_000,
+        output_sample_rate=16_000,
+        noise_reduce_enabled=False,
+        agc_enabled=False,
+        limiter_enabled=False,
+    )
+    resampler = _Resampler()
+    processor._downsample_resampler = resampler
+
+    body = processor.process_chunk(np.zeros(480, dtype=np.int16).tobytes())
+    tail = processor.finalize_stream()
+
+    assert body == tail
+    assert np.frombuffer(tail, dtype=np.int16).tolist() == [
+        -32768,
+        -16384,
+        0,
+        16384,
+        32767,
+    ]
+    assert resampler.calls == [(480, False), (0, True)]
+    processor.close()
+
+    incomplete = AudioProcessor(
+        input_sample_rate=48_000,
+        output_sample_rate=16_000,
+        noise_reduce_enabled=False,
+        agc_enabled=False,
+        limiter_enabled=False,
+    )
+    incomplete_resampler = _Resampler()
+    incomplete._downsample_resampler = incomplete_resampler
+    incomplete._frame_buffer_size = 1
+
+    with pytest.raises(
+        RuntimeError,
+        match="AUDIO_PROCESSOR_INCOMPLETE_RNNOISE_FRAME",
+    ):
+        incomplete.finalize_stream()
+    assert incomplete_resampler.calls == []
+    with pytest.raises(RuntimeError, match="AUDIO_PROCESSOR_STREAM_FINALIZED"):
+        incomplete.finalize_stream()
+    incomplete.close()
+
+
+def test_audio_processor_finalized_state_rejects_mutation() -> None:
+    processor = AudioProcessor(
+        input_sample_rate=48_000,
+        output_sample_rate=16_000,
+        noise_reduce_enabled=False,
+        agc_enabled=False,
+        limiter_enabled=False,
+    )
+    processor.finalize_stream()
+
+    with pytest.raises(RuntimeError, match="AUDIO_PROCESSOR_STREAM_FINALIZED"):
+        processor.process_chunk(b"\x00\x00")
+    with pytest.raises(RuntimeError, match="AUDIO_PROCESSOR_STREAM_FINALIZED"):
+        processor.reset()
+    with pytest.raises(RuntimeError, match="AUDIO_PROCESSOR_STREAM_FINALIZED"):
+        processor.request_reset()
+    processor.close()
+
+
+def test_audio_processor_close_is_idempotent_without_implicit_finalize() -> None:
+    class _Resampler:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def resample_chunk(self, _audio: np.ndarray, *, last: bool = False):
+            self.calls += 1
+            assert not last, "close must not manufacture an EOF flush"
+            return np.empty(0, dtype=np.float32)
+
+    processor = AudioProcessor(
+        input_sample_rate=48_000,
+        output_sample_rate=16_000,
+        noise_reduce_enabled=False,
+        agc_enabled=False,
+        limiter_enabled=False,
+    )
+    resampler = _Resampler()
+    processor._downsample_resampler = resampler
+
+    processor.close()
+    processor.close()
+
+    assert resampler.calls == 0
 
 
 def test_disabling_noise_reduction_releases_native_denoiser() -> None:

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+from dataclasses import dataclass
 from typing import Final, Protocol
 
 from cryptography.exceptions import InvalidTag
@@ -20,6 +21,8 @@ from main_logic.voice_identity.contracts import SpeakerModelIdentity
 from main_logic.voice_identity.profile import SpeakerProfile
 from main_logic.voice_identity.reference import SpeakerReference
 
+from .audio_contract import VoiceIdentityAudioContractSnapshot
+
 try:
     import win32crypt
 except ImportError:  # pragma: no cover - exercised through the platform guard
@@ -27,10 +30,10 @@ except ImportError:  # pragma: no cover - exercised through the platform guard
 
 
 _IS_WINDOWS: Final = os.name == "nt"
-_SCHEMA_VERSION: Final = 1
+_SCHEMA_VERSION: Final = 3
 _ALGORITHM: Final = "AES-256-GCM"
 _KEY_WRAPPING: Final = "DPAPI-CURRENT-USER"
-_AAD: Final = b"N.E.K.O.voice-identity.profile\x00v1"
+_AAD: Final = b"N.E.K.O.voice-identity.profile\x00v3"
 _NONCE_BYTES: Final = 12
 _KEY_BYTES: Final = 32
 _DPAPI_UI_FORBIDDEN: Final = 0x1
@@ -47,6 +50,27 @@ class SecureStorageUnavailableError(VoiceIdentityProfileStoreError):
 
 class VoiceIdentityProfileCorruptError(VoiceIdentityProfileStoreError):
     """Raised when an existing encrypted profile cannot be trusted."""
+
+
+class VoiceIdentityProfileIncompatibleError(VoiceIdentityProfileCorruptError):
+    """Raised when a trusted envelope uses an unsupported profile schema."""
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceIdentityStoredProfile:
+    """A decrypted provider profile paired with its processing-domain contract."""
+
+    profile: SpeakerProfile
+    audio_contract: VoiceIdentityAudioContractSnapshot
+
+    def __post_init__(self) -> None:
+        if type(self.profile) is not SpeakerProfile:
+            raise TypeError("profile must be SpeakerProfile")
+        if type(self.audio_contract) is not VoiceIdentityAudioContractSnapshot:
+            raise TypeError("audio_contract must be VoiceIdentityAudioContractSnapshot")
+
+    def close(self) -> None:
+        self.profile.close()
 
 
 class _KeyProtector(Protocol):
@@ -189,10 +213,15 @@ class VoiceIdentityProfileStore:
     def path(self) -> Path:
         return self._path
 
-    def save(self, profile: SpeakerProfile) -> None:
+    def save(
+        self,
+        profile: SpeakerProfile,
+        *,
+        audio_contract: VoiceIdentityAudioContractSnapshot,
+    ) -> None:
         """Encrypt and atomically replace the stored profile."""
 
-        staged = self.stage(profile)
+        staged = self.stage(profile, audio_contract=audio_contract)
         try:
             staged.commit()
         except BaseException:
@@ -202,30 +231,48 @@ class VoiceIdentityProfileStore:
                 pass
             raise
 
-    async def asave(self, profile: SpeakerProfile) -> None:
+    async def asave(
+        self,
+        profile: SpeakerProfile,
+        *,
+        audio_contract: VoiceIdentityAudioContractSnapshot,
+    ) -> None:
         """Run :meth:`save` away from the event-loop thread."""
 
-        await asyncio.to_thread(self.save, profile)
+        await asyncio.to_thread(self.save, profile, audio_contract=audio_contract)
 
-    def stage(self, profile: SpeakerProfile) -> VoiceIdentityProfileWrite:
+    def stage(
+        self,
+        profile: SpeakerProfile,
+        *,
+        audio_contract: VoiceIdentityAudioContractSnapshot,
+    ) -> VoiceIdentityProfileWrite:
         """Write encrypted ciphertext without replacing the active profile."""
 
         if type(profile) is not SpeakerProfile:
             raise TypeError("profile must be SpeakerProfile")
+        if type(audio_contract) is not VoiceIdentityAudioContractSnapshot:
+            raise TypeError("audio_contract must be VoiceIdentityAudioContractSnapshot")
         with self._lock:
-            encoded = self._encode(profile)
+            encoded = self._encode(profile, audio_contract)
             temporary_path = self._write_temporary(encoded)
         return VoiceIdentityProfileWrite(self, temporary_path)
 
     async def astage(
         self,
         profile: SpeakerProfile,
+        *,
+        audio_contract: VoiceIdentityAudioContractSnapshot,
     ) -> VoiceIdentityProfileWrite:
         """Run :meth:`stage` away from the event-loop thread."""
 
-        return await asyncio.to_thread(self.stage, profile)
+        return await asyncio.to_thread(
+            self.stage,
+            profile,
+            audio_contract=audio_contract,
+        )
 
-    def load(self) -> SpeakerProfile | None:
+    def load(self) -> VoiceIdentityStoredProfile | None:
         """Decrypt the stored profile, returning ``None`` when absent."""
 
         with self._lock:
@@ -239,7 +286,7 @@ class VoiceIdentityProfileStore:
                 ) from exc
             return self._decode(encoded)
 
-    async def aload(self) -> SpeakerProfile | None:
+    async def aload(self) -> VoiceIdentityStoredProfile | None:
         """Run :meth:`load` away from the event-loop thread."""
 
         return await asyncio.to_thread(self.load)
@@ -263,7 +310,11 @@ class VoiceIdentityProfileStore:
 
         return await asyncio.to_thread(self.delete)
 
-    def _encode(self, profile: SpeakerProfile) -> bytes:
+    def _encode(
+        self,
+        profile: SpeakerProfile,
+        audio_contract: VoiceIdentityAudioContractSnapshot,
+    ) -> bytes:
         reference = profile.clone_reference()
         embedding: np.ndarray | None = None
         data_key: bytearray | None = None
@@ -272,6 +323,8 @@ class VoiceIdentityProfileStore:
             identity = reference.model_identity
             embedding = reference.copy_embedding()
             payload = {
+                "audio_contract_id": audio_contract.contract_id,
+                "audio_contract_revision": audio_contract.revision,
                 "embedding": base64.b64encode(
                     embedding.astype("<f4", copy=False).tobytes(order="C")
                 ).decode("ascii"),
@@ -279,6 +332,7 @@ class VoiceIdentityProfileStore:
                 "generation": profile.generation,
                 "model_id": identity.model_id,
                 "model_revision": identity.model_revision,
+                "noise_reduction_enabled": audio_contract.noise_reduction_enabled,
             }
             plaintext = json.dumps(
                 payload,
@@ -316,12 +370,13 @@ class VoiceIdentityProfileStore:
                 embedding.fill(0.0)
             reference.close()
 
-    def _decode(self, encoded: bytes) -> SpeakerProfile:
+    def _decode(self, encoded: bytes) -> VoiceIdentityStoredProfile:
         plaintext: bytearray | None = None
         data_key: bytearray | None = None
         embedding_bytes: bytearray | None = None
         embedding: np.ndarray | None = None
         reference: SpeakerReference | None = None
+        profile: SpeakerProfile | None = None
         try:
             envelope = json.loads(encoded.decode("ascii"))
             if type(envelope) is not dict or set(envelope) != {
@@ -334,7 +389,9 @@ class VoiceIdentityProfileStore:
             }:
                 raise ValueError("invalid envelope")
             if envelope["schema_version"] != _SCHEMA_VERSION:
-                raise ValueError("unsupported schema")
+                raise VoiceIdentityProfileIncompatibleError(
+                    "voice identity profile schema is incompatible"
+                )
             if envelope["algorithm"] != _ALGORITHM:
                 raise ValueError("unsupported algorithm")
             if envelope["key_wrapping"] != _KEY_WRAPPING:
@@ -352,11 +409,14 @@ class VoiceIdentityProfileStore:
             )
             payload = json.loads(plaintext.decode("utf-8"))
             if type(payload) is not dict or set(payload) != {
+                "audio_contract_id",
+                "audio_contract_revision",
                 "embedding",
                 "embedding_dimension",
                 "generation",
                 "model_id",
                 "model_revision",
+                "noise_reduction_enabled",
             }:
                 raise ValueError("invalid payload")
             dimension = payload["embedding_dimension"]
@@ -373,9 +433,21 @@ class VoiceIdentityProfileStore:
             )
             reference = SpeakerReference(identity, embedding)
             profile = SpeakerProfile(payload["generation"], reference)
+            try:
+                audio_contract = VoiceIdentityAudioContractSnapshot(
+                    contract_id=payload["audio_contract_id"],
+                    revision=payload["audio_contract_revision"],
+                    noise_reduction_enabled=payload["noise_reduction_enabled"],
+                )
+            except (TypeError, ValueError) as exc:
+                raise VoiceIdentityProfileIncompatibleError(
+                    "voice identity audio contract is incompatible"
+                ) from exc
             reference.close()
             reference = None
-            return profile
+            stored_profile = VoiceIdentityStoredProfile(profile, audio_contract)
+            profile = None
+            return stored_profile
         except (SecureStorageUnavailableError, VoiceIdentityProfileCorruptError):
             raise
         except (
@@ -394,6 +466,8 @@ class VoiceIdentityProfileStore:
                 "voice identity profile could not be loaded"
             ) from exc
         finally:
+            if profile is not None:
+                profile.close()
             if reference is not None:
                 reference.close()
             if embedding is not None:

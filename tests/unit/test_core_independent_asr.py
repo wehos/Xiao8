@@ -14,6 +14,10 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 import pytest
 
 from main_logic.asr_client import VoiceIdentityActivationResult
+from main_logic.asr_client.admission.contracts import (
+    AdmissionDisposition,
+    EvidenceState,
+)
 from main_logic.core import LLMSessionManager
 from main_logic.core.asr_runtime import (
     AsrRuntimeMixin,
@@ -30,11 +34,18 @@ from main_logic.asr_client.runtime import (
     AsrStartStatus,
     IndependentAsrRuntime,
 )
+from main_logic.asr_client._provider_events import (
+    ProviderAudioRange,
+    ProviderEndpointNotification,
+    ProviderUtteranceStartedNotification,
+    ProviderUtteranceKey,
+)
 from main_logic.asr_client.endpointing.detector_runtime import DetectorFeedResult, DetectorRuntime
 from main_logic.voice_input import VoiceInputDispatchResult
 from main_logic.voice_input.consumers import CoreChatTurnContext
 from main_logic.asr_client.lifecycle import (
     AudioDisposition,
+    FinalKey,
     VoiceLifecycleConfig,
     VoiceLifecycleEvent,
     VoiceLifecycleState,
@@ -64,6 +75,7 @@ from main_logic.asr_client.endpointing.detector import (
     DetectorCandidateKey,
     DetectorIngressIdentity,
     ProviderCandidateFence,
+    ProviderSpeakerBoundarySnapshot,
     DetectorRuntimeEvent,
     DetectorTurnEvent,
     DetectorSubmitResult,
@@ -71,11 +83,79 @@ from main_logic.asr_client.endpointing.detector import (
 )
 import main_logic.core.asr_runtime as core_asr_runtime_module
 import main_logic.core as core_module
+import main_logic.asr_client.runtime as asr_runtime_module
 import main_logic.voice_turn.audio_input as audio_input_module
 from utils import preferences
 
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.mark.parametrize(
+    ("value", "fallback", "expected"),
+    [
+        (
+            "  ASR_QWEN_PROVIDER_ERROR: private provider text  ",
+            "ASR_INDEPENDENT_FAILED",
+            "ASR_QWEN_PROVIDER_ERROR",
+        ),
+        (
+            "prefix ASR_QWEN_PROVIDER_ERROR: private provider text",
+            "ASR_INDEPENDENT_FAILED",
+            "ASR_INDEPENDENT_FAILED",
+        ),
+        (
+            "asr_qwen_provider_error: private provider text",
+            "ASR_INDEPENDENT_FAILED",
+            "ASR_INDEPENDENT_FAILED",
+        ),
+        (
+            f"ASR_{'A' * 61}: private provider text",
+            "ASR_INDEPENDENT_FAILED",
+            "ASR_INDEPENDENT_FAILED",
+        ),
+        (
+            "ASR_QWEN-PROVIDER-ERROR: private provider text",
+            "ASR_INDEPENDENT_FAILED",
+            "ASR_INDEPENDENT_FAILED",
+        ),
+        (
+            "provider failure",
+            "invalid fallback",
+            "ASR_INDEPENDENT_FAILED",
+        ),
+    ],
+)
+async def test_extract_asr_reason_code_accepts_only_safe_prefixes(
+    value,
+    fallback,
+    expected,
+) -> None:
+    assert (
+        asr_runtime_module._extract_asr_reason_code(value, fallback=fallback)
+        == expected
+    )
+
+
+async def test_extract_asr_reason_code_survives_broken_stringification() -> None:
+    class _BrokenString:
+        def __str__(self) -> str:
+            raise RuntimeError("must not escape")
+
+    assert (
+        asr_runtime_module._extract_asr_reason_code(
+            _BrokenString(),
+            fallback="ASR_ENDPOINTING_FAILED",
+        )
+        == "ASR_ENDPOINTING_FAILED"
+    )
+    assert (
+        asr_runtime_module._extract_asr_reason_code(
+            "provider failure",
+            fallback=_BrokenString(),
+        )
+        == "ASR_INDEPENDENT_FAILED"
+    )
 
 
 class _Runtime(AsrRuntimeMixin):
@@ -204,7 +284,7 @@ async def test_external_voice_suppression_resets_native_audio_turn() -> None:
     runtime._abort_independent_asr.assert_not_awaited()
 
 
-async def test_native_route_installs_future_verifier_but_reports_unsupported() -> None:
+async def test_native_route_rejects_verifier_before_installation() -> None:
     runtime = _Runtime()
     runtime._asr_route_mode = "native"
     runtime._asr_runtime.set_speaker_verifier_factory = AsyncMock(return_value=True)
@@ -216,21 +296,80 @@ async def test_native_route_installs_future_verifier_but_reports_unsupported() -
     )
 
     assert result is VoiceIdentityActivationResult.UNSUPPORTED_ASR_ROUTE
-    assert runtime._speaker_shadow_factory is factory
+    assert runtime._speaker_shadow_factory is None
+    runtime._asr_runtime.set_speaker_verifier_factory.assert_not_awaited()
+    factory.close.assert_called_once_with()
+
+
+async def test_provider_route_without_exact_interval_rejects_verifier() -> None:
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    runtime._asr_runtime.set_speaker_verifier_factory = AsyncMock(return_value=True)
+    factory = MagicMock()
+    assert runtime._asr_runtime._speaker_verifier_diagnostics()[
+        "unsupported_asr_route_count"
+    ] == 0
+
+    result = await runtime.set_speaker_verifier_factory(
+        factory,
+        activation_generation="profile-generation",
+    )
+
+    assert result is VoiceIdentityActivationResult.UNSUPPORTED_ASR_ROUTE
+    assert runtime._speaker_shadow_factory is None
+    runtime._asr_runtime.set_speaker_verifier_factory.assert_not_awaited()
+    factory.close.assert_called_once_with()
+    assert runtime._asr_runtime._speaker_verifier_diagnostics()[
+        "unsupported_asr_route_count"
+    ] == 1
+
+
+async def test_smart_turn_route_retains_verifier_support() -> None:
+    from main_logic.asr_client.speaker_verifier_contracts import (
+        SpeakerVerifierInstallOutcome,
+        SpeakerVerifierInstallReceipt,
+    )
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "qwen")
+    factory = MagicMock()
+
+    async def install(spec, identity):
+        assert spec.factory_builder(runtime._asr_runtime, identity) is factory
+        receipt = SpeakerVerifierInstallReceipt(identity, SpeakerVerifierInstallOutcome.INSTALLED)
+        runtime._asr_runtime._speaker_verifier_install_receipt = receipt
+        return receipt
+
+    runtime._asr_runtime.install_speaker_verifier = AsyncMock(side_effect=install)
+
+    result = await runtime.set_speaker_verifier_factory(
+        factory,
+        activation_generation="profile-generation",
+    )
+
+    assert result is VoiceIdentityActivationResult.READY
+    assert runtime._speaker_shadow_factory is None
+    assert runtime._speaker_verifier_spec.profile_generation == "profile-generation"
+    runtime._asr_runtime.install_speaker_verifier.assert_awaited_once()
 
 
 async def test_core_forgets_future_verifier_when_physical_detach_degrades() -> None:
+    from main_logic.asr_client.speaker_verifier_contracts import (
+        SpeakerVerifierInstallOutcome,
+        SpeakerVerifierInstallReceipt,
+    )
     runtime = _Runtime()
     runtime._speaker_shadow_factory = MagicMock()
-    runtime._asr_runtime.set_speaker_verifier_factory = AsyncMock(return_value=False)
+    runtime._asr_runtime.install_speaker_verifier = AsyncMock(return_value=
+        SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.FAILED))
 
     updated = await runtime.set_speaker_verifier_factory(
         None,
         activation_generation="revoked-profile",
     )
 
-    assert updated is False
+    assert updated is VoiceIdentityActivationResult.RUNTIME_DEGRADED
     assert runtime._speaker_shadow_factory is None
+    assert not runtime._speaker_verifier_spec.requested_enabled
 
 
 class _TestSmartTurnLease:
@@ -271,7 +410,13 @@ class _ReadyDetector:
         )
         self.complete_provider_candidate = AsyncMock(return_value=False)
         self.discard_provider_successor = AsyncMock(return_value=True)
+        self.observe_provider_audio_ordered = AsyncMock()
         self.observe_provider_audio = MagicMock()
+        self.wait_provider_audio_observed_through = AsyncMock(return_value=True)
+        self.reconcile_provider_endpoint = AsyncMock()
+        self.wait_provider_speaker_preseal = AsyncMock(return_value=True)
+        self.retire_provider_speaker_boundary_unknown = AsyncMock()
+        self.reset_provider_audio_timeline = AsyncMock(return_value=True)
 
     async def prepare_endpointing(self, token):
         self._token = token
@@ -416,6 +561,7 @@ def _install_ready_lifecycle(
     )
     runtime._asr_lifecycle.open(route_mode=VoiceRouteMode.INDEPENDENT)
     runtime._asr_detector = _ReadyDetector()
+    runtime._asr_provider_exact_session = runtime._asr_session
     runtime._asr_runtime._asr_current_ingress_token = runtime._capture_ingress_token()
 
 
@@ -725,6 +871,10 @@ async def test_async_detector_orders_pre_roll_before_smart_turn_seal() -> None:
     await detector.close()
 
 
+# The former submit/endpoint/arm-failed variants asserted the deleted Runtime
+# gate implementation. Their rejection/deadline behavior now lives in the
+# focused admission reducer and candidate-rejection runtime suites; this case
+# retains the still-relevant cross-component identity/order contract.
 @pytest.mark.parametrize(
     "provider",
     ["dummy", "glm", "gemini"],
@@ -1232,6 +1382,7 @@ async def test_game_consumer_accepts_real_pcm_through_pipeline(
         rnnoise_available=processed.rnnoise_available,
         rnnoise_evidence=evidence,
         ingress_token=token,
+        ingress_sequence=1,
         captured_at=1234.5,
     )
 
@@ -1682,6 +1833,354 @@ async def test_turn_endpoint_seals_immediately_before_provider_final() -> None:
     await runtime._handle_independent_asr_endpoint(epoch)
 
     assert runtime._asr_lifecycle.snapshot.state is VoiceLifecycleState.DRAINING
+
+
+async def test_keyed_exact_boundary_reconciles_before_ordered_final() -> None:
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    detector = component._asr_detector
+    assert isinstance(detector, _ReadyDetector)
+    epoch = component._asr_session_epoch
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_STARTED,
+        epoch,
+    )
+    snapshot = ProviderSpeakerBoundarySnapshot(
+        detector_epoch=1,
+        candidate_generation=0,
+        through_sequence_no=7,
+        shadow_generation=3,
+        merged_resume_count=1,
+        successor_present=False,
+        evidence_complete=True,
+        _owner=object(),
+    )
+    detector.reconcile_provider_endpoint.return_value = snapshot
+    boundary = ProviderEndpointNotification(
+        phase="boundary",
+        generation=4,
+        buffer_epoch=2,
+        utterance_id=1,
+        boundary_quality="exact",
+        audio_range=ProviderAudioRange(0, 52_800),
+    )
+
+    await component._handle_provider_endpoint_notification(boundary, epoch)
+    assert component._asr_lifecycle.snapshot.state is VoiceLifecycleState.ACTIVE
+    detector.reconcile_provider_endpoint.assert_awaited_once_with(
+        boundary.audio_range
+    )
+
+    ordered = replace(boundary, phase="ordered")
+    await component._handle_provider_endpoint_notification(ordered, epoch)
+
+    key = boundary.key
+    assert component._asr_lifecycle.snapshot.state is VoiceLifecycleState.DRAINING
+    assert component._asr_sealed_provider_key == key
+    detector.seal_provider_candidate.assert_awaited_once()
+    assert detector.seal_provider_candidate.await_args.kwargs[
+        "speaker_snapshot"
+    ] is snapshot
+    assert detector.seal_provider_candidate.await_args.kwargs["deadline"] > 0
+
+    await component._handle_provider_final(key, "joined", epoch, "openai")
+    await runtime._wait_asr_transcript_dispatch_idle()
+
+    assert component._asr_lifecycle.snapshot.state is VoiceLifecycleState.WARM_IDLE
+    assert component._asr_sealed_provider_key is None
+    assert key in component._asr_completed_provider_keys
+    assert key not in component._asr_provider_boundary_snapshots
+    runtime.handle_input_transcript.assert_awaited_once()
+    runtime.session.create_response.assert_awaited_once_with("joined")
+
+
+async def test_exact_boundary_waits_for_terminal_receipt_before_ready_exact() -> (
+    None
+):
+    """READY_EXACT is published only after the terminal receipt settles."""
+
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    detector = component._asr_detector
+    assert isinstance(detector, _ReadyDetector)
+    epoch = component._asr_session_epoch
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_STARTED,
+        epoch,
+    )
+    snapshot = ProviderSpeakerBoundarySnapshot(
+        detector_epoch=detector.detector_epoch,
+        candidate_generation=0,
+        through_sequence_no=7,
+        shadow_generation=3,
+        merged_resume_count=0,
+        successor_present=False,
+        evidence_complete=True,
+        _owner=object(),
+    )
+    detector.reconcile_provider_endpoint.return_value = snapshot
+    settlement_entered = asyncio.Event()
+    settlement_release = asyncio.Event()
+
+    async def settle_receipt(
+        observed: ProviderSpeakerBoundarySnapshot,
+        *,
+        deadline: float,
+    ) -> bool:
+        assert observed is snapshot
+        assert deadline > time.monotonic()
+        settlement_entered.set()
+        await settlement_release.wait()
+        return True
+
+    detector.wait_provider_speaker_preseal.side_effect = settle_receipt
+    boundary = ProviderEndpointNotification(
+        phase="boundary",
+        generation=4,
+        buffer_epoch=2,
+        utterance_id=1,
+        boundary_quality="exact",
+        audio_range=ProviderAudioRange(0, 52_800),
+    )
+    boundary_task = asyncio.create_task(
+        component._handle_provider_endpoint_notification(boundary, epoch)
+    )
+    await asyncio.wait_for(settlement_entered.wait(), 1)
+
+    record = component._asr_provider_boundary_snapshots[boundary.key]
+    assert record.state == "presealing"
+    assert record.snapshot is None
+    assert not record.preseal_settled.is_set()
+
+    settlement_release.set()
+    await asyncio.wait_for(boundary_task, 1)
+
+    assert record.state == "ready_exact"
+    assert record.snapshot is snapshot
+    assert record.preseal_settled.is_set()
+
+
+async def test_terminal_receipt_timeout_cannot_late_upgrade_unknown(
+    monkeypatch,
+) -> None:
+    """A receipt released after its absolute deadline stays fail-open unknown."""
+
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_PROVIDER_BOUNDARY_SETTLEMENT_TIMEOUT_SECONDS",
+        0.01,
+    )
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    detector = component._asr_detector
+    assert isinstance(detector, _ReadyDetector)
+    epoch = component._asr_session_epoch
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_STARTED,
+        epoch,
+    )
+    snapshot = ProviderSpeakerBoundarySnapshot(
+        detector_epoch=detector.detector_epoch,
+        candidate_generation=0,
+        through_sequence_no=7,
+        shadow_generation=3,
+        merged_resume_count=0,
+        successor_present=False,
+        evidence_complete=True,
+        _owner=object(),
+    )
+    detector.reconcile_provider_endpoint.return_value = snapshot
+    settlement_entered = asyncio.Event()
+    settlement_release = asyncio.Event()
+
+    async def settle_until_deadline(
+        observed: ProviderSpeakerBoundarySnapshot,
+        *,
+        deadline: float,
+    ) -> bool:
+        assert observed is snapshot
+        settlement_entered.set()
+        await settlement_release.wait()
+        return True
+
+    detector.wait_provider_speaker_preseal.side_effect = settle_until_deadline
+    boundary = ProviderEndpointNotification(
+        phase="boundary",
+        generation=4,
+        buffer_epoch=2,
+        utterance_id=1,
+        boundary_quality="exact",
+        audio_range=ProviderAudioRange(0, 52_800),
+    )
+    boundary_task = asyncio.create_task(
+        component._handle_provider_endpoint_notification(boundary, epoch)
+    )
+    await asyncio.wait_for(settlement_entered.wait(), 1)
+    record = component._asr_provider_boundary_snapshots[boundary.key]
+    record.absolute_deadline = time.monotonic() - 1
+    settlement_release.set()
+    await asyncio.wait_for(boundary_task, 1)
+
+    assert record.state == "ready_unknown"
+    assert record.snapshot is snapshot
+    assert record.preseal_settled.is_set()
+
+    await component._handle_ordered_provider_endpoint(boundary, epoch)
+    detector.retire_provider_speaker_boundary_unknown.assert_awaited_once_with(
+        snapshot
+    )
+
+
+async def test_keyed_boundary_snapshot_overflow_fails_open_without_losing_final() -> (
+    None
+):
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    detector = component._asr_detector
+    assert isinstance(detector, _ReadyDetector)
+    epoch = component._asr_session_epoch
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_STARTED,
+        epoch,
+    )
+    snapshots = [
+        ProviderSpeakerBoundarySnapshot(
+            detector_epoch=detector.detector_epoch,
+            candidate_generation=index,
+            through_sequence_no=index,
+            shadow_generation=index,
+            merged_resume_count=0,
+            successor_present=False,
+            evidence_complete=True,
+            _owner=object(),
+        )
+        for index in range(8)
+    ]
+    detector.reconcile_provider_endpoint.side_effect = snapshots
+    boundaries = [
+        ProviderEndpointNotification(
+            phase="boundary",
+            generation=3,
+            buffer_epoch=4,
+            utterance_id=index,
+            boundary_quality="exact",
+            audio_range=ProviderAudioRange((index - 1) * 160, index * 160),
+        )
+        for index in range(1, 10)
+    ]
+
+    for boundary in boundaries[:8]:
+        await component._handle_provider_endpoint_notification(boundary, epoch)
+
+    assert list(component._asr_provider_boundary_snapshots) == [
+        boundary.key for boundary in boundaries[:8]
+    ]
+    detector.retire_provider_speaker_boundary_unknown.assert_not_awaited()
+
+    overflow = boundaries[8]
+    await component._handle_provider_endpoint_notification(overflow, epoch)
+
+    assert list(component._asr_provider_boundary_snapshots) == [
+        boundary.key for boundary in boundaries[:8]
+    ]
+    assert list(component._asr_provider_boundary_overflow_keys) == [overflow.key]
+    assert component._asr_provider_boundary_overflow_keys[overflow.key] is None
+    assert detector.reconcile_provider_endpoint.await_count == 8
+    # Overflow is tracked separately as unknown without evicting or widening
+    # the bounded eight-entry exact-snapshot FIFO.
+    assert detector.retire_provider_speaker_boundary_unknown.await_count == 1
+
+    await component._handle_provider_endpoint_notification(
+        replace(overflow, phase="ordered"),
+        epoch,
+    )
+
+    fence = component._asr_provider_candidate_fence
+    assert type(fence) is ProviderCandidateFence
+    assert component._asr_sealed_provider_key == overflow.key
+    detector.seal_provider_candidate.assert_awaited_once()
+    seal_call = detector.seal_provider_candidate.await_args
+    assert seal_call.args == (component._asr_sealed_turn_token.turn,)
+    assert seal_call.kwargs["speaker_snapshot"] is None
+    assert type(seal_call.kwargs["deadline"]) is float
+    await component._handle_provider_final(
+        overflow.key,
+        "overflow kept",
+        epoch,
+        "openai",
+    )
+    await runtime._wait_asr_transcript_dispatch_idle()
+
+    runtime.handle_input_transcript.assert_awaited_once_with(
+        "overflow kept",
+        is_voice_source=True,
+        source="independent_asr",
+        metadata={"provider": "openai"},
+    )
+
+
+async def test_keyed_unknown_retires_tail_without_ghost_and_key2_still_delivers() -> None:
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    detector = component._asr_detector
+    assert isinstance(detector, _ReadyDetector)
+    epoch = component._asr_session_epoch
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_STARTED,
+        epoch,
+    )
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_RESUMED,
+        epoch,
+    )
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.CANDIDATE_PAUSE,
+        epoch,
+    )
+    assert component._asr_overlap_completed_turns == 1
+
+    key1 = ProviderUtteranceKey(5, 0, 1)
+    ordered1 = ProviderEndpointNotification(
+        phase="ordered",
+        generation=key1.generation,
+        buffer_epoch=key1.buffer_epoch,
+        utterance_id=key1.utterance_id,
+        boundary_quality="unknown",
+        audio_range=None,
+    )
+    await component._handle_provider_endpoint_notification(ordered1, epoch)
+    await component._handle_provider_final(key1, "first", epoch, "openai")
+    await runtime._wait_asr_transcript_dispatch_idle()
+
+    detector.retire_provider_speaker_boundary_unknown.assert_awaited()
+    assert component._asr_lifecycle.snapshot.state is VoiceLifecycleState.WARM_IDLE
+    assert component._asr_overlap_completed_turns == 0
+    assert component._asr_overlap_onset_token is None
+
+    key2 = ProviderUtteranceKey(5, 0, 2)
+    ordered2 = ProviderEndpointNotification(
+        phase="ordered",
+        generation=key2.generation,
+        buffer_epoch=key2.buffer_epoch,
+        utterance_id=key2.utterance_id,
+        boundary_quality="unknown",
+        audio_range=None,
+    )
+    await component._handle_provider_endpoint_notification(ordered2, epoch)
+    assert component._asr_lifecycle.snapshot.state is VoiceLifecycleState.DRAINING
+    await component._handle_provider_final(key2, "second", epoch, "openai")
+    await runtime._wait_asr_transcript_dispatch_idle()
+
+    assert [
+        call.args[0]
+        for call in runtime.handle_input_transcript.await_args_list
+    ] == ["first", "second"]
+    assert runtime.session.create_response.await_count == 2
 
 
 async def test_rejected_prepare_fails_closed_instead_of_sealing_turn() -> None:
@@ -2196,9 +2695,9 @@ async def test_core_asr_teardown_force_releases_external_turn_pause(
         await runtime._abort_independent_asr("test_abort")
         runtime._asr_runtime.abort.assert_awaited_once_with("test_abort")
     else:
-        runtime._asr_runtime.close = AsyncMock()
+        runtime._asr_runtime.stop_session = AsyncMock()
         await runtime._close_independent_asr(next_route_mode="blocked")
-        runtime._asr_runtime.close.assert_awaited_once_with()
+        runtime._asr_runtime.stop_session.assert_awaited_once_with()
 
     runtime.session.abandon_external_voice_turn.assert_called_once_with(
         f"asr-{token.ingress.session_epoch}-{token.turn_id}",
@@ -2258,7 +2757,7 @@ async def test_runtime_close_preserves_manager_lifetime_registry_builtins() -> N
     game_registration = runtime._game_voice_input_registration
     token = runtime._asr_runtime._capture_turn_token(runtime._asr_lifecycle)
     assert await runtime._prepare_voice_input_turn(token) is True
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
 
     await runtime._close_independent_asr(next_route_mode="blocked")
     runtime._ensure_asr_runtime_state()
@@ -4246,7 +4745,7 @@ async def test_cancelled_core_close_keeps_detached_cleanup_owned() -> None:
     runtime._voice_input_registry.wait_idle = AsyncMock(
         side_effect=block_registry_wait
     )
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
 
     closing = asyncio.create_task(
         runtime._close_independent_asr(next_route_mode="blocked")
@@ -4267,7 +4766,7 @@ async def test_cancelled_core_close_keeps_detached_cleanup_owned() -> None:
     await asyncio.wait_for(asyncio.gather(*cleanup_tasks), 1)
 
     pipeline.close.assert_awaited_once_with()
-    runtime._asr_runtime.close.assert_awaited_once_with()
+    runtime._asr_runtime.stop_session.assert_awaited_once_with()
 
 
 async def test_cancelled_core_close_waiting_for_pipeline_lock_stays_owned() -> None:
@@ -4279,7 +4778,7 @@ async def test_cancelled_core_close_waiting_for_pipeline_lock_stays_owned() -> N
     runtime._independent_asr_provider = "old-provider"
     runtime._independent_asr_route_key = "old-core"
     runtime._voice_input_registry.wait_idle = AsyncMock()
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
 
     closing = asyncio.create_task(
         runtime._close_independent_asr(next_route_mode="blocked")
@@ -4305,7 +4804,7 @@ async def test_cancelled_core_close_waiting_for_pipeline_lock_stays_owned() -> N
     assert runtime._independent_asr_route_key is None
     old_pipeline.close.assert_awaited_once_with()
     runtime._voice_input_registry.wait_idle.assert_awaited_once_with()
-    runtime._asr_runtime.close.assert_awaited_once_with()
+    runtime._asr_runtime.stop_session.assert_awaited_once_with()
 
 
 async def test_core_close_detaches_shared_state_before_registry_wait() -> None:
@@ -4324,7 +4823,7 @@ async def test_core_close_detaches_shared_state_before_registry_wait() -> None:
     runtime._voice_input_registry.wait_idle = AsyncMock(
         side_effect=block_registry_wait
     )
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
 
     closing = asyncio.create_task(
         runtime._close_independent_asr(next_route_mode="blocked")
@@ -4347,7 +4846,7 @@ async def test_core_close_detaches_shared_state_before_registry_wait() -> None:
     assert runtime._independent_asr_provider == "new-provider"
     assert runtime._independent_asr_route_key == "new-core"
     assert runtime._asr_route_mode == "independent"
-    runtime._asr_runtime.close.assert_not_awaited()
+    runtime._asr_runtime.stop_session.assert_not_awaited()
 
 
 async def test_cancelled_successor_close_owns_runtime_cleanup_after_old_close() -> None:
@@ -4369,7 +4868,7 @@ async def test_cancelled_successor_close_owns_runtime_cleanup_after_old_close() 
     runtime._voice_input_registry.wait_idle = AsyncMock(
         side_effect=block_registry_wait
     )
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
 
     retired_close = asyncio.create_task(
         runtime._close_independent_asr(next_route_mode="blocked")
@@ -4389,7 +4888,7 @@ async def test_cancelled_successor_close_owns_runtime_cleanup_after_old_close() 
     await retired_close
     await asyncio.gather(*successor_cleanup)
 
-    runtime._asr_runtime.close.assert_awaited_once_with()
+    runtime._asr_runtime.stop_session.assert_awaited_once_with()
 
 
 async def test_stale_start_waiting_for_pipeline_lock_cannot_replace_successor(
@@ -4429,7 +4928,7 @@ async def test_stale_start_waiting_for_pipeline_lock_cannot_replace_successor(
 
 async def test_stale_close_waiting_for_pipeline_lock_cannot_replace_successor() -> None:
     runtime = _Runtime()
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
     runtime._set_microphone_route("independent")
     runtime._independent_asr_provider = "old-provider"
     runtime._independent_asr_route_key = "old-core"
@@ -4457,7 +4956,7 @@ async def test_stale_close_waiting_for_pipeline_lock_cannot_replace_successor() 
     assert runtime._independent_asr_route_key == "new-core"
     assert runtime._asr_route_mode == "independent"
     successor_pipeline.close.assert_not_awaited()
-    runtime._asr_runtime.close.assert_not_awaited()
+    runtime._asr_runtime.stop_session.assert_not_awaited()
 
 
 async def test_cancelled_start_settings_swap_keeps_pipeline_cleanup_owned(
@@ -4550,16 +5049,20 @@ async def test_cancelled_noise_reduction_swap_keeps_pipeline_cleanup_owned() -> 
     stale_pipeline.close.assert_awaited_once_with()
 
 
-async def test_close_failure_keeps_the_requested_blocked_route() -> None:
+async def test_close_uses_reusable_runtime_stop_and_keeps_requested_blocked_route() -> None:
     runtime = _Runtime()
     asr = type("Asr", (), {})()
-    asr.close = AsyncMock(side_effect=RuntimeError("close failed"))
+    asr.close = AsyncMock()
     runtime._asr_session = asr
+    runtime._asr_runtime.stop_session = AsyncMock()
+    runtime._asr_runtime.close = AsyncMock()
     runtime._asr_route_mode = "independent"
 
     await runtime._close_independent_asr(next_route_mode="blocked")
 
     assert runtime._asr_route_mode == "blocked"
+    runtime._asr_runtime.stop_session.assert_awaited_once_with()
+    runtime._asr_runtime.close.assert_not_awaited()
     assert not hasattr(runtime._asr_runtime, "_asr_route_mode")
     assert (
         await runtime._route_microphone_audio(b"\x00\x00", sample_rate_hz=16_000)
@@ -4584,12 +5087,14 @@ async def test_asr_stream_failure_never_replays_the_failed_frame_to_omni() -> No
     runtime._asr_provider = "qwen"
     runtime._asr_route_mode = "independent"
     await _install_active_smart_turn(runtime, "qwen")
+    failed_dispatcher = runtime._asr_audio_dispatcher
 
     consumed = await runtime._route_microphone_audio(
         b"\x01\x00" * 160,
         sample_rate_hz=16_000,
     )
-    await runtime._asr_audio_dispatcher.wait_idle()
+    await failed_dispatcher.wait_idle()
+    await asyncio.gather(*tuple(failed_dispatcher._failure_tasks))
 
     assert consumed is True
     assert runtime._asr_route_mode == "blocked"
@@ -4947,7 +5452,9 @@ async def test_soniox_connect_retries_exhausted_blocks_without_provider_fallback
     for attempt in range(3):
         session = type("Soniox", (), {})()
         session.connect = AsyncMock(
-            side_effect=RuntimeError(f"private provider detail {attempt}")
+            side_effect=RuntimeError(
+                f"ASR_SONIOX_CONNECT_{attempt}: private provider detail {attempt}"
+            )
         )
         session.close = AsyncMock()
         sessions.append(session)
@@ -5001,14 +5508,61 @@ async def test_soniox_connect_retries_exhausted_blocks_without_provider_fallback
     statuses = [
         json.loads(call.args[0]) for call in runtime.send_status.await_args_list
     ]
-    assert statuses[-1] == {
-        "code": "ASR_INDEPENDENT_PROVIDER_UNAVAILABLE",
-        "details": {
-            "provider": "soniox",
-            "session_epoch": runtime._asr_session_epoch,
-        },
-    }
+    terminal = statuses[-1]
+    assert terminal["code"] == "ASR_INDEPENDENT_PROVIDER_UNAVAILABLE"
+    assert terminal["details"]["provider"] == "soniox"
+    assert terminal["details"]["session_epoch"] == runtime._asr_session_epoch
+    assert terminal["details"]["reason_code"] == "ASR_SONIOX_CONNECT_2"
+    incident_id = terminal["details"]["incident_id"]
+    assert incident_id.startswith("asr-failure-")
+    assert len(incident_id) == len("asr-failure-") + 32
+    assert all(character in "0123456789abcdef" for character in incident_id[-32:])
     assert "private provider detail" not in str(runtime.send_status.await_args_list)
+
+
+async def test_single_connect_failure_reports_safe_reason_without_lifecycle(
+    monkeypatch,
+) -> None:
+    runtime = _Runtime()
+    runtime.core_api_type = "qwen"
+    selection = _selection("qwen", "manual")
+    session = SimpleNamespace(
+        connect=AsyncMock(
+            side_effect=RuntimeError(
+                "ASR_QWEN_PROVIDER_ERROR: https://provider.invalid?api_key=secret"
+            )
+        ),
+        close=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        core_module,
+        "aload_global_conversation_settings",
+        AsyncMock(return_value={"independentAsrEnabled": True}),
+    )
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_resolve_asr_selection",
+        MagicMock(return_value=selection),
+    )
+    monkeypatch.setattr(
+        asr_runtime_module,
+        "_create_asr_session_from_selection",
+        MagicMock(return_value=session),
+    )
+
+    await runtime._start_independent_asr_if_enabled("audio")
+
+    payloads = [
+        json.loads(call.args[0]) for call in runtime.send_status.await_args_list
+    ]
+    assert [payload["code"] for payload in payloads] == ["ASR_INDEPENDENT_FAILED"]
+    terminal = payloads[0]
+    assert terminal["details"]["reason_code"] == "ASR_QWEN_PROVIDER_ERROR"
+    assert terminal["details"]["incident_id"].startswith("asr-failure-")
+    assert "provider.invalid" not in str(runtime.send_status.await_args_list)
+    assert "secret" not in str(runtime.send_status.await_args_list)
+    assert runtime._asr_route_mode == "blocked"
+    session.close.assert_awaited_once_with()
 
 
 async def test_failed_soniox_candidate_cannot_invalidate_successful_successor(
@@ -5187,6 +5741,125 @@ async def test_restart_closes_not_ready_session_before_replacement() -> None:
     candidate.connect.assert_awaited_once_with()
     candidate.close.assert_not_awaited()
     assert runtime._asr_session is candidate
+    runtime._asr_detector.reset_provider_audio_timeline.assert_not_awaited()
+    assert runtime._asr_provider_exact_session is None
+
+
+async def test_transport_restart_reuses_provider_key_in_fresh_physical_namespace(
+    monkeypatch,
+) -> None:
+    runtime, sessions, callbacks, detector = (
+        await _start_runtime_with_callback_candidates(monkeypatch)
+    )
+    component = runtime._asr_runtime
+    component._asr_current_ingress_token = runtime._capture_ingress_token()
+    key = ProviderUtteranceKey(0, 0, 1)
+    ordered = ProviderEndpointNotification(
+        phase="ordered",
+        generation=key.generation,
+        buffer_epoch=key.buffer_epoch,
+        utterance_id=key.utterance_id,
+        boundary_quality="unknown",
+        audio_range=None,
+    )
+
+    await callbacks[0]["on_speech_activity"](SpeechActivityEvent.SPEECH_STARTED)
+    await callbacks[0]["on_provider_endpoint"](ordered)
+    await callbacks[0]["on_provider_final"](key, "first")
+    await runtime._wait_asr_transcript_dispatch_idle()
+    assert key in component._asr_completed_provider_keys
+
+    await component._close_transport_only()
+    assert component._asr_provider_exact_session is None
+    events: list[str] = []
+
+    async def connect_replacement() -> None:
+        events.append("connect")
+
+    async def reset_provider_timeline() -> bool:
+        assert component._asr_session is None
+        events.append("reset")
+        return True
+
+    sessions[1].connect.side_effect = connect_replacement
+    detector.reset_provider_audio_timeline.side_effect = reset_provider_timeline
+
+    await component._restart_transport(max_attempts=1)
+
+    assert events == ["connect", "reset"]
+    assert component._asr_session is sessions[1]
+    assert component._asr_provider_exact_session is sessions[1]
+    assert key not in component._asr_completed_provider_keys
+    await callbacks[1]["on_speech_activity"](SpeechActivityEvent.SPEECH_STARTED)
+    await callbacks[1]["on_provider_endpoint"](ordered)
+    await callbacks[1]["on_provider_final"](key, "second")
+    await runtime._wait_asr_transcript_dispatch_idle()
+
+    assert [
+        call.args[0]
+        for call in runtime.handle_input_transcript.await_args_list
+    ] == ["first", "second"]
+
+
+@pytest.mark.parametrize("reset_outcome", ["missing", "false", "error"])
+async def test_transport_restart_timeline_reset_failure_disables_only_exact_speaker(
+    monkeypatch,
+    reset_outcome: str,
+) -> None:
+    runtime, sessions, callbacks, detector = (
+        await _start_runtime_with_callback_candidates(monkeypatch)
+    )
+    component = runtime._asr_runtime
+    component._asr_current_ingress_token = runtime._capture_ingress_token()
+    key = ProviderUtteranceKey(0, 0, 1)
+    unknown = ProviderEndpointNotification(
+        phase="ordered",
+        generation=key.generation,
+        buffer_epoch=key.buffer_epoch,
+        utterance_id=key.utterance_id,
+        boundary_quality="unknown",
+        audio_range=None,
+    )
+    await callbacks[0]["on_speech_activity"](SpeechActivityEvent.SPEECH_STARTED)
+    await callbacks[0]["on_provider_endpoint"](unknown)
+    await callbacks[0]["on_provider_final"](key, "first")
+    await runtime._wait_asr_transcript_dispatch_idle()
+    await component._close_transport_only()
+
+    if reset_outcome == "missing":
+        del detector.reset_provider_audio_timeline
+    elif reset_outcome == "error":
+        detector.reset_provider_audio_timeline.side_effect = RuntimeError(
+            "speaker reset failed"
+        )
+    else:
+        detector.reset_provider_audio_timeline.return_value = False
+    await component._restart_transport(max_attempts=1)
+
+    assert component._asr_session is sessions[1]
+    assert component._asr_provider_exact_session is None
+    assert key not in component._asr_completed_provider_keys
+    exact_boundary = ProviderEndpointNotification(
+        phase="boundary",
+        generation=key.generation,
+        buffer_epoch=key.buffer_epoch,
+        utterance_id=key.utterance_id,
+        boundary_quality="exact",
+        audio_range=ProviderAudioRange(0, 160),
+    )
+    await callbacks[1]["on_speech_activity"](SpeechActivityEvent.SPEECH_STARTED)
+    await callbacks[1]["on_provider_endpoint"](exact_boundary)
+    await callbacks[1]["on_provider_endpoint"](
+        replace(exact_boundary, phase="ordered")
+    )
+    await callbacks[1]["on_provider_final"](key, "second")
+    await runtime._wait_asr_transcript_dispatch_idle()
+
+    detector.reconcile_provider_endpoint.assert_not_awaited()
+    assert [
+        call.args[0]
+        for call in runtime.handle_input_transcript.await_args_list
+    ] == ["first", "second"]
 
 
 def _install_failing_restart_candidates(
@@ -5404,13 +6077,15 @@ async def test_adopted_restart_cancellation_fails_closed_and_propagates(
     statuses = [
         json.loads(call.args[0]) for call in runtime.send_status.await_args_list
     ]
-    assert {
-        "code": "ASR_INDEPENDENT_FAILED",
-        "details": {
-            "provider": "qwen",
-            "session_epoch": started_epoch + 1,
-        },
-    } in statuses
+    terminal = next(
+        payload
+        for payload in statuses
+        if payload["code"] == "ASR_INDEPENDENT_FAILED"
+    )
+    assert terminal["details"]["provider"] == "qwen"
+    assert terminal["details"]["session_epoch"] == started_epoch + 1
+    assert terminal["details"]["reason_code"] == "ASR_INDEPENDENT_FAILED"
+    assert terminal["details"]["incident_id"].startswith("asr-failure-")
 
 
 async def test_adopted_restart_exception_fails_closed_without_retry(
@@ -5458,13 +6133,15 @@ async def test_adopted_restart_exception_fails_closed_without_retry(
     statuses = [
         json.loads(call.args[0]) for call in runtime.send_status.await_args_list
     ]
-    assert {
-        "code": "ASR_INDEPENDENT_FAILED",
-        "details": {
-            "provider": "qwen",
-            "session_epoch": started_epoch + 1,
-        },
-    } in statuses
+    terminal = next(
+        payload
+        for payload in statuses
+        if payload["code"] == "ASR_INDEPENDENT_FAILED"
+    )
+    assert terminal["details"]["provider"] == "qwen"
+    assert terminal["details"]["session_epoch"] == started_epoch + 1
+    assert terminal["details"]["reason_code"] == "ASR_INDEPENDENT_FAILED"
+    assert terminal["details"]["incident_id"].startswith("asr-failure-")
 
 
 async def test_selection_failure_is_reported_without_escaping_session_start(
@@ -5654,11 +6331,13 @@ async def test_websocket_core_submits_one_external_turn_after_local_history() ->
 
 @pytest.mark.parametrize("accepted", [True, False])
 @pytest.mark.parametrize("observer_raises", [False, True])
-async def test_audio_activation_mirrors_only_dispatcher_accepted_provider_payload(
+async def test_audio_activation_observes_before_dispatch_and_retires_rejected_payload(
     accepted: bool,
     observer_raises: bool,
 ) -> None:
     runtime = _Runtime()
+    session = SimpleNamespace(is_ready=True, close=AsyncMock())
+    runtime._asr_session = session
     _install_ready_lifecycle(runtime, "openai")
     component = runtime._asr_runtime
     lifecycle = component._asr_lifecycle
@@ -5668,14 +6347,23 @@ async def test_audio_activation_mirrors_only_dispatcher_accepted_provider_payloa
     if observer_raises:
         detector.observe_provider_audio.side_effect = RuntimeError("observer failed")
     token = component._capture_turn_token(lifecycle)
+    epoch = component._asr_session_epoch
     payload = b"\x01\x00" * 320
-    activate = MagicMock(return_value=accepted)
+
+    def accept_after_observation(*_args, **_kwargs):
+        detector.observe_provider_audio.assert_called_once()
+        return accepted
+
+    activate = MagicMock(side_effect=accept_after_observation)
+    abort = MagicMock()
     component._asr_audio_dispatcher = SimpleNamespace(
         active_turn=None,
         activate=activate,
+        abort=abort,
+        close=AsyncMock(),
     )
 
-    result = component._activate_asr_audio_dispatcher(
+    result = await component._activate_asr_audio_dispatcher(
         lifecycle,
         token,
         buffered_pcm16=payload,
@@ -5684,14 +6372,327 @@ async def test_audio_activation_mirrors_only_dispatcher_accepted_provider_payloa
     assert result is accepted
     activate.assert_called_once()
     assert activate.call_args.args[2] is payload
+    detector.observe_provider_audio.assert_called_once()
+    assert detector.observe_provider_audio.call_args.args[0] is payload
+    assert detector.observe_provider_audio.call_args.kwargs == {
+        "sample_rate_hz": 16_000,
+    }
     if accepted:
-        detector.observe_provider_audio.assert_called_once()
-        assert detector.observe_provider_audio.call_args.args[0] is payload
-        assert detector.observe_provider_audio.call_args.kwargs == {
-            "sample_rate_hz": 16_000,
-        }
+        abort.assert_not_called()
+        session.close.assert_not_awaited()
+        assert component._asr_session is session
+        assert component._asr_session_epoch == epoch
     else:
-        detector.observe_provider_audio.assert_not_called()
+        # Ordered observation may already have committed its sample positions;
+        # enqueue refusal retires that physical timeline instead of replaying it.
+        abort.assert_called()
+        session.close.assert_awaited_once()
+        assert component._asr_session is None
+        assert component._asr_session_epoch > epoch
+
+
+async def test_buffered_resume_spans_preserve_pcm_boundary() -> None:
+    runtime = _Runtime()
+    session = SimpleNamespace(
+        is_ready=True,
+        stream_audio=AsyncMock(),
+        close=AsyncMock(),
+        signal_user_activity_end=AsyncMock(),
+    )
+    runtime._asr_session = session
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    lifecycle = component._asr_lifecycle
+    detector = component._asr_detector
+    ingress = component._asr_current_ingress_token
+    assert lifecycle is not None
+    assert isinstance(detector, _ReadyDetector)
+    assert ingress is not None
+    token = component._capture_turn_token(lifecycle)
+    predecessor_identity = DetectorIngressIdentity(
+        ingress_token=ingress,
+        detector_epoch=1,
+        sequence_no=18,
+    )
+    successor_identity = DetectorIngressIdentity(
+        ingress_token=ingress,
+        detector_epoch=1,
+        sequence_no=19,
+    )
+    predecessor_pcm = b"\x01\x00" * 160
+    successor_pcm = b"\x02\x00" * 160
+    payload = predecessor_pcm + successor_pcm
+    component._record_buffered_provider_speaker_observation(
+        identity=predecessor_identity,
+        byte_count=len(predecessor_pcm),
+        split_before_audio=False,
+        evidence_complete=True,
+    )
+    component._record_buffered_provider_speaker_observation(
+        identity=successor_identity,
+        byte_count=len(successor_pcm),
+        split_before_audio=True,
+        evidence_complete=True,
+    )
+    component._asr_provider_speaker_sequence = 4
+
+    assert await component._activate_asr_audio_dispatcher(
+        lifecycle,
+        token,
+        buffered_pcm16=payload,
+    )
+    await component._asr_audio_dispatcher.wait_idle()
+
+    assert detector.observe_provider_audio_ordered.await_args_list == [
+        call(
+            predecessor_pcm,
+            sample_rate_hz=16_000,
+            identity=predecessor_identity,
+            sequence_no=5,
+            split_before_audio=False,
+            evidence_complete=True,
+        ),
+        call(
+            successor_pcm,
+            sample_rate_hz=16_000,
+            identity=successor_identity,
+            sequence_no=6,
+            split_before_audio=True,
+            evidence_complete=True,
+        ),
+    ]
+    detector.observe_provider_audio.assert_not_called()
+    session.stream_audio.assert_awaited_once_with(
+        payload,
+        sample_rate_hz=16_000,
+    )
+    await component._asr_audio_dispatcher.close()
+
+
+async def _start_blocked_buffered_provider_span_replay() -> SimpleNamespace:
+    runtime = _Runtime()
+    provider_sent = asyncio.Event()
+
+    async def stream_audio(_pcm16: bytes, *, sample_rate_hz: int) -> None:
+        assert sample_rate_hz == 16_000
+        provider_sent.set()
+
+    session = SimpleNamespace(
+        is_ready=True,
+        stream_audio=AsyncMock(side_effect=stream_audio),
+        close=AsyncMock(),
+        signal_user_activity_end=AsyncMock(),
+    )
+    runtime._asr_session = session
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    lifecycle = component._asr_lifecycle
+    detector = component._asr_detector
+    ingress = component._asr_current_ingress_token
+    assert lifecycle is not None
+    assert isinstance(detector, _ReadyDetector)
+    assert ingress is not None
+    epoch = component._asr_session_epoch
+    await component._handle_independent_asr_activity(
+        SpeechActivityEvent.SPEECH_STARTED,
+        epoch,
+    )
+    turn_token = component._capture_turn_token(lifecycle)
+    payload = b"\x31\x00" * 160
+    identity = DetectorIngressIdentity(
+        ingress_token=ingress,
+        detector_epoch=detector.detector_epoch,
+        sequence_no=1,
+    )
+    component._record_buffered_provider_speaker_observation(
+        identity=identity,
+        byte_count=len(payload),
+        split_before_audio=False,
+        evidence_complete=True,
+    )
+    observation_started = asyncio.Event()
+    release_observation = asyncio.Event()
+    observation_caught_up = asyncio.Event()
+    wait_started = asyncio.Event()
+
+    async def block_observation(*_args, **_kwargs) -> None:
+        observation_started.set()
+        await release_observation.wait()
+        observation_caught_up.set()
+
+    async def wait_observed_through(end_sample_16k: int) -> bool:
+        assert end_sample_16k == 160
+        wait_started.set()
+        await observation_caught_up.wait()
+        return True
+
+    detector.observe_provider_audio_ordered.side_effect = block_observation
+    detector.wait_provider_audio_observed_through.side_effect = (
+        wait_observed_through
+    )
+    snapshot = ProviderSpeakerBoundarySnapshot(
+        detector_epoch=detector.detector_epoch,
+        candidate_generation=0,
+        through_sequence_no=1,
+        shadow_generation=1,
+        merged_resume_count=0,
+        successor_present=False,
+        evidence_complete=True,
+        _owner=object(),
+    )
+    detector.reconcile_provider_endpoint.return_value = snapshot
+    activation = asyncio.create_task(
+        component._activate_asr_audio_dispatcher(
+            lifecycle,
+            turn_token,
+            buffered_pcm16=payload,
+        )
+    )
+    await asyncio.wait_for(provider_sent.wait(), 1)
+    await asyncio.wait_for(observation_started.wait(), 1)
+    return SimpleNamespace(
+        runtime=runtime,
+        component=component,
+        detector=detector,
+        epoch=epoch,
+        session=session,
+        payload=payload,
+        snapshot=snapshot,
+        activation=activation,
+        release_observation=release_observation,
+        wait_started=wait_started,
+    )
+
+
+async def test_exact_boundary_waits_for_blocked_buffered_span_replay() -> None:
+    state = await _start_blocked_buffered_provider_span_replay()
+    key = ProviderUtteranceKey(0, 0, 1)
+    boundary = ProviderEndpointNotification(
+        phase="boundary",
+        generation=key.generation,
+        buffer_epoch=key.buffer_epoch,
+        utterance_id=key.utterance_id,
+        boundary_quality="exact",
+        audio_range=ProviderAudioRange(0, 160),
+    )
+    boundary_task = asyncio.create_task(
+        state.component._handle_provider_endpoint_notification(
+            boundary,
+            state.epoch,
+        )
+    )
+    await asyncio.wait_for(state.wait_started.wait(), 1)
+    state.detector.reconcile_provider_endpoint.assert_not_awaited()
+
+    state.release_observation.set()
+    assert await asyncio.wait_for(state.activation, 1) is True
+    await asyncio.wait_for(boundary_task, 1)
+
+    state.detector.reconcile_provider_endpoint.assert_awaited_once_with(
+        boundary.audio_range
+    )
+    record = state.component._asr_provider_boundary_snapshots[key]
+    assert record.notification.boundary_quality == "exact"
+    assert record.snapshot is state.snapshot
+    await state.component._asr_audio_dispatcher.close()
+
+
+async def test_blocked_buffered_span_replay_times_out_unknown_without_losing_final() -> (
+    None
+):
+    state = await _start_blocked_buffered_provider_span_replay()
+    key = ProviderUtteranceKey(0, 0, 1)
+    boundary = ProviderEndpointNotification(
+        phase="boundary",
+        generation=key.generation,
+        buffer_epoch=key.buffer_epoch,
+        utterance_id=key.utterance_id,
+        boundary_quality="exact",
+        audio_range=ProviderAudioRange(0, 160),
+    )
+    boundary_task = asyncio.create_task(
+        state.component._handle_provider_endpoint_notification(
+            boundary,
+            state.epoch,
+        )
+    )
+    await asyncio.wait_for(state.wait_started.wait(), 1)
+    await asyncio.wait_for(boundary_task, 1)
+
+    state.detector.reconcile_provider_endpoint.assert_not_awaited()
+    record = state.component._asr_provider_boundary_snapshots[key]
+    assert record.notification.boundary_quality == "unknown"
+    await state.component._handle_provider_endpoint_notification(
+        replace(boundary, phase="ordered"),
+        state.epoch,
+    )
+    await state.component._handle_provider_final(
+        key,
+        "kept transcript",
+        state.epoch,
+        "openai",
+    )
+    await state.runtime._wait_asr_transcript_dispatch_idle()
+
+    state.runtime.handle_input_transcript.assert_awaited_once_with(
+        "kept transcript",
+        is_voice_source=True,
+        source="independent_asr",
+        metadata={"provider": "openai"},
+    )
+    state.release_observation.set()
+    assert await asyncio.wait_for(state.activation, 1) is True
+    await state.component._asr_audio_dispatcher.close()
+
+
+async def test_provider_speaker_sequence_remains_monotonic_across_turns() -> None:
+    runtime = _Runtime()
+    _install_ready_lifecycle(runtime, "openai")
+    component = runtime._asr_runtime
+    lifecycle = component._asr_lifecycle
+    detector = component._asr_detector
+    ingress = component._asr_current_ingress_token
+    assert lifecycle is not None
+    assert isinstance(detector, _ReadyDetector)
+    assert ingress is not None
+    lifecycle.transition(VoiceLifecycleEvent.SOFT_WAKE)
+    lifecycle.transition(VoiceLifecycleEvent.SPEECH_CONFIRMED)
+    first_turn = component._capture_turn_token(lifecycle)
+    first_identity = DetectorIngressIdentity(ingress, 1, 21)
+
+    assert await component._observe_admitted_provider_audio(
+        lifecycle,
+        detector,
+        b"\x03\x00" * 160,
+        sample_rate_hz=16_000,
+        identity=first_identity,
+        split_before_audio=False,
+        evidence_complete=True,
+        turn_token=first_turn,
+    )
+    lifecycle.transition(VoiceLifecycleEvent.TURN_SEALED)
+    lifecycle.transition(VoiceLifecycleEvent.PROVIDER_FINAL)
+    lifecycle.transition(VoiceLifecycleEvent.SOFT_WAKE)
+    lifecycle.transition(VoiceLifecycleEvent.SPEECH_CONFIRMED)
+    second_turn = component._capture_turn_token(lifecycle)
+    second_identity = DetectorIngressIdentity(ingress, 1, 22)
+
+    assert second_turn.turn_id > first_turn.turn_id
+    assert await component._observe_admitted_provider_audio(
+        lifecycle,
+        detector,
+        b"\x04\x00" * 160,
+        sample_rate_hz=16_000,
+        identity=second_identity,
+        split_before_audio=False,
+        evidence_complete=True,
+        turn_token=second_turn,
+    )
+
+    assert [
+        observed.kwargs["sequence_no"]
+        for observed in detector.observe_provider_audio_ordered.await_args_list
+    ] == [1, 2]
 
 
 async def test_partial_preview_is_display_only_and_epoch_guarded() -> None:
@@ -5705,7 +6706,10 @@ async def test_partial_preview_is_display_only_and_epoch_guarded() -> None:
     epoch = runtime._asr_session_epoch
     token = runtime._asr_runtime._asr_partial_turn_token
     assert token is not None
-    assert runtime._activate_asr_audio_dispatcher(runtime._asr_lifecycle, token)
+    assert await runtime._activate_asr_audio_dispatcher(
+        runtime._asr_lifecycle,
+        token,
+    )
 
     await runtime._send_independent_asr_preview(" draft ", epoch)
     await runtime._send_independent_asr_preview("stale", epoch + 1)
@@ -5733,7 +6737,7 @@ async def test_partial_preview_keeps_prepared_token_and_rejects_after_abort() ->
     epoch = runtime._asr_session_epoch
     captured_token = runtime._asr_runtime._asr_partial_turn_token
     assert captured_token is not None
-    assert runtime._activate_asr_audio_dispatcher(
+    assert await runtime._activate_asr_audio_dispatcher(
         runtime._asr_lifecycle,
         captured_token,
     )
@@ -6077,7 +7081,9 @@ async def test_core_passes_only_configured_speaker_shadow_factory(
 
     await runtime._start_independent_asr_if_enabled("audio")
 
-    assert start_mock.await_args.kwargs["speaker_shadow_factory"] is factory
+    # A previous route's factory is not a rebuildable desired configuration.
+    assert "speaker_shadow_factory" not in start_mock.await_args.kwargs
+    assert runtime._speaker_shadow_factory is None
     factory.assert_not_called()
 
 
@@ -6368,10 +7374,13 @@ class _HotSwapRuntimeStub:
             self.audio_generation,
         )
 
-    async def close(self) -> None:
+    async def stop_session(self) -> None:
         self.session_epoch += 1
         self.audio_generation += 1
         self.active_provider = None
+
+    async def close(self) -> None:
+        await self.stop_session()
 
     async def start(
         self,
@@ -7133,6 +8142,10 @@ async def test_old_failure_callback_cannot_detach_replacement_runtime() -> None:
     new_session.close.assert_not_awaited()
     new_detector.close.assert_not_awaited()
     assert runtime._asr_route_mode == "independent"
+    assert [
+        json.loads(call.args[0])["code"]
+        for call in runtime.send_status.await_args_list
+    ] == ["ASR_LIFECYCLE_STATE"]
 
 
 async def test_old_detector_endpoint_cannot_seal_replacement_runtime() -> None:
@@ -7757,6 +8770,100 @@ async def test_provider_error_without_audio_closes_and_blocks_omni() -> None:
     asr.close.assert_awaited_once_with()
 
 
+async def test_provider_error_reports_one_correlated_safe_reason(
+    monkeypatch,
+) -> None:
+    runtime, sessions, callbacks, _detector = (
+        await _start_runtime_with_callback_candidates(
+            monkeypatch,
+            candidate_count=1,
+        )
+    )
+    runtime.send_status.reset_mock()
+    provider_error = callbacks[0]["on_connection_error"]
+
+    await provider_error(
+        "  ASR_QWEN_PROVIDER_ERROR: https://provider.invalid?api_key=secret  "
+    )
+    await provider_error("ASR_SECOND_ERROR: must be stale")
+    await asyncio.sleep(0)
+
+    payloads = [
+        json.loads(call.args[0]) for call in runtime.send_status.await_args_list
+    ]
+    assert [payload["code"] for payload in payloads] == [
+        "ASR_LIFECYCLE_STATE",
+        "ASR_INDEPENDENT_FAILED",
+    ]
+    lifecycle, terminal = payloads
+    assert lifecycle["details"]["state"] == "blocked"
+    assert lifecycle["details"]["reason_code"] == "ASR_QWEN_PROVIDER_ERROR"
+    assert terminal["details"]["reason_code"] == "ASR_QWEN_PROVIDER_ERROR"
+    incident_id = lifecycle["details"]["incident_id"]
+    assert incident_id == terminal["details"]["incident_id"]
+    assert incident_id.startswith("asr-failure-")
+    assert "provider.invalid" not in str(runtime.send_status.await_args_list)
+    assert "secret" not in str(runtime.send_status.await_args_list)
+    assert "ASR_SECOND_ERROR" not in str(runtime.send_status.await_args_list)
+    sessions[0].close.assert_awaited_once_with()
+
+
+async def test_internal_failure_uses_status_code_as_reason() -> None:
+    runtime = _Runtime()
+    runtime._asr_session = SimpleNamespace(is_ready=True, close=AsyncMock())
+    _install_ready_lifecycle(runtime, "qwen")
+    epoch = runtime._asr_session_epoch
+
+    await runtime._handle_independent_asr_error(
+        epoch,
+        "qwen",
+        status_code="ASR_ENDPOINTING_FAILED",
+        reason_code="ASR_NOT_AN_EXPLICIT_CODE: private detail",
+    )
+
+    payloads = [
+        json.loads(call.args[0]) for call in runtime.send_status.await_args_list
+    ]
+    lifecycle, terminal = payloads
+    assert lifecycle["code"] == "ASR_LIFECYCLE_STATE"
+    assert terminal["code"] == "ASR_ENDPOINTING_FAILED"
+    assert lifecycle["details"]["reason_code"] == "ASR_ENDPOINTING_FAILED"
+    assert terminal["details"]["reason_code"] == "ASR_ENDPOINTING_FAILED"
+    assert "private detail" not in str(runtime.send_status.await_args_list)
+    assert (
+        lifecycle["details"]["incident_id"]
+        == terminal["details"]["incident_id"]
+    )
+
+
+async def test_broken_reason_stringification_cannot_interrupt_failure_cleanup() -> None:
+    class _BrokenString:
+        def __str__(self) -> str:
+            raise RuntimeError("private provider failure")
+
+    runtime = _Runtime()
+    session = SimpleNamespace(is_ready=True, close=AsyncMock())
+    runtime._asr_session = session
+    _install_ready_lifecycle(runtime, "qwen")
+    epoch = runtime._asr_session_epoch
+
+    await runtime._handle_independent_asr_error(
+        epoch,
+        "qwen",
+        reason_code=_BrokenString(),
+    )
+    await asyncio.sleep(0)
+
+    assert runtime._asr_session is None
+    assert runtime._asr_route_mode == "blocked"
+    session.close.assert_awaited_once_with()
+    payloads = [
+        json.loads(call.args[0]) for call in runtime.send_status.await_args_list
+    ]
+    assert payloads[-1]["details"]["reason_code"] == "ASR_INDEPENDENT_FAILED"
+    assert "private provider failure" not in str(runtime.send_status.await_args_list)
+
+
 async def test_blocked_route_consumes_audio_without_an_asr_or_omni_send() -> None:
     runtime = _Runtime()
     runtime._asr_route_mode = "blocked"
@@ -7918,7 +9025,7 @@ async def test_old_core_close_cannot_clear_new_pipeline_or_provider() -> None:
         runtime_close_entered.set()
         await release_runtime_close.wait()
 
-    runtime._asr_runtime.close = AsyncMock(side_effect=block_runtime_close)
+    runtime._asr_runtime.stop_session = AsyncMock(side_effect=block_runtime_close)
     old_pipeline = runtime._voice_input_audio_pipeline
     old_pipeline.close = AsyncMock()
     runtime._independent_asr_provider = "old-provider"
@@ -7972,9 +9079,12 @@ async def test_stale_runtime_ready_result_cannot_replace_new_route(
                 self.audio_generation,
             )
 
-        async def close(self) -> None:
+        async def stop_session(self) -> None:
             self.session_epoch += 1
             self.audio_generation += 1
+
+        async def close(self) -> None:
+            await self.stop_session()
 
         async def start(self, **_kwargs) -> AsrStartResult:
             source_epoch = self.session_epoch
@@ -8177,13 +9287,17 @@ async def test_old_notifications_cannot_override_new_generation() -> None:
         for payload in payloads
         if payload["code"] == "ASR_LIFECYCLE_STATE"
     ] == ["local_listen", "blocked"]
-    assert payloads[-1] == {
-        "code": "ASR_NEW_READY",
-        "details": {
-            "provider": "new-provider",
-            "session_epoch": new_epoch,
-        },
+    assert payloads[-1]["code"] == "ASR_NEW_READY"
+    latest_revision = payloads[-1]["details"]["lifecycle_revision"]
+    assert payloads[-1]["details"] == {
+        "provider": "new-provider",
+        "session_epoch": new_epoch,
+        "transport_generation": 0,
+        "lifecycle_revision": latest_revision,
+        "reason_code": None,
+        "incident_id": None,
     }
+    assert latest_revision > payloads[1]["details"]["lifecycle_revision"]
     assert payloads[1]["details"]["session_epoch"] == new_epoch
 
 
@@ -8479,7 +9593,7 @@ async def test_stale_start_abort_does_not_clobber_newer_start_placeholder(
 
     runtime._asr_runtime.start = fake_runtime_start
     runtime._asr_runtime.abort = fake_abort
-    runtime._asr_runtime.close = AsyncMock()
+    runtime._asr_runtime.stop_session = AsyncMock()
 
     settings_calls = 0
 
@@ -8663,7 +9777,7 @@ async def test_current_game_release_still_aborts_and_resumes_once() -> None:
     runtime._asr_runtime.resume.assert_awaited_once_with("game_release")
 
 
-@pytest.mark.parametrize("notification", ["status", "lifecycle", "failure"])
+@pytest.mark.parametrize("notification", ["status", "lifecycle"])
 async def test_notification_waiting_on_lock_drops_same_epoch_stale_identity(
     notification: str,
 ) -> None:
@@ -8678,20 +9792,13 @@ async def test_notification_waiting_on_lock_drops_same_epoch_stale_identity(
             session_epoch=current_epoch,
         )
         delivery = asyncio.create_task(runtime._send_core_asr_status(event))
-    elif notification == "lifecycle":
+    else:
         event = AsrLifecycleNotification(
             state="local_listen",
             provider="old-provider",
             session_epoch=current_epoch,
         )
         delivery = asyncio.create_task(runtime._send_core_asr_lifecycle(event))
-    else:
-        event = AsrFailureEvent(
-            code="ASR_INDEPENDENT_FAILED",
-            provider="old-provider",
-            session_epoch=current_epoch,
-        )
-        delivery = asyncio.create_task(runtime._handle_core_asr_failure(event))
     await asyncio.sleep(0)
 
     runtime._asr_audio_generation += 1
@@ -9245,11 +10352,19 @@ async def test_transport_restart_task_failure_is_logged(caplog) -> None:
     assert "restart boom" in caplog.text
 
 
-async def test_start_resolves_selection_off_event_loop(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("endpointing_mode", "expects_micro_event_config"),
+    [("provider", True), ("manual", False)],
+)
+async def test_start_resolves_selection_off_event_loop(
+    monkeypatch,
+    endpointing_mode: str,
+    expects_micro_event_config: bool,
+) -> None:
     import main_logic.asr_client.runtime as runtime_module
 
     runtime = _Runtime()
-    selection = _selection("qwen", "provider")
+    selection = _selection("qwen", endpointing_mode)
     resolver_threads: list[threading.Thread] = []
 
     def resolver(core_type: str):
@@ -9283,6 +10398,19 @@ async def test_start_resolves_selection_off_event_loop(monkeypatch) -> None:
         detector_factory.call_args.kwargs["resource_optimization_enabled"] is False
     )
     assert detector_factory.call_args.kwargs["speaker_shadow"] is None
+    micro_event_config = detector_factory.call_args.kwargs[
+        "provider_micro_event_config"
+    ]
+    if expects_micro_event_config:
+        assert micro_event_config.mode == "shadow"
+        assert micro_event_config.calibration_revision is None
+        assert micro_event_config.maximum_silero_span_ms == 384
+        assert micro_event_config.maximum_post_start_onset_windows == 4
+        assert (
+            micro_event_config.maximum_rnnoise_active_run_upper_bound_ms == 160
+        )
+    else:
+        assert micro_event_config is None
 
 
 @pytest.mark.parametrize("factory_fails", [False, True])
@@ -9337,8 +10465,16 @@ async def test_start_installs_latest_verifier_published_during_connect(
     monkeypatch,
 ) -> None:
     import main_logic.asr_client.runtime as runtime_module
+    from main_logic.asr_client.speaker_verifier_contracts import (
+        SpeakerVerifierAuthority,
+        SpeakerVerifierInstallOutcome,
+        SpeakerVerifierSpec,
+    )
 
     runtime = _Runtime()
+    runtime.core_api_type = "qwen"
+    runtime.input_mode = "audio"
+    runtime.is_active = False
     selection = _selection("qwen", "provider")
     connect_started = asyncio.Event()
     connect_release = asyncio.Event()
@@ -9362,32 +10498,49 @@ async def test_start_installs_latest_verifier_published_during_connect(
         "_create_asr_session_from_selection",
         lambda _core_type, **_kwargs: session,
     )
-    detector_factory = MagicMock(return_value=_ReadyDetector())
-    monkeypatch.setattr(runtime_module, "DetectorRuntime", detector_factory)
+    monkeypatch.setattr(
+        core_module,
+        "aload_global_conversation_settings",
+        AsyncMock(return_value={
+            "independentAsrEnabled": True,
+            "voiceInputResourceOptimizationEnabled": False,
+        }),
+    )
     stale_shadow = SimpleNamespace(close=AsyncMock())
     current_shadow = SimpleNamespace(close=AsyncMock())
     stale_factory = MagicMock(return_value=stale_shadow)
     current_factory = MagicMock(return_value=current_shadow)
 
-    start_task = asyncio.create_task(
-        runtime._asr_runtime.start(
-            route_key="qwen",
-            resource_optimization_enabled=True,
-            speaker_shadow_factory=stale_factory,
+    def spec(factory, revision):
+        authority = SpeakerVerifierAuthority()
+        authority.commit()
+        return SpeakerVerifierSpec(
+            revision, revision, True, True, authority,
+            lambda _runtime, _identity: factory,
         )
-    )
-    await asyncio.wait_for(connect_started.wait(), 1.0)
-    assert await runtime._asr_runtime.set_speaker_verifier_factory(
-        current_factory,
-        activation_generation="current-profile",
-    )
-    connect_release.set()
-    result = await asyncio.wait_for(start_task, 1.0)
 
-    assert result.status is AsrStartStatus.READY
-    stale_factory.assert_not_called()
-    current_factory.assert_called_once_with()
-    assert detector_factory.call_args.kwargs["speaker_shadow"] is current_shadow
+    assert (await runtime.set_speaker_verifier_spec(spec(stale_factory, "old"))).outcome is SpeakerVerifierInstallOutcome.DEFERRED_ROUTE
+
+    start_task = asyncio.create_task(
+        runtime._start_independent_asr_if_enabled("audio")
+    )
+    try:
+        await asyncio.wait_for(connect_started.wait(), 1.0)
+        pending = await runtime.set_speaker_verifier_spec(spec(current_factory, "current"))
+        assert pending.outcome is SpeakerVerifierInstallOutcome.DEFERRED_ROUTE
+        current_factory.assert_not_called()
+        connect_release.set()
+        await asyncio.wait_for(start_task, 1.0)
+
+        assert runtime._asr_route_mode == "independent"
+        stale_factory.assert_not_called()
+        current_factory.assert_called_once_with()
+        assert runtime._asr_runtime._asr_detector._speaker_shadow is current_shadow
+        assert runtime.speaker_verifier_installation_status("current").outcome is SpeakerVerifierInstallOutcome.INSTALLED
+    finally:
+        connect_release.set()
+        await asyncio.gather(start_task, return_exceptions=True)
+        await runtime._asr_runtime.close()
 
 
 async def test_failed_detector_construction_closes_created_speaker_shadow(
@@ -9533,7 +10686,7 @@ async def test_provider_final_preserves_unconfirmed_successor_pcm_as_pre_roll() 
     detector.complete_provider_candidate.assert_awaited_once()
 
 
-async def test_provider_fence_failure_does_not_accept_final() -> None:
+async def test_provider_fence_failure_forwards_final_without_speaker_authority() -> None:
     runtime = _Runtime()
     _install_ready_lifecycle(runtime, "openai")
     detector = runtime._asr_detector
@@ -9544,6 +10697,11 @@ async def test_provider_fence_failure_does_not_accept_final() -> None:
         SpeechActivityEvent.SPEECH_STARTED,
         epoch,
     )
+    turn_token = runtime._asr_lifecycle.current_turn_token
+    assert turn_token is not None
+    final_key = FinalKey.from_turn(turn_token)
+    dispatcher = runtime._asr_transcript_dispatcher
+    dispatcher.resolve_reserved = MagicMock(wraps=dispatcher.resolve_reserved)
     await runtime._handle_independent_asr_endpoint(epoch)
 
     await runtime._handle_independent_asr_final(
@@ -9551,29 +10709,61 @@ async def test_provider_fence_failure_does_not_accept_final() -> None:
         epoch,
         "openai",
     )
+    await runtime._wait_asr_transcript_dispatch_idle()
 
     statuses = [json.loads(call.args[0]) for call in runtime.send_status.await_args_list]
     codes = [payload["code"] for payload in statuses]
-    assert codes.count("ASR_ENDPOINTING_FAILED") == 1
-    assert runtime._asr_accepted_final_keys == {}
-    runtime.handle_input_transcript.assert_not_awaited()
-    assert runtime._asr_route_mode == "blocked"
+    assert "ASR_ENDPOINTING_FAILED" not in codes
+    runtime.handle_input_transcript.assert_awaited_once_with(
+        "must-not-publish",
+        is_voice_source=True,
+        source="independent_asr",
+        metadata={"provider": "openai"},
+        source_game_route_identity=None,
+    )
+    assert final_key in dispatcher._resolved
+    assert final_key not in dispatcher._reservations
+    resolution = dispatcher.resolve_reserved.call_args
+    assert resolution.args == (final_key, AdmissionDisposition.FORWARD)
+    assert resolution.kwargs["envelope"].final_key == final_key
+    assert runtime._asr_route_mode == "independent"
 
 
-async def test_stale_provider_endpoint_releases_local_final_reservation() -> None:
+async def test_stale_provider_endpoint_abandons_local_final_reservation() -> None:
     runtime = _Runtime()
     _install_ready_lifecycle(runtime, "openai")
     component = runtime._asr_runtime
-    component._runtime_identity_matches = MagicMock(return_value=False)
+    dispatcher = component._asr_transcript_dispatcher
+    dispatcher.resolve_reserved = MagicMock(wraps=dispatcher.resolve_reserved)
     epoch = component._asr_session_epoch
     await runtime._handle_independent_asr_activity(
         SpeechActivityEvent.SPEECH_STARTED,
         epoch,
     )
+    turn_token = component._asr_lifecycle.current_turn_token
+    assert turn_token is not None
+    final_key = FinalKey.from_turn(turn_token)
+    assert final_key in dispatcher._reservations
+
+    # Preparation is current and owns a reservation. Only the subsequent
+    # endpoint callback becomes stale; otherwise the post-open identity fence
+    # correctly refuses to reserve and this test never reaches its subject.
+    component._runtime_identity_matches = MagicMock(return_value=False)
 
     await runtime._handle_independent_asr_endpoint(epoch)
 
-    assert component._asr_reserved_final_key is None
+    async def wait_for_resolution() -> None:
+        while final_key not in dispatcher._resolved:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_for_resolution(), 1)
+    await dispatcher.wait_idle()
+
+    assert final_key not in dispatcher._reservations
+    assert final_key not in component._asr_admission_reservation_dispatchers
+    resolution = dispatcher.resolve_reserved.call_args
+    assert resolution.args == (final_key, AdmissionDisposition.ABANDON)
+    assert resolution.kwargs == {"envelope": None}
     assert component._asr_lifecycle.snapshot.state is VoiceLifecycleState.ACTIVE
 
 
@@ -9697,6 +10887,11 @@ async def test_provider_overflow_lock_then_final_preserves_accepted_final() -> N
         epoch,
     )
     await runtime._handle_independent_asr_endpoint(epoch)
+    sealed_token = runtime._asr_sealed_turn_token
+    assert sealed_token is not None
+    final_key = FinalKey.from_turn(sealed_token.turn)
+    dispatcher = runtime._asr_transcript_dispatcher
+    dispatcher.resolve_reserved = MagicMock(wraps=dispatcher.resolve_reserved)
     ingress_token = runtime._asr_runtime._asr_current_ingress_token
     assert ingress_token is not None
 
@@ -9726,7 +10921,11 @@ async def test_provider_overflow_lock_then_final_preserves_accepted_final() -> N
         source_game_route_identity=None,
     )
     assert runtime._asr_lifecycle.snapshot.state is VoiceLifecycleState.WARM_IDLE
-    assert runtime._asr_accepted_final_keys
+    assert final_key in dispatcher._resolved
+    assert final_key not in dispatcher._reservations
+    resolution = dispatcher.resolve_reserved.call_args
+    assert resolution.args == (final_key, AdmissionDisposition.FORWARD)
+    assert resolution.kwargs["envelope"].final_key == final_key
 
 
 @pytest.mark.parametrize("replacement", ["epoch", "lifecycle", "detector"])
@@ -9773,6 +10972,529 @@ async def test_provider_overflow_waiting_on_final_lock_is_identity_fenced(
     watchdog = runtime._asr_final_watchdog_task
     if watchdog is not None:
         watchdog.cancel()
+
+
+async def test_owner_voice_composition_preserves_detector_candidate_class_identity(
+    monkeypatch,
+) -> None:
+    import numpy as np
+
+    import main_logic.asr_client.endpointing.detector_runtime as detector_module
+    import main_logic.asr_client.runtime as runtime_module
+    import main_logic.asr_client.speaker_shadow.contracts as contracts_module
+    from main_logic.asr_client.speaker_shadow.asset_manifest import (
+        CAMPPLUS_MODEL_ID,
+        CAMPPLUS_MODEL_REVISION,
+    )
+    from main_logic.asr_client.speaker_shadow.campplus import (
+        CAMPPLUS_EMBEDDING_DIM,
+    )
+    from main_logic.voice_identity.contracts import SpeakerModelIdentity
+    from main_logic.voice_identity.profile import SpeakerProfile
+    from main_logic.voice_identity.reference import SpeakerReference
+    from main_logic.voice_identity_service.asr_composition import (
+        OwnerVoiceAsrCompositionFactory,
+    )
+
+    observations: list[object] = []
+    prepared_candidates: list[object] = []
+
+    class _Vad:
+        def load(self) -> bool:
+            return True
+
+        def close(self) -> None:
+            return None
+
+    class _Gate:
+        def feed(self, _pcm16: bytes):
+            return (SpeechActivityEvent.SPEECH_STARTED,)
+
+        def reset(self) -> None:
+            return None
+
+    class _ScoringHost:
+        alive = True
+        loaded = True
+        timed_out = False
+        was_terminated = False
+
+        async def score(
+            self,
+            _pcm16: bytes,
+            *,
+            timeout_seconds: float,
+        ) -> float:
+            assert timeout_seconds > 0
+            return 0.20
+
+        async def close(self, *, timeout_seconds: float) -> bool:
+            assert timeout_seconds > 0
+            self.alive = False
+            self.loaded = False
+            return True
+
+        async def terminate(self) -> None:
+            self.alive = False
+            self.loaded = False
+            self.was_terminated = True
+
+    async def on_turn_abandoned(_turn_token: VoiceTurnToken) -> None:
+        return None
+
+    runtime = IndependentAsrRuntime(
+        AsrRuntimeCallbacks(
+            display_name=lambda: "owner-composition-candidate-identity",
+            on_prepare_turn=AsyncMock(return_value=True),
+            on_partial=AsyncMock(),
+            on_final=AsyncMock(),
+            on_turn_abandoned=on_turn_abandoned,
+            on_failure=AsyncMock(),
+            on_status=AsyncMock(),
+            on_lifecycle=AsyncMock(),
+        )
+    )
+    model_identity = SpeakerModelIdentity(
+        CAMPPLUS_MODEL_ID,
+        CAMPPLUS_MODEL_REVISION,
+        CAMPPLUS_EMBEDDING_DIM,
+    )
+    embedding = np.arange(
+        1,
+        CAMPPLUS_EMBEDDING_DIM + 1,
+        dtype=np.float32,
+    )
+    reference = SpeakerReference(model_identity, embedding)
+    embedding.fill(0.0)
+    try:
+        profile = SpeakerProfile("profile-generation", reference)
+    finally:
+        reference.close()
+    composition = OwnerVoiceAsrCompositionFactory(
+        runtime,
+        profile,
+        activation_generation="composition-activation",
+        enforce=True,
+    )
+    shadow = composition()
+    original_evidence_callback = shadow._on_evidence
+    assert original_evidence_callback is not None
+
+    def capture_evidence(event) -> None:
+        if isinstance(event, contracts_module.SpeakerShadowObservation):
+            observations.append(event)
+        original_evidence_callback(event)
+
+    monkeypatch.setattr(shadow, "_on_evidence", capture_evidence)
+    def on_speaker_candidate_bound(
+        candidate,
+        turn_token,
+        speaker_owner_generation,
+    ) -> None:
+        runtime._accept_speaker_candidate_binding(
+            candidate,
+            turn_token,
+            detector=detector,
+            activation_generation=speaker_owner_generation,
+        )
+
+    detector = DetectorRuntime(
+        vad=_Vad(),
+        gate=_Gate(),
+        provider_policy=resolve_provider_policy("qwen", "provider"),
+        speaker_shadow=shadow,
+        speaker_owner_generation="composition-activation",
+        on_speaker_candidate_bound=on_speaker_candidate_bound,
+    )
+    original_prepare = detector.prepare_candidate_rejection
+
+    async def capture_prepare(candidate):
+        prepared_candidates.append(candidate)
+        return await original_prepare(candidate)
+
+    monkeypatch.setattr(detector, "prepare_candidate_rejection", capture_prepare)
+    lifecycle = VoiceInputLifecycleController(
+        provider_policy=resolve_provider_policy("qwen", "provider"),
+        shadow_mode=False,
+    )
+    lifecycle.open(route_mode=VoiceRouteMode.INDEPENDENT)
+    lifecycle.transition(VoiceLifecycleEvent.SOFT_WAKE)
+    lifecycle.transition(VoiceLifecycleEvent.SPEECH_CONFIRMED)
+    session = SimpleNamespace(is_ready=True, close=AsyncMock())
+    runtime._asr_provider = "qwen"
+    runtime._asr_session = session
+    runtime._asr_lifecycle = lifecycle
+    runtime._asr_detector = detector
+    runtime._speaker_verifier_activation_generation = "composition-activation"
+    runtime._speaker_verifier_enforces_admission = composition.enforces_admission
+    runtime._ensure_transport_restart_task = MagicMock()  # type: ignore[method-assign]
+    ingress_token = runtime.capture_ingress_token(
+        connection_id="composition-candidate",
+        lease_generation=3,
+        route_generation=5,
+    )
+    runtime._asr_current_ingress_token = ingress_token
+    feed_result = await detector.feed(
+        b"\x11\x00" * 160,
+        speech_probability=0.9,
+        rnnoise_available=True,
+        ingress_token=ingress_token,
+    )
+    assert feed_result.candidate is not None
+    turn_token = runtime._capture_turn_token(lifecycle)
+    await runtime._asr_admission_ingress.start()
+    runtime._asr_admission_ingress_started = True
+    await runtime._asr_admission_ingress.open_turn(turn_token)
+    assert await detector.bind_candidate(feed_result.candidate, turn_token) is not None
+    runtime._asr_turn_prepared = True
+    runtime._asr_partial_turn_token = turn_token
+    final_key = FinalKey.from_turn(turn_token)
+    assert runtime._asr_transcript_dispatcher.try_reserve(final_key)
+    runtime._asr_admission_reservation_dispatchers[final_key] = (
+        runtime._asr_transcript_dispatcher
+    )
+    runtime._asr_transcript_dispatcher.resolve_reserved = MagicMock(
+        wraps=runtime._asr_transcript_dispatcher.resolve_reserved
+    )
+    assert runtime._asr_audio_dispatcher.activate(turn_token, session, b"")
+
+    checkpoint_pcm16 = b"\x21\x00" * (16_000 * 1_500 // 1_000)
+    detector.observe_provider_audio(checkpoint_pcm16, sample_rate_hz=16_000)
+    detector_candidate = detector._speaker_shadow_candidate
+    assert detector_candidate is not None
+    detector.observe_provider_audio(checkpoint_pcm16, sample_rate_hz=16_000)
+    # Install after Detector initialization has reset the Shadow lifecycle.
+    # Exercise real readiness checks with a cached, loaded host; a mocked
+    # _ensure_backend return alone leaves its ownership cache unset.
+    shadow._backend_host = _ScoringHost()
+    await shadow.wait_idle()
+    async def wait_for_reject_requested() -> None:
+        for _ in range(200):
+            admission_record = await runtime._asr_admission.get_record(turn_token)
+            if (
+                admission_record is not None
+                and admission_record.evidence_state is EvidenceState.DENY_LATCHED
+                and prepared_candidates
+            ):
+                return
+            await asyncio.sleep(0.005)
+        admission_record = await runtime._asr_admission.get_record(turn_token)
+        raise AssertionError(
+            (
+                runtime._speaker_verifier_diagnostics(),
+                observations,
+                admission_record,
+                runtime._asr_admission_candidate_turns,
+            )
+        )
+
+    await asyncio.wait_for(wait_for_reject_requested(), 5.0)
+
+    assert len(observations) == 2
+    observation_candidates = [
+        observation.candidate for observation in observations
+    ]
+    assert observation_candidates == [detector_candidate, detector_candidate]
+    assert all(candidate is detector_candidate for candidate in observation_candidates)
+    # The first-low arm owns the stable lease; second-low reuses it instead of
+    # preparing the same Detector candidate again.
+    assert prepared_candidates == [detector_candidate]
+    assert all(candidate is detector_candidate for candidate in prepared_candidates)
+    assert type(detector_candidate) is contracts_module.SpeakerShadowCandidateKey
+    assert type(detector_candidate) is detector_module.SpeakerShadowCandidateKey
+    assert type(detector_candidate) is runtime_module.SpeakerShadowCandidateKey
+    diagnostics = runtime._speaker_verifier_diagnostics()
+    assert diagnostics["rejection_task_applied_count"] == 0
+    assert diagnostics["rejection_task_stale_count"] == 0
+    assert diagnostics["rejection_stale_prepare_count"] == 0
+    assert diagnostics["rejection_prepare_unbound_count"] == 0
+    admission_record = await runtime._asr_admission.get_record(turn_token)
+    assert admission_record is not None
+    assert admission_record.evidence_state is EvidenceState.DENY_LATCHED
+    assert admission_record.rejection_capability is None
+    runtime._asr_transcript_dispatcher.resolve_reserved.assert_called_once_with(
+        final_key,
+        AdmissionDisposition.DROP,
+        envelope=None,
+    )
+    assert final_key not in runtime._asr_transcript_dispatcher._reservations
+
+    await runtime.close()
+    composition.close()
+    profile.close()
+
+
+async def test_provider_candidate_is_bound_only_after_canonical_start(
+    monkeypatch,
+) -> None:
+    import main_logic.asr_client.runtime as runtime_module
+
+    pcm16 = b"\x31\x00" * 160
+    call_order: list[tuple[str, int, int]] = []
+    finals: list[VoiceTranscriptEvent] = []
+    sessions: list[object] = []
+    detector_ref: DetectorRuntime | None = None
+    selection = _selection("qwen", "provider")
+
+    class _Vad:
+        def load(self) -> bool:
+            return True
+
+        def close(self) -> None:
+            return None
+
+    class _Gate:
+        def feed(self, _pcm16: bytes):
+            return (SpeechActivityEvent.SPEECH_STARTED,)
+
+        def reset(self) -> None:
+            return None
+
+    class _ProviderSession:
+        def __init__(self, callbacks: dict[str, object]) -> None:
+            self.callbacks = callbacks
+            self.partial_callback = None
+            self.is_ready = True
+            self.close_count = 0
+            self.wire_pcm: list[bytes] = []
+
+        async def connect(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            self.close_count += 1
+
+        async def stream_audio(
+            self,
+            payload: bytes,
+            *,
+            sample_rate_hz: int,
+        ) -> None:
+            assert sample_rate_hz == 16_000
+            self.wire_pcm.append(payload)
+
+        async def signal_user_activity_end(self) -> None:
+            return None
+
+    class _SpeakerShadow:
+        enabled = True
+        enforces_admission = True
+        activation_generation = "speaker-observation-order"
+        generation = 0
+
+        def __init__(self) -> None:
+            self.candidate = None
+            self.deferred_candidate = None
+            self.anchored = False
+
+        def defer_candidate(self, candidate) -> bool:
+            self.deferred_candidate = candidate
+            return True
+
+        def activate_candidate(self, candidate) -> bool:
+            return candidate == self.deferred_candidate
+
+        def anchor_deferred_candidate(self, request):
+            if request.candidate != self.deferred_candidate:
+                return None
+            return SimpleNamespace(
+                runtime_generation=self.generation,
+                operation_id=1,
+                candidate=request.candidate,
+                anchor_revision=request.anchor_revision,
+                observed_sample_count=request.expected_observed_sample_count,
+                discarded_sample_count=request.discard_prefix_sample_count,
+                retained_sample_count=(
+                    request.expected_observed_sample_count
+                    - request.discard_prefix_sample_count
+                ),
+                _owner=self,
+            )
+
+        def deferred_anchor_status(self, _receipt):
+            return "applied" if self.anchored else "pending"
+
+        async def wait_deferred_anchor_settled(self, receipt, *, deadline):
+            del deadline
+            self.anchored = True
+            self.candidate = receipt.candidate
+            call_order.append(
+                (
+                    "observe",
+                    receipt.candidate.detector_epoch,
+                    receipt.candidate.shadow_generation,
+                )
+            )
+            return "applied"
+
+        def submit(
+            self,
+            _pcm16: bytes,
+            *,
+            sample_rate_hz: int,
+            candidate,
+        ) -> bool:
+            assert sample_rate_hz == 16_000
+            if not self.anchored:
+                assert candidate == self.deferred_candidate
+                # Deferred PCM was retained successfully, but it must not be
+                # treated as scored/observable until canonical started rebases
+                # the candidate.
+                return True
+            call_order.append(
+                (
+                    "observe",
+                    candidate.detector_epoch,
+                    candidate.shadow_generation,
+                )
+            )
+            self.candidate = candidate
+            return False
+
+        def finish_candidate(self, candidate) -> bool:
+            del candidate
+            return False
+
+        async def reset(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    async def on_final(event: VoiceTranscriptEvent) -> None:
+        finals.append(event)
+
+    def create_session(_core_type: str, **kwargs) -> _ProviderSession:
+        session = _ProviderSession(kwargs)
+        sessions.append(session)
+        return session
+
+    def create_detector(**kwargs) -> DetectorRuntime:
+        nonlocal detector_ref
+        detector = DetectorRuntime(vad=_Vad(), gate=_Gate(), **kwargs)
+        detector_ref = detector
+        return detector
+
+    def attach_partial(session: _ProviderSession, callback) -> None:
+        session.partial_callback = callback
+
+    monkeypatch.setattr(
+        runtime_module,
+        "_resolve_asr_selection",
+        lambda _core_type: selection,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_create_asr_session_from_selection",
+        create_session,
+    )
+    monkeypatch.setattr(runtime_module, "_attach_partial_callback", attach_partial)
+    monkeypatch.setattr(runtime_module, "DetectorRuntime", create_detector)
+
+    runtime = IndependentAsrRuntime(
+        AsrRuntimeCallbacks(
+            display_name=lambda: "provider-speaker-observation-order",
+            on_prepare_turn=AsyncMock(return_value=True),
+            on_partial=AsyncMock(),
+            on_final=on_final,
+            on_turn_abandoned=AsyncMock(),
+            on_failure=AsyncMock(),
+            on_status=AsyncMock(),
+            on_lifecycle=AsyncMock(),
+        )
+    )
+    start_result = await runtime.start(
+        route_key="qwen",
+        resource_optimization_enabled=False,
+        speaker_shadow_factory=_SpeakerShadow,
+    )
+    assert start_result.status is AsrStartStatus.READY
+    assert detector_ref is not None
+    assert len(sessions) == 1
+    provider_session = sessions[0]
+    assert isinstance(provider_session, _ProviderSession)
+    ingress_token = runtime.capture_ingress_token(
+        connection_id="speaker-observation-order",
+        lease_generation=7,
+        route_generation=11,
+    )
+    original_open_speaker_lease_nowait = (
+        runtime._asr_admission_ingress.open_speaker_lease_nowait
+    )
+
+    def traced_open_speaker_lease_nowait(lease_token, candidate):
+        future = original_open_speaker_lease_nowait(lease_token, candidate)
+        call_order.append(
+            (
+                "lease",
+                candidate.detector_epoch,
+                candidate.shadow_generation,
+            )
+        )
+        return future
+
+    runtime._asr_admission_ingress.open_speaker_lease_nowait = (
+        traced_open_speaker_lease_nowait
+    )
+
+    submit_result = await runtime.submit(
+        ProcessedVoiceFrame(
+            pcm16,
+            16_000,
+            0.9,
+            True,
+        ),
+        ingress_token=ingress_token,
+    )
+    await runtime._asr_audio_dispatcher.wait_idle()
+    speaker_shadow = detector_ref._speaker_shadow
+    assert isinstance(speaker_shadow, _SpeakerShadow)
+    assert speaker_shadow.candidate is None
+    assert call_order == []
+    assert runtime._asr_current_speaker_lease is None
+    assert provider_session.wire_pcm == [pcm16], (
+        submit_result,
+        runtime._asr_lifecycle.snapshot,
+        runtime._asr_audio_dispatcher.active_turn,
+        runtime._asr_current_speaker_candidate,
+        runtime._asr_provider_speaker_ledgers,
+    )
+
+    assert await runtime._handle_provider_utterance_started(
+        ProviderUtteranceStartedNotification(
+            generation=0,
+            buffer_epoch=0,
+            utterance_id=1,
+            audio_start_sample_16k=0,
+        ),
+        runtime._asr_session_epoch,
+    )
+    assert speaker_shadow.candidate is not None, (
+        speaker_shadow.deferred_candidate,
+        speaker_shadow.anchored,
+        runtime._asr_provider_speaker_ledgers,
+        runtime._asr_provider_speaker_key_ledgers,
+        runtime._speaker_verifier_diagnostics(),
+    )
+
+    assert submit_result.status is AsrSubmitStatus.ACCEPTED
+    assert call_order[:2] == [("observe", 0, 0), ("lease", 0, 0)]
+    lease_token = runtime._asr_current_speaker_lease
+    assert lease_token is not None
+    lease_record = await runtime._asr_admission.get_speaker_lease(lease_token)
+    assert lease_record is not None
+    assert lease_record.candidate == speaker_shadow.candidate
+    assert provider_session.wire_pcm == [pcm16]
+    diagnostics = runtime._speaker_verifier_diagnostics()
+    assert diagnostics["rejection_prepare_unbound_count"] == 0
+    assert diagnostics["provider_candidate_bind_attempt_count"] == 0
+    assert diagnostics["provider_candidate_bind_success_count"] == 0
+    assert diagnostics["provider_candidate_bind_empty_count"] == 0
+    assert diagnostics["provider_candidate_bind_failed_count"] == 0
+
+    assert diagnostics["rejection_task_applied_count"] == 0
+
+    await runtime.close()
 
 
 async def test_speaker_shadow_abba_cannot_change_provider_authority(
@@ -9902,8 +11624,14 @@ async def test_speaker_shadow_abba_cannot_change_provider_authority(
     class _Shadow:
         enabled = True
 
-        def __init__(self, *, raises: bool) -> None:
+        def __init__(
+            self,
+            *,
+            raises: bool,
+            call_order: list[tuple[str, int, int]],
+        ) -> None:
             self.raises = raises
+            self.call_order = call_order
             self.submissions: list[tuple[bytes, int, object]] = []
             self.finishes: list[object] = []
             self.reset_count = 0
@@ -9917,6 +11645,13 @@ async def test_speaker_shadow_abba_cannot_change_provider_authority(
             candidate,
         ) -> bool:
             self.submissions.append((pcm16, sample_rate_hz, candidate))
+            self.call_order.append(
+                (
+                    "observe",
+                    candidate.detector_epoch,
+                    candidate.shadow_generation,
+                )
+            )
             if self.raises and len(self.submissions) == 2:
                 raise RuntimeError("shadow submit failure")
             return False
@@ -9961,11 +11696,15 @@ async def test_speaker_shadow_abba_cannot_change_provider_authority(
         vad = _Vad()
         provider_sessions: list[_ProviderSession] = []
         detector_shadows: list[object | None] = []
+        binding_observation_order: list[tuple[str, int, int]] = []
         factory_calls = 0
         shadow = (
             None
             if shadow_mode is None
-            else _Shadow(raises=shadow_mode == "raises")
+            else _Shadow(
+                raises=shadow_mode == "raises",
+                call_order=binding_observation_order,
+            )
         )
 
         async def on_prepare_turn(turn_token: VoiceTurnToken) -> bool:
@@ -10011,7 +11750,21 @@ async def test_speaker_shadow_abba_cannot_change_provider_authority(
 
         def create_detector(**kwargs) -> DetectorRuntime:
             detector_shadows.append(kwargs.get("speaker_shadow"))
-            return real_detector_runtime(vad=vad, gate=gate, **kwargs)
+            detector = real_detector_runtime(vad=vad, gate=gate, **kwargs)
+            original_bind = detector.bind_candidate
+
+            async def traced_bind(candidate, turn_token):
+                binding_observation_order.append(
+                    (
+                        "bind",
+                        candidate.detector_epoch,
+                        candidate.candidate_generation,
+                    )
+                )
+                return await original_bind(candidate, turn_token)
+
+            detector.bind_candidate = traced_bind  # type: ignore[method-assign]
+            return detector
 
         def create_shadow():
             nonlocal factory_calls
@@ -10229,6 +11982,17 @@ async def test_speaker_shadow_abba_cannot_change_provider_authority(
             assert shadow.finishes == [candidates[0]]
             assert shadow.reset_count == 0
             assert shadow.close_count == 1
+            first_observation_index = next(
+                index
+                for index, observation in enumerate(binding_observation_order)
+                if observation[0] == "observe"
+            )
+            first_observation = binding_observation_order[first_observation_index]
+            assert (
+                "bind",
+                first_observation[1],
+                first_observation[2],
+            ) in binding_observation_order[:first_observation_index]
         return trace, shadow
 
     disabled_a, _ = await replay(None)

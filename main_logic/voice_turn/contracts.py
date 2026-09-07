@@ -101,6 +101,10 @@ class AsrStatusEvent:
     # Default keeps narrow legacy test doubles constructible; production
     # runtime call sites always provide the captured source epoch explicitly.
     session_epoch: int = -1
+    transport_generation: int = -1
+    lifecycle_revision: int = -1
+    reason_code: str | None = None
+    incident_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +114,10 @@ class AsrLifecycleNotification:
     state: str
     provider: str
     session_epoch: int
+    transport_generation: int = -1
+    lifecycle_revision: int = -1
+    reason_code: str | None = None
+    incident_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

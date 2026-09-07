@@ -753,6 +753,27 @@ class LifecycleMixin:
             task.cancel()
         self._idle_session_reset_task = None
 
+    async def aclose(self) -> None:
+        """Permanently release manager-owned background runtimes.
+
+        Ordinary microphone/session teardown must use the reusable ASR
+        ``stop_session()`` boundary.  This hook is reserved for the manager's
+        ownership boundary (replacement, character deletion, or process
+        shutdown), where the admission ingress itself must also be retired.
+
+        Keep the existing synchronous ``shutdown()`` as the first step so no
+        idle-reset task can wake and start new manager work while the terminal
+        ASR close is in progress.  ``IndependentAsrRuntime.close()`` owns its
+        cancellation-safe, idempotent terminal task, so repeated manager close
+        requests converge on the same cleanup instead of creating a second
+        ingress teardown.
+        """
+
+        self.shutdown()
+        runtime = getattr(self, "_asr_runtime", None)
+        if runtime is not None:
+            await runtime.close()
+
     def _ensure_idle_session_reset_loop(self) -> None:
         """Lazily start the idle reset background task. Idempotent, safe to call repeatedly."""
         if self._idle_session_reset_task is not None and not self._idle_session_reset_task.done():

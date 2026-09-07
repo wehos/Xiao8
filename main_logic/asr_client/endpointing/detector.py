@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Generic, Literal, TypeAlias, TypeVar
 
@@ -63,6 +63,37 @@ class ProviderCandidateFence:
     detector_epoch: int
     candidate_generation: int
     through_sequence_no: int
+    boundary_exact: bool = False
+    merged_resume_count: int = 0
+    successor_present: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderSpeakerBoundarySnapshot:
+    """Opaque PCM-free authority captured at one exact Provider boundary.
+
+    The owner nonce prevents snapshots from being forged or replayed across
+    detector instances.  Runtime code may retain this value by Provider key,
+    but only the issuing detector can interpret or consume it.
+    """
+
+    detector_epoch: int
+    candidate_generation: int
+    through_sequence_no: int
+    shadow_generation: int
+    merged_resume_count: int
+    successor_present: bool
+    evidence_complete: bool
+    _owner: object = field(repr=False)
+    boundary_exact: bool = True
+
+
+# The richer name describes how this opaque value is used: an exact snapshot
+# or an unknown tombstone is produced before the ordered Provider endpoint and
+# consumed exactly once while sealing that endpoint.  Keep the original name
+# as the same runtime type so existing private callback shims remain compatible
+# while the keyed runtime migrates to the pre-seal terminology.
+ProviderSpeakerPresealVerdict = ProviderSpeakerBoundarySnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,9 +175,7 @@ class DetectorAudioItem:
         if sample_rate_hz <= 0:
             raise ValueError("DETECTOR_INVALID_SAMPLE_RATE")
         samples = len(pcm16) // 2
-        duration_us = (
-            samples * 1_000_000 + sample_rate_hz - 1
-        ) // sample_rate_hz
+        duration_us = (samples * 1_000_000 + sample_rate_hz - 1) // sample_rate_hz
         return cls(identity=identity, pcm16=pcm16, duration_us=duration_us)
 
 

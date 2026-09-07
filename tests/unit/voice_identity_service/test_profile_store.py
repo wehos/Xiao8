@@ -11,13 +11,20 @@ import main_logic.voice_identity_service.profile_store as store_module
 from main_logic.voice_identity.contracts import SpeakerModelIdentity
 from main_logic.voice_identity.profile import SpeakerProfile
 from main_logic.voice_identity.reference import SpeakerReference
+from main_logic.voice_identity_service.audio_contract import (
+    desktop_audio_contract_snapshot,
+)
 from main_logic.voice_identity_service.profile_store import (
     SecureStorageUnavailableError,
     VoiceIdentityProfileCorruptError,
+    VoiceIdentityProfileIncompatibleError,
     VoiceIdentityProfileStore,
     VoiceIdentityProfileStoreError,
     WindowsDpapiKeyProtector,
 )
+
+
+AUDIO_CONTRACT = desktop_audio_contract_snapshot(noise_reduction_enabled=True)
 
 
 class _TestKeyProtector:
@@ -87,24 +94,25 @@ def test_store_round_trip_contains_no_plain_profile(tmp_path: Path) -> None:
             plain_embedding.fill(0.0)
             reference.close()
 
-        store.save(profile)
+        store.save(profile, audio_contract=AUDIO_CONTRACT)
         stored = path.read_bytes()
         assert b"generation-a" not in stored
         assert b"campplus" not in stored
         assert plain_bytes not in stored
         assert plain_base64 not in stored
         envelope = json.loads(stored)
-        assert envelope["schema_version"] == 1
+        assert envelope["schema_version"] == 3
         assert envelope["algorithm"] == "AES-256-GCM"
         assert envelope["key_wrapping"] == "DPAPI-CURRENT-USER"
 
         loaded = store.load()
         assert loaded is not None
         try:
+            assert loaded.audio_contract == AUDIO_CONTRACT
             expected = np.array([0.1234567, 0.7654321], dtype=np.float32)
             expected /= np.linalg.norm(expected.astype(np.float64))
             _assert_profile(
-                loaded,
+                loaded.profile,
                 generation="generation-a",
                 expected=expected,
             )
@@ -125,7 +133,7 @@ def test_missing_and_delete_are_idempotent(tmp_path: Path) -> None:
 
     profile = _profile()
     try:
-        store.save(profile)
+        store.save(profile, audio_contract=AUDIO_CONTRACT)
     finally:
         profile.close()
     assert store.delete()
@@ -142,10 +150,10 @@ def test_stage_does_not_replace_active_profile_until_commit(
     first = _profile("generation-a")
     second = _profile("generation-b", (0.8, 0.2))
     try:
-        store.save(first)
+        store.save(first, audio_contract=AUDIO_CONTRACT)
         original = path.read_bytes()
 
-        staged = store.stage(second)
+        staged = store.stage(second, audio_contract=AUDIO_CONTRACT)
         assert staged.staged
         assert not staged.committed
         assert not staged.aborted
@@ -163,7 +171,7 @@ def test_stage_does_not_replace_active_profile_until_commit(
         loaded = store.load()
         assert loaded is not None
         try:
-            assert loaded.generation == "generation-b"
+            assert loaded.profile.generation == "generation-b"
         finally:
             loaded.close()
     finally:
@@ -180,9 +188,9 @@ def test_abort_is_idempotent_and_never_replaces_active_profile(
     first = _profile("generation-a")
     second = _profile("generation-b")
     try:
-        store.save(first)
+        store.save(first, audio_contract=AUDIO_CONTRACT)
         original = path.read_bytes()
-        staged = store.stage(second)
+        staged = store.stage(second, audio_contract=AUDIO_CONTRACT)
 
         staged.abort()
         staged.abort()
@@ -204,7 +212,7 @@ def test_tampered_ciphertext_fails_closed(tmp_path: Path) -> None:
     store = VoiceIdentityProfileStore(path, key_protector=_TestKeyProtector())
     profile = _profile()
     try:
-        store.save(profile)
+        store.save(profile, audio_contract=AUDIO_CONTRACT)
     finally:
         profile.close()
     envelope = json.loads(path.read_text(encoding="ascii"))
@@ -225,7 +233,7 @@ def test_wrapped_key_unprotect_failure_is_reported_as_corrupt_profile(
     store = VoiceIdentityProfileStore(path, key_protector=_TestKeyProtector())
     profile = _profile()
     try:
-        store.save(profile)
+        store.save(profile, audio_contract=AUDIO_CONTRACT)
     finally:
         profile.close()
     envelope = json.loads(path.read_text(encoding="ascii"))
@@ -234,6 +242,38 @@ def test_wrapped_key_unprotect_failure_is_reported_as_corrupt_profile(
 
     with pytest.raises(VoiceIdentityProfileCorruptError):
         store.load()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("legacy_schema_version", [1, 2])
+def test_legacy_profile_is_explicitly_incompatible_and_not_migrated(
+    tmp_path: Path,
+    legacy_schema_version: int,
+) -> None:
+    path = tmp_path / "voice_identity.profile"
+    store = VoiceIdentityProfileStore(path, key_protector=_TestKeyProtector())
+    profile = _profile()
+    try:
+        store.save(profile, audio_contract=AUDIO_CONTRACT)
+    finally:
+        profile.close()
+    envelope = json.loads(path.read_text(encoding="ascii"))
+    envelope["schema_version"] = legacy_schema_version
+    path.write_text(json.dumps(envelope), encoding="ascii")
+
+    with pytest.raises(VoiceIdentityProfileIncompatibleError):
+        store.load()
+
+    assert (
+        json.loads(path.read_text(encoding="ascii"))["schema_version"]
+        == legacy_schema_version
+    )
+
+
+@pytest.mark.unit
+def test_v3_uses_versioned_authenticated_data() -> None:
+    assert store_module._SCHEMA_VERSION == 3
+    assert store_module._AAD == b"N.E.K.O.voice-identity.profile\x00v3"
 
 
 @pytest.mark.unit
@@ -246,7 +286,7 @@ def test_failed_replace_preserves_previous_profile(
     first = _profile("generation-a")
     second = _profile("generation-b", (0.8, 0.2))
     try:
-        store.save(first)
+        store.save(first, audio_contract=AUDIO_CONTRACT)
         original = path.read_bytes()
 
         def fail_replace(_source: Path, _destination: Path) -> None:
@@ -254,14 +294,14 @@ def test_failed_replace_preserves_previous_profile(
 
         monkeypatch.setattr(store_module, "_replace", fail_replace)
         with pytest.raises(VoiceIdentityProfileStoreError):
-            store.save(second)
+            store.save(second, audio_contract=AUDIO_CONTRACT)
 
         assert path.read_bytes() == original
         assert list(tmp_path.glob("*.tmp")) == []
         loaded = store.load()
         assert loaded is not None
         try:
-            assert loaded.generation == "generation-a"
+            assert loaded.profile.generation == "generation-a"
         finally:
             loaded.close()
     finally:
@@ -278,7 +318,7 @@ def test_failed_staged_commit_can_be_retried_or_aborted(
     store = VoiceIdentityProfileStore(path, key_protector=_TestKeyProtector())
     profile = _profile()
     try:
-        staged = store.stage(profile)
+        staged = store.stage(profile, audio_contract=AUDIO_CONTRACT)
     finally:
         profile.close()
     original_replace = store_module._replace
@@ -307,7 +347,7 @@ async def test_async_methods_match_sync_contract(tmp_path: Path) -> None:
     )
     profile = _profile()
     try:
-        staged = await store.astage(profile)
+        staged = await store.astage(profile, audio_contract=AUDIO_CONTRACT)
         await staged.acommit()
     finally:
         profile.close()
@@ -320,7 +360,10 @@ async def test_async_methods_match_sync_contract(tmp_path: Path) -> None:
 
     aborted_profile = _profile("generation-b")
     try:
-        aborted = await store.astage(aborted_profile)
+        aborted = await store.astage(
+            aborted_profile,
+            audio_contract=AUDIO_CONTRACT,
+        )
         await aborted.aabort()
         await aborted.aabort()
     finally:

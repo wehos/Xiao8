@@ -180,6 +180,111 @@ async def test_abort_suppresses_failure_from_inflight_audio_command() -> None:
     await dispatcher.close()
 
 
+async def test_abort_and_join_closes_session_while_joining_active_writer() -> None:
+    writer_started = asyncio.Event()
+    writer_released = asyncio.Event()
+    close_started = asyncio.Event()
+    writes: list[bytes] = []
+    session = type("Session", (), {})()
+
+    async def stream_audio(pcm16: bytes, *, sample_rate_hz: int) -> None:
+        assert sample_rate_hz == 16_000
+        writes.append(pcm16)
+        writer_started.set()
+        await writer_released.wait()
+
+    async def close_session() -> None:
+        close_started.set()
+        writer_released.set()
+
+    session.stream_audio = stream_audio
+    session.signal_user_activity_end = AsyncMock()
+    dispatcher = AsrAudioDispatcher(
+        validator=lambda _token, ref: ref is session,
+        on_wire_audio=AsyncMock(),
+        on_failure=AsyncMock(),
+    )
+    turn = _turn()
+    assert dispatcher.activate(turn, session, b"\x01\x00")
+    retired_generation = dispatcher.transport_generation
+    assert dispatcher.enqueue_audio(
+        turn,
+        session,
+        b"\x02\x00",
+        sample_rate_hz=16_000,
+        sequence_no=1,
+    )
+    await asyncio.wait_for(writer_started.wait(), 1)
+
+    receipt = await asyncio.wait_for(
+        dispatcher.abort_and_join(
+            turn,
+            close_session=close_session,
+            transport_generation=retired_generation,
+        ),
+        1,
+    )
+
+    assert close_started.is_set()
+    assert writes == [b"\x01\x00"]
+    assert receipt.transport_generation == retired_generation
+    assert receipt.discarded_commands == 1
+    assert receipt.active_writer_joined is True
+    assert receipt.session_closed is True
+    await dispatcher.close()
+
+
+async def test_abort_and_join_reports_close_failure_without_claiming_safety() -> None:
+    session = type("Session", (), {})()
+    session.stream_audio = AsyncMock()
+    session.signal_user_activity_end = AsyncMock()
+    dispatcher = AsrAudioDispatcher(
+        validator=lambda _token, ref: ref is session,
+        on_wire_audio=AsyncMock(),
+        on_failure=AsyncMock(),
+    )
+    turn = _turn()
+    assert dispatcher.activate(turn, session, b"")
+    await dispatcher.wait_idle()
+
+    async def close_session() -> None:
+        raise RuntimeError("provider close failed")
+
+    receipt = await dispatcher.abort_and_join(
+        turn,
+        close_session=close_session,
+        transport_generation=dispatcher.transport_generation,
+    )
+
+    assert receipt.active_writer_joined is True
+    assert receipt.session_closed is False
+    await dispatcher.close()
+
+
+async def test_worker_rechecks_generation_after_validator_returns() -> None:
+    session = type("Session", (), {})()
+    session.stream_audio = AsyncMock()
+    session.signal_user_activity_end = AsyncMock()
+    turn = _turn()
+    dispatcher: AsrAudioDispatcher
+
+    def validator(_token: VoiceTurnToken, ref: object) -> bool:
+        assert ref is session
+        dispatcher.abort(turn)
+        return True
+
+    dispatcher = AsrAudioDispatcher(
+        validator=validator,
+        on_wire_audio=AsyncMock(),
+        on_failure=AsyncMock(),
+    )
+    assert dispatcher.activate(turn, session, b"\x01\x00")
+    await dispatcher.wait_idle()
+
+    session.stream_audio.assert_not_awaited()
+    await dispatcher.close()
+
+
 async def test_current_audio_command_failure_still_fails_closed() -> None:
     session = type("Session", (), {})()
 

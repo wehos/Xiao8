@@ -518,6 +518,8 @@ async def test_binary_audio_sample_rate_contract_reaches_audio_pipeline():
     mgr._voice_input_audio_pipeline.process.assert_awaited_once_with(
         struct.pack("<480h", *([1] * 480)),
         sample_rate_hz=16_000,
+        ingress_sequence=1,
+        captured_at=ANY,
     )
 
 
@@ -559,6 +561,7 @@ async def test_independent_audio_route_precedes_omni_websocket_checks():
         rnnoise_available=True,
         rnnoise_evidence=None,
         ingress_token=token,
+        ingress_sequence=1,
         captured_at=ANY,
     )
     mgr.session.stream_audio.assert_not_awaited()
@@ -598,6 +601,7 @@ async def test_independent_audio_route_does_not_require_omni_session_container()
         rnnoise_available=True,
         rnnoise_evidence=None,
         ingress_token=token,
+        ingress_sequence=1,
         captured_at=ANY,
     )
     mgr.start_session.assert_not_awaited()
@@ -671,6 +675,7 @@ async def test_hot_swap_flush_preserves_identity_and_detector_metadata():
         rnnoise_available=True,
         rnnoise_evidence=None,
         ingress_token=token,
+        ingress_sequence=0,
         captured_at=1234.5,
     )
     mgr.session.stream_audio.assert_not_awaited()

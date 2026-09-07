@@ -14,6 +14,7 @@ import struct
 import time
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, ClassVar, Literal
+from uuid import uuid4
 
 from websockets import exceptions as web_exceptions
 
@@ -23,12 +24,20 @@ from main_logic.asr_client import (
 )
 from main_logic.asr_client.runtime import (
     ASR_CONNECT_TOTAL_BUDGET_SECONDS,
+    ASR_HANDOFF_BUFFER_RESERVE_US,
     AsrRuntimeCallbacks,
     AsrStartStatus,
     IndependentAsrRuntime,
     SpeakerShadowFactory,
 )
 from main_logic.asr_client.lifecycle import VoiceLifecycleState
+from main_logic.asr_client.speaker_verifier_contracts import (
+    SpeakerVerifierAuthority,
+    SpeakerVerifierAuthorityState,
+    SpeakerVerifierInstallOutcome,
+    SpeakerVerifierInstallReceipt,
+    SpeakerVerifierSpec,
+)
 from main_logic.voice_input import (
     BuiltinVoiceInputConsumer,
     VoiceInputConsumerCapabilities,
@@ -142,8 +151,17 @@ class _AudioDurationQueue:
             raise ValueError("audio queue limits must be positive")
         self.capacity_us = capacity_us
         self.maxsize = max_frames
+        self._normal_capacity_us = capacity_us
+        self._normal_max_frames = max_frames
+        self._handoff_capacity_us = capacity_us + ASR_HANDOFF_BUFFER_RESERVE_US
+        self._handoff_max_frames = (
+            max_frames * self._handoff_capacity_us + capacity_us - 1
+        ) // capacity_us
+        self._handoff_owner: tuple[VoiceIngressToken, int] | None = None
         self._duration_us = 0
-        self._queue: asyncio.Queue[_QueuedMicFrame] = asyncio.Queue(maxsize=max_frames)
+        self._queue: asyncio.Queue[_QueuedMicFrame] = asyncio.Queue(
+            maxsize=self._handoff_max_frames,
+        )
 
     @property
     def duration_us(self) -> int:
@@ -155,10 +173,19 @@ class _AudioDurationQueue:
     def empty(self) -> bool:
         return self._queue.empty()
 
-    def put_nowait(self, frame: _QueuedMicFrame) -> None:
+    def put_nowait(self, frame: _QueuedMicFrame, *, handoff_reserve: bool = False) -> None:
+        owner = (frame.token, frame.audio_stream_epoch)
+        if handoff_reserve and self._handoff_owner in (None, owner):
+            self._handoff_owner = owner
+            self.capacity_us = self._handoff_capacity_us
+            self.maxsize = self._handoff_max_frames
+        # A different ingress cannot borrow an old owner's drain allowance.
+        same_owner = self._handoff_owner == owner
+        capacity_us = self.capacity_us if same_owner else self._normal_capacity_us
+        max_frames = self.maxsize if same_owner else self._normal_max_frames
         if (
-            self._queue.qsize() >= self.maxsize
-            or self._duration_us + frame.duration_us > self.capacity_us
+            self._queue.qsize() >= max_frames
+            or self._duration_us + frame.duration_us > capacity_us
         ):
             raise asyncio.QueueFull
         self._queue.put_nowait(frame)
@@ -167,12 +194,26 @@ class _AudioDurationQueue:
     async def get(self) -> _QueuedMicFrame:
         frame = await self._queue.get()
         self._duration_us -= frame.duration_us
+        self._trim_handoff_reserve()
         return frame
 
     def get_nowait(self) -> _QueuedMicFrame:
         frame = self._queue.get_nowait()
         self._duration_us -= frame.duration_us
+        self._trim_handoff_reserve()
         return frame
+
+    def _trim_handoff_reserve(self) -> None:
+        # Retain headroom while the backlog drains after the handoff Future
+        # resolves. Shrinking immediately would reject the next live frame
+        # solely because this already-accepted backlog still exceeds 2 s.
+        if (
+            self._duration_us <= self._normal_capacity_us
+            and self._queue.qsize() <= self._normal_max_frames
+        ):
+            self._handoff_owner = None
+            self.capacity_us = self._normal_capacity_us
+            self.maxsize = self._normal_max_frames
 
     def task_done(self) -> None:
         self._queue.task_done()
@@ -297,6 +338,7 @@ class AsrRuntimeMixin:
         self._microphone_route_generation = 0
         self._asr_route_operation_generation = 0
         self._asr_notification_lock = asyncio.Lock()
+        self._core_asr_notification_revision = 0
         # Shared with the hot-swap lifecycle: a prepared final either finishes
         # against the still-open old session, or waits until close+promotion
         # has atomically exposed the replacement.
@@ -423,6 +465,8 @@ class AsrRuntimeMixin:
             )
         if not hasattr(self, "_asr_notification_lock"):
             self._asr_notification_lock = asyncio.Lock()
+        if not hasattr(self, "_core_asr_notification_revision"):
+            self._core_asr_notification_revision = 0
         if not hasattr(self, "_core_voice_session_swap_lock"):
             self._core_voice_session_swap_lock = asyncio.Lock()
         if not hasattr(self, "_core_voice_session_swap_barrier_timeout_s"):
@@ -1129,6 +1173,7 @@ class AsrRuntimeMixin:
         )
 
     def _begin_asr_route_operation(self) -> int:
+        self._retire_core_speaker_installation()
         self._asr_route_operation_generation += 1
         return self._asr_route_operation_generation
 
@@ -1143,6 +1188,7 @@ class AsrRuntimeMixin:
             raise ValueError("MICROPHONE_ROUTE_INVALID")
         leaving_blocked = self._asr_route_mode == "blocked" and mode != "blocked"
         if mode != self._asr_route_mode:
+            self._retire_core_speaker_installation()
             self._microphone_route_generation += 1
         if mode != "blocked":
             # A live route means no committed pipeline failure owns it any
@@ -1381,39 +1427,166 @@ class AsrRuntimeMixin:
             else:
                 await self._abort_independent_asr(normalized)
 
+    def _retire_core_speaker_installation(self) -> None:
+        """Fence evidence before route teardown can suspend; retain the goal."""
+        runtime = getattr(self, "_asr_runtime", None)
+        retire = getattr(runtime, "retire_speaker_verifier_authority", None)
+        if callable(retire):
+            retire()
+        self._speaker_verifier_install_receipt = None
+        self._speaker_verifier_install_fence = None
+        self._speaker_shadow_factory = None
+
+    @property
+    def speaker_verifier_participating(self) -> bool:
+        # Text sessions are not failed voice installations. During start the
+        # route may be ready before Core publishes is_active.
+        return bool(
+            getattr(self, "input_mode", "audio") == "audio"
+            and (
+                getattr(self, "_asr_route_mode", "blocked") != "blocked"
+                or getattr(self, "is_active", False)
+            )
+        )
+
+    def _speaker_installation_fence(self) -> tuple:
+        return (
+            id(self._asr_runtime),
+            self._asr_route_operation_generation,
+            self._microphone_route_generation,
+            id(getattr(self, "session", None)),
+            self._capture_ingress_token().session_epoch,
+            id(getattr(self._asr_runtime, "_asr_detector", None)),
+        )
+
+    def speaker_verifier_installation_status(
+        self, activation_revision: str,
+    ) -> SpeakerVerifierInstallReceipt:
+        spec = getattr(self, "_speaker_verifier_spec", None)
+        if spec is None or spec.activation_revision != activation_revision:
+            return SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.STALE)
+        if not spec.requested_enabled or spec.revocable_authority.state is SpeakerVerifierAuthorityState.REVOKED:
+            return SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.REVOKED)
+        if not self.speaker_verifier_participating:
+            return SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.DEFERRED_ROUTE)
+        if (
+            self._asr_route_mode != "independent"
+            or not self._asr_runtime._speaker_verifier_route_supported()
+        ):
+            return SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.UNSUPPORTED_ROUTE)
+        receipt = getattr(self, "_speaker_verifier_install_receipt", None)
+        if (
+            receipt is None
+            or getattr(self, "_speaker_verifier_install_fence", None) != self._speaker_installation_fence()
+            or receipt.identity is None
+            or receipt.identity.activation_revision != activation_revision
+        ):
+            return SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.DEFERRED_ROUTE)
+        actual = getattr(self._asr_runtime, "_speaker_verifier_install_receipt", None)
+        if receipt.outcome is SpeakerVerifierInstallOutcome.INSTALLED and (
+            actual is None
+            or actual.identity != receipt.identity
+            or not self._asr_runtime._speaker_install_identity_current(receipt.identity)
+        ):
+            return SpeakerVerifierInstallReceipt(receipt.identity, SpeakerVerifierInstallOutcome.STALE)
+        if receipt.outcome is SpeakerVerifierInstallOutcome.INSTALLED:
+            receipt = actual
+        if receipt.outcome is SpeakerVerifierInstallOutcome.INSTALLED and getattr(self._asr_runtime, "_speaker_verifier_degraded", False):
+            return replace(receipt, outcome=SpeakerVerifierInstallOutcome.FAILED)
+        return receipt
+
+    async def set_speaker_verifier_spec(
+        self, spec: SpeakerVerifierSpec | None,
+    ) -> SpeakerVerifierInstallReceipt:
+        self._ensure_asr_runtime_state()
+        if getattr(self, "_speaker_verifier_spec", None) is not spec:
+            self._retire_core_speaker_installation()
+            self._speaker_verifier_spec = spec
+        return await self.reconcile_speaker_verifier()
+
+    async def reconcile_speaker_verifier(self) -> SpeakerVerifierInstallReceipt:
+        """One owner per manager, with queued callers coalescing to latest spec."""
+        self._ensure_asr_runtime_state()
+        lock = getattr(self, "_speaker_verifier_reconcile_lock", None)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._speaker_verifier_reconcile_lock = lock
+        requested = getattr(self, "_speaker_verifier_spec", None)
+        async with lock:
+            spec = getattr(self, "_speaker_verifier_spec", None)
+            if requested is not spec:
+                return SpeakerVerifierInstallReceipt(None, SpeakerVerifierInstallOutcome.STALE)
+            if spec is not None and spec.requested_enabled and spec.revocable_authority.state is not SpeakerVerifierAuthorityState.REVOKED:
+                status = self.speaker_verifier_installation_status(spec.activation_revision)
+                if status.outcome in {
+                    SpeakerVerifierInstallOutcome.INSTALLED,
+                    SpeakerVerifierInstallOutcome.DEFERRED_ROUTE,
+                    SpeakerVerifierInstallOutcome.UNSUPPORTED_ROUTE,
+                } and (status.outcome is not SpeakerVerifierInstallOutcome.DEFERRED_ROUTE or not self.speaker_verifier_participating):
+                    return status
+            fence = self._speaker_installation_fence()
+            identity = self._asr_runtime.create_speaker_verifier_install_identity(
+                manager_identity=id(self),
+                route_generation=self._asr_route_operation_generation,
+                activation_revision=spec.activation_revision if spec is not None else "disabled",
+            )
+            receipt = await self._asr_runtime.install_speaker_verifier(spec, identity)
+            if (
+                getattr(self, "_speaker_verifier_spec", None) is not spec
+                or fence != self._speaker_installation_fence()
+            ):
+                self._asr_runtime.retire_speaker_verifier_authority()
+                return replace(receipt, outcome=SpeakerVerifierInstallOutcome.STALE)
+            self._speaker_verifier_install_receipt = receipt
+            self._speaker_verifier_install_fence = fence
+            return receipt
+
     async def set_speaker_verifier_factory(
         self,
         factory: SpeakerShadowFactory | None,
         *,
         activation_generation: str,
     ) -> bool | VoiceIdentityActivationResult:
-        """Update future and active independent-ASR speaker verification."""
+        """Compatibility adapter; a supplied instance cannot be rebuilt.
 
+        Persistent configuration must use a spec's lazy factory_builder. This
+        one-shot adapter never carries a closed factory across route changes.
+        """
+        authority = SpeakerVerifierAuthority()
+        authority.commit()
+        consumed = False
+
+        def build(_runtime, _identity):
+            nonlocal consumed
+            if consumed:
+                raise RuntimeError("legacy speaker factory requires a fresh configuration")
+            consumed = True
+            return factory
+
+        spec = SpeakerVerifierSpec(
+            profile_generation=activation_generation if factory is not None else None,
+            activation_revision=uuid4().hex,
+            requested_enabled=factory is not None,
+            enforce=bool(getattr(factory, "enforces_admission", True)),
+            revocable_authority=authority,
+            factory_builder=build if factory is not None else None,
+        )
         try:
-            updated = await self._asr_runtime.set_speaker_verifier_factory(
-                factory,
-                activation_generation=activation_generation,
-            )
-        except asyncio.CancelledError:
-            if factory is None:
-                self._speaker_shadow_factory = None
-            raise
-        if updated or factory is None:
-            self._speaker_shadow_factory = factory
-        if updated:
-            if (
-                factory is not None
-                and getattr(self, "_asr_route_mode", "blocked") != "independent"
-            ):
-                return VoiceIdentityActivationResult.UNSUPPORTED_ASR_ROUTE
+            receipt = await self.set_speaker_verifier_spec(spec)
+        finally:
+            if not consumed and factory is not None:
+                consumed = True
+                self._asr_runtime._close_speaker_verifier_factory(factory)
+        if receipt.outcome is SpeakerVerifierInstallOutcome.INSTALLED:
             return VoiceIdentityActivationResult.READY
-        close = getattr(factory, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                pass
-        return False
+        if receipt.outcome is SpeakerVerifierInstallOutcome.REVOKED and factory is None:
+            return VoiceIdentityActivationResult.READY
+        if receipt.outcome is SpeakerVerifierInstallOutcome.UNSUPPORTED_ROUTE:
+            self._asr_runtime._record_unsupported_speaker_route()
+            return VoiceIdentityActivationResult.UNSUPPORTED_ASR_ROUTE
+        if receipt.outcome is SpeakerVerifierInstallOutcome.DEFERRED_ROUTE:
+            return VoiceIdentityActivationResult.ACTIVATION_PENDING
+        return VoiceIdentityActivationResult.RUNTIME_DEGRADED
 
     def set_independent_asr_handshake(self, value: object) -> None:
         # Record the frontend's authoritative independent-ASR toggle carried by
@@ -1689,8 +1862,6 @@ class AsrRuntimeMixin:
             # automatic detection when it is unset or unsupported.
             "user_language": getattr(self, "user_language", None),
         }
-        if self._speaker_shadow_factory is not None:
-            start_kwargs["speaker_shadow_factory"] = self._speaker_shadow_factory
         result = await self._asr_runtime.start(**start_kwargs)
         current_epoch = self._capture_ingress_token().session_epoch
         if not core_start_is_current():
@@ -1728,6 +1899,8 @@ class AsrRuntimeMixin:
         self._independent_asr_provider = result.provider
         if result.status is AsrStartStatus.READY:
             self._set_microphone_route("independent")
+            if getattr(self, "_speaker_verifier_spec", None) is not None:
+                await self.reconcile_speaker_verifier()
         else:
             # Independent ASR was ENABLED and failed to start (provider connect,
             # credentials, config). Unlike a runtime failure this emits no
@@ -1997,7 +2170,7 @@ class AsrRuntimeMixin:
             # that happens, this retired operation must not re-read the shared
             # runtime and close the successor it no longer owns.
             if self._asr_route_operation_matches(operation_generation):
-                await self._asr_runtime.close()
+                await self._asr_runtime.stop_session()
             await asyncio.shield(pipeline_cleanup)
             if omni_audio_bytes:
                 logger.info(
@@ -2019,7 +2192,7 @@ class AsrRuntimeMixin:
         #
         # 这里是同步清（此函数从顶部的 operation_generation 检查到这一行没有任何
         # await，create_task 也还没让出控制权），所以不需要再自证身份；provider /
-        # route_key 的置空、_asr_runtime.close()、管线关闭与指标日志则一律交给 main
+        # route_key 的置空、_asr_runtime.stop_session()、管线关闭与指标日志则一律交给 main
         # 的 finish_close()——它带 transition lock 和 operation_generation 围栏，能
         # 区分同一条连接上的后继回合，比在这里再抄一遍精确。
         self._prerecord_visual_frames = []
@@ -2091,6 +2264,8 @@ class AsrRuntimeMixin:
             # current abstract route so the replacement inherits the visual
             # delivery policy without restarting ASR or touching PCM routing.
             self._set_microphone_route(self._asr_route_mode)
+            if getattr(self, "_speaker_verifier_spec", None) is not None:
+                await self.reconcile_speaker_verifier()
             return
         await self._start_independent_asr_if_enabled(
             str(getattr(self, "input_mode", "audio") or "audio"),
@@ -2376,7 +2551,13 @@ class AsrRuntimeMixin:
             return
         self._ensure_audio_stream_worker()
         try:
-            self._audio_stream_queue.put_nowait(frame)
+            self._audio_stream_queue.put_nowait(
+                frame,
+                handoff_reserve=(
+                    self._asr_route_mode == "independent"
+                    and self._asr_runtime.has_pending_turn_handoff(frame.token)
+                ),
+            )
             sequence_owned = False
         except asyncio.QueueFull:
             try:
@@ -2390,7 +2571,13 @@ class AsrRuntimeMixin:
                         return
                     frame = replace(frame, token=rebound)
                 try:
-                    self._audio_stream_queue.put_nowait(frame)
+                    self._audio_stream_queue.put_nowait(
+                        frame,
+                        handoff_reserve=(
+                            self._asr_route_mode == "independent"
+                            and self._asr_runtime.has_pending_turn_handoff(frame.token)
+                        ),
+                    )
                     sequence_owned = False
                 except asyncio.QueueFull:
                     self._clear_audio_stream_queue("ingress_backpressure")
@@ -2772,10 +2959,25 @@ class AsrRuntimeMixin:
                     declared_rate_hz,
                 )
                 return
+            audio_captured_at = (
+                float(captured_at)
+                if isinstance(captured_at, (int, float)) and captured_at > 0
+                else time.time()
+            )
             try:
                 processed_frame = await pipeline_ref.process(
                     audio_bytes,
                     sample_rate_hz=source_rate_hz,
+                    ingress_sequence=ingress_sequence,
+                    captured_at=audio_captured_at,
+                )
+                # Capture identity belongs to Core ingress. Even a legacy or
+                # injected pipeline implementation must not be able to replace
+                # it with a Runtime-local surrogate.
+                processed_frame = replace(
+                    processed_frame,
+                    ingress_sequence=ingress_sequence,
+                    captured_at=audio_captured_at,
                 )
             except asyncio.CancelledError:
                 raise
@@ -2789,11 +2991,6 @@ class AsrRuntimeMixin:
                 return
             if not processed_frame.pcm16:
                 return
-            audio_captured_at = (
-                float(captured_at)
-                if isinstance(captured_at, (int, float)) and captured_at > 0
-                else time.time()
-            )
             if (
                 not self.is_active
                 or self._audio_stream_epoch != audio_epoch
@@ -2830,8 +3027,8 @@ class AsrRuntimeMixin:
                             rnnoise_available=processed_frame.rnnoise_available,
                             rnnoise_evidence=processed_frame.rnnoise_evidence,
                             audio_stream_epoch=audio_epoch,
-                            ingress_sequence=ingress_sequence,
-                            captured_at=audio_captured_at,
+                            ingress_sequence=processed_frame.ingress_sequence,
+                            captured_at=processed_frame.captured_at,
                         )
                     )
             if cache_for_hot_swap:
@@ -2855,7 +3052,8 @@ class AsrRuntimeMixin:
                 rnnoise_available=processed_frame.rnnoise_available,
                 rnnoise_evidence=processed_frame.rnnoise_evidence,
                 ingress_token=ingress_token,
-                captured_at=audio_captured_at,
+                ingress_sequence=processed_frame.ingress_sequence,
+                captured_at=processed_frame.captured_at,
             )
         except struct.error:
             logger.error("Microphone input rejected: invalid PCM samples")
@@ -2876,6 +3074,7 @@ class AsrRuntimeMixin:
         rnnoise_available: bool | None = None,
         rnnoise_evidence: RnnoiseEvidence | None = None,
         ingress_token: VoiceIngressToken | None = None,
+        ingress_sequence: int = 0,
         captured_at: float | None = None,
     ) -> bool:
         route_mode = self._asr_route_mode
@@ -2980,6 +3179,12 @@ class AsrRuntimeMixin:
                 speech_probability=speech_probability,
                 rnnoise_available=bool(rnnoise_available),
                 rnnoise_evidence=rnnoise_evidence,
+                ingress_sequence=ingress_sequence,
+                captured_at=(
+                    float(captured_at)
+                    if isinstance(captured_at, (int, float)) and captured_at > 0
+                    else 0.0
+                ),
             ),
             ingress_token=token,
         )
@@ -3104,6 +3309,9 @@ class AsrRuntimeMixin:
                             rnnoise_available=frame.rnnoise_available,
                             rnnoise_evidence=frame.rnnoise_evidence,
                             ingress_token=token,
+                            ingress_sequence=audio_frames[
+                                batch_end - 1
+                            ].ingress_sequence,
                             captured_at=audio_frames[batch_end - 1].captured_at,
                         )
                     except asyncio.CancelledError:
@@ -3609,6 +3817,7 @@ class AsrRuntimeMixin:
         event: VoiceTranscriptEvent,
     ) -> None:
         result = await self._voice_input_registry.dispatch_final(event)
+        self._observe_core_asr_delivery(event, stage="voice_registry_final", outcome=result.value, phase="dispatch")
         if result is VoiceInputDispatchResult.CALLBACK_FAILED:
             await self._send_core_asr_status(
                 AsrStatusEvent(
@@ -3632,7 +3841,12 @@ class AsrRuntimeMixin:
     ) -> None:
         del reason
         try:
-            await self._send_core_asr_preview_clear(context.external_turn_id)
+            # Registry owns this cancellation even if its waiter goes away.
+            # Optional display I/O must not retain the keyed turn/pause forever.
+            async with asyncio.timeout(1.0):
+                await self._send_core_asr_preview_clear(context.external_turn_id)
+        except TimeoutError:
+            logger.debug("[%s] cancelled ASR turn preview clear timed out", self.lanlan_name)
         finally:
             # Registry cancellation has already consumed the keyed route. Even
             # if websocket preview cleanup is itself cancelled, the response
@@ -3781,6 +3995,16 @@ class AsrRuntimeMixin:
         else:
             await session_ref.create_response(text)
 
+    def _observe_core_asr_delivery(self, event, *, stage="core_voice_delivery", outcome, phase) -> None:
+        """Keep ASR/Core correlation without copying transcript or session data."""
+        try:
+            self._asr_runtime._schedule_pipeline_event(
+                stage, event.turn_token.ingress, turn_id=event.turn_token.turn_id,
+                outcome=outcome, phase=phase,
+            )
+        except Exception:
+            pass
+
     async def _dispatch_core_asr_transcript(
         self,
         event: VoiceTranscriptEvent,
@@ -3794,6 +4018,9 @@ class AsrRuntimeMixin:
             session_ref = getattr(self, "session", None)
         prepared_session_ref = session_ref
         transition_generation = self._voice_input_transition_generation
+        diagnostic_phase = "initial_route_check"
+        diagnostic_outcome = "abandoned"
+        self._observe_core_asr_delivery(event, outcome="started", phase=diagnostic_phase)
         try:
             if (
                 not self._ingress_token_matches(token)
@@ -3802,6 +4029,7 @@ class AsrRuntimeMixin:
             ):
                 return
             if not event.text.strip():
+                diagnostic_phase = "empty_final"
                 # An empty final still completed the turn provider-side (e.g.
                 # the OpenAI/Step stalled-item timeouts): Core deliberately
                 # injects no user_transcript for empty text, yet the frontend
@@ -3827,6 +4055,7 @@ class AsrRuntimeMixin:
                 # 从这里到本函数的 finally（_abandon_core_voice_turn 按 turn_id 摘
                 # 掉它）之间，这条记录是**在派发中**的，后继的 prepare 不能挤掉它。
                 turn_record.dispatch_started = True
+                diagnostic_phase = "visual_validation"
                 await self._await_independent_visual_validation_tasks(
                     external_turn_id
                 )
@@ -3851,9 +4080,13 @@ class AsrRuntimeMixin:
             transcript_kwargs["source_game_route_identity"] = (
                 source_game_route_identity
             )
+            diagnostic_phase = "transcript_acceptance"
             accepted = await self.handle_input_transcript(
                 event.text,
                 **transcript_kwargs,
+            )
+            self._observe_core_asr_delivery(
+                event, outcome="accepted" if accepted else "rejected", phase=diagnostic_phase,
             )
             def route_still_core() -> bool:
                 """The route-identity half, re-checkable across an await.
@@ -3933,6 +4166,7 @@ class AsrRuntimeMixin:
                             "[%s] Offline VLM voice transcript delivery failed",
                             self.lanlan_name,
                         )
+            diagnostic_phase = "preview_restore"
             await self._restore_core_asr_preview_after_final(
                 external_turn_id,
                 session_epoch=token.session_epoch,
@@ -3955,6 +4189,7 @@ class AsrRuntimeMixin:
             # dispatcher cannot be held forever by a stuck swap.
             session_swap_lock = self._core_voice_session_swap_lock
             handoff_target = None
+            diagnostic_phase = "session_swap_barrier"
             try:
                 await asyncio.wait_for(
                     session_swap_lock.acquire(),
@@ -3978,6 +4213,7 @@ class AsrRuntimeMixin:
                 if target_session is None:
                     return
                 if target_session is not session_ref:
+                    diagnostic_phase = "replacement_session_prepare"
                     session_ref = target_session
                     prepare = getattr(
                         session_ref,
@@ -3994,6 +4230,7 @@ class AsrRuntimeMixin:
                             return
                     if not route_still_core() or self.session is not session_ref:
                         return
+                diagnostic_phase = "response_submission"
                 if multimodal_turn is None:
                     await self._submit_core_voice_turn(
                         event.text,
@@ -4092,6 +4329,7 @@ class AsrRuntimeMixin:
                     session_ref=session_ref,
                 )
             if handoff_target is not None:
+                diagnostic_phase = "offline_handoff"
                 delivered = await self._handoff_to_offline_vlm_and_submit(
                     multimodal_turn,
                     expected_session=handoff_target,
@@ -4109,7 +4347,17 @@ class AsrRuntimeMixin:
                         "code": "ASR_MULTIMODAL_TURN_FAILED",
                         "details": {"stage": "offline_vlm_handoff"},
                     }))
+                diagnostic_outcome = "submitted" if delivered else "handoff_not_delivered"
+            else:
+                diagnostic_outcome = "submitted"
+        except asyncio.CancelledError:
+            diagnostic_outcome = "cancelled"
+            raise
+        except Exception:
+            diagnostic_outcome = "failed"
+            raise
         finally:
+            self._observe_core_asr_delivery(event, outcome=diagnostic_outcome, phase=diagnostic_phase)
             self._abandon_core_voice_turn(
                 external_turn_id,
                 session_ref=session_ref,
@@ -4262,21 +4510,17 @@ class AsrRuntimeMixin:
                 ).session_epoch
             )
 
-        async with self._asr_notification_lock:
-            if not failure_is_current():
-                return
-
-        # Registry cancellation may execute consumer callbacks. Those
-        # callbacks are allowed to publish status/lifecycle notifications,
-        # which acquire _asr_notification_lock themselves. Keep the entire
-        # cancellation path outside that lock, and re-fence after releasing it
-        # in case a newer route operation landed while this task was queued.
+        # Runtime re-fences its failure identity after display delivery and
+        # enters this callback directly. Commit the current route/lease fence
+        # before our first suspension: display serialization must not defer
+        # mandatory retirement beyond the caller's notification deadline.
+        # Consumer cancellation can still publish through the notification
+        # lock independently once the physical input has been fenced.
         if not failure_is_current():
             return
         self._set_microphone_route("blocked")
         self._invalidate_voice_pcm_sync("independent_asr_failure")
         post_transition_identity = self._capture_core_asr_operation_identity()
-        await self._voice_input_registry.wait_idle()
         # Fail-safe for clients that never receive or never honour the
         # teardown notice (an older build, a third-party client, a
         # throttled background tab). The route is fail-closed for the rest
@@ -4284,8 +4528,11 @@ class AsrRuntimeMixin:
         # game owner is exempt: the galgame route holds the lease through
         # its built-in Registry consumer and must not be collaterally
         # revoked.
-        # No notice of its own -- the BLOCKED lifecycle event that produced
-        # this failure already reached the client.
+        # No notice of its own -- Runtime already attempted BLOCKED delivery.
+        # Revoke before joining Registry: its consumer can await display I/O,
+        # and the caller's notification deadline can cancel this callback.
+        # The revoke fences the lease/PCM synchronously before its first await;
+        # Core's keyed Registry cancellation owns its bounded preview cleanup.
         #
         # Re-captured AFTER this handler's own mutations, and that is the
         # whole point: ``source_identity`` was taken while the route was
@@ -4309,6 +4556,7 @@ class AsrRuntimeMixin:
                 post_transition_identity
             ),
         )
+        await self._voice_input_registry.wait_idle()
 
     async def _send_core_asr_status(self, event: AsrStatusEvent) -> None:
         source_identity = self._capture_core_asr_operation_identity()
@@ -4319,6 +4567,11 @@ class AsrRuntimeMixin:
                 != self._core_asr_identity_ingress_token(source_identity).session_epoch
             ):
                 return
+            self._core_asr_notification_revision = max(
+                self._core_asr_notification_revision + 1,
+                event.lifecycle_revision,
+            )
+            transport_generation = max(0, event.transport_generation)
             await self._send_voice_control_status(
                 json.dumps(
                     {
@@ -4326,6 +4579,10 @@ class AsrRuntimeMixin:
                         "details": {
                             "provider": event.provider,
                             "session_epoch": event.session_epoch,
+                            "transport_generation": transport_generation,
+                            "lifecycle_revision": self._core_asr_notification_revision,
+                            "reason_code": event.reason_code,
+                            "incident_id": event.incident_id,
                         },
                     }
                 ),
@@ -4343,6 +4600,11 @@ class AsrRuntimeMixin:
                 != self._core_asr_identity_ingress_token(source_identity).session_epoch
             ):
                 return
+            self._core_asr_notification_revision = max(
+                self._core_asr_notification_revision + 1,
+                event.lifecycle_revision,
+            )
+            transport_generation = max(0, event.transport_generation)
             await self._send_voice_control_status(
                 json.dumps(
                     {
@@ -4352,6 +4614,10 @@ class AsrRuntimeMixin:
                             "state": event.state,
                             "route_mode": self._asr_route_mode,
                             "session_epoch": event.session_epoch,
+                            "transport_generation": transport_generation,
+                            "lifecycle_revision": self._core_asr_notification_revision,
+                            "reason_code": event.reason_code,
+                            "incident_id": event.incident_id,
                         },
                     }
                 ),

@@ -301,6 +301,8 @@ class AudioProcessor:
             )
         else:
             self._downsample_resampler = None
+        self._stream_finalized = False
+        self._closed = False
         
         # Debug audio buffers - 累积存储完整音频
         self._debug_audio_before: list[np.ndarray] = []
@@ -344,6 +346,7 @@ class AudioProcessor:
         Returns:
             Processed audio as PCM16 bytes at output_sample_rate (16kHz)
         """
+        self._require_mutable()
         # Keep as int16 - pyrnnoise expects int16!
         audio_int16 = np.frombuffer(audio_bytes, dtype=np.int16)
         
@@ -392,8 +395,41 @@ class AudioProcessor:
         if self._downsample_resampler is not None and len(audio_int16) > 0:
             audio_float = audio_int16.astype(np.float32) / 32768.0
             audio_float = self._downsample_resampler.resample_chunk(audio_float)
-            audio_int16 = (audio_float * 32768.0).clip(-32768, 32767).astype(np.int16)
+            audio_int16 = self._float_to_pcm16(audio_float)
         return audio_int16.tobytes()
+
+    @staticmethod
+    def _float_to_pcm16(audio_float: np.ndarray) -> np.ndarray:
+        """Use one conversion contract for streamed audio and the EOF tail."""
+
+        return (audio_float * 32768.0).clip(-32768, 32767).astype(np.int16)
+
+    def _require_mutable(self) -> None:
+        if getattr(self, "_closed", False):
+            raise RuntimeError("AUDIO_PROCESSOR_CLOSED")
+        if getattr(self, "_stream_finalized", False):
+            raise RuntimeError("AUDIO_PROCESSOR_STREAM_FINALIZED")
+
+    def finalize_stream(self) -> bytes:
+        """Flush the streaming resampler once and enter terminal state."""
+
+        if getattr(self, "_closed", False):
+            raise RuntimeError("AUDIO_PROCESSOR_CLOSED")
+        if getattr(self, "_stream_finalized", False):
+            raise RuntimeError("AUDIO_PROCESSOR_STREAM_FINALIZED")
+        # Latch before entering native code: a failed EOF call is not safe to
+        # retry because the resampler may already have consumed its tail.
+        self._stream_finalized = True
+        if self._frame_buffer_size:
+            raise RuntimeError("AUDIO_PROCESSOR_INCOMPLETE_RNNOISE_FRAME")
+        resampler = self._downsample_resampler
+        if resampler is None:
+            return b""
+        audio_float = resampler.resample_chunk(
+            np.empty(0, dtype=np.float32),
+            last=True,
+        )
+        return self._float_to_pcm16(audio_float).tobytes()
     
     def _process_with_rnnoise(self, audio: np.ndarray) -> np.ndarray:
         """Process audio through RNNoise frame by frame.
@@ -522,25 +558,30 @@ class AudioProcessor:
         Reset the processor state. Call this after each speech turn ends
         to prevent RNNoise state drift during silence/background noise.
         """
+        self._require_mutable()
         self._reset_internal_state()
         self._last_speech_time = time.time()
         logger.info("🔄 AudioProcessor state reset (external call)")
 
     def close(self) -> None:
         """Release native denoiser and streaming-buffer resources."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         denoiser = self._denoiser
         self._denoiser = None
-        if denoiser is not None:
-            close = getattr(denoiser, "close", None)
-            if callable(close):
-                close()
         self._downsample_resampler = None
         self._frame_buffer = np.array([], dtype=np.int16)
         self._debug_audio_before.clear()
         self._debug_audio_after.clear()
+        if denoiser is not None:
+            close = getattr(denoiser, "close", None)
+            if callable(close):
+                close()
     
     def request_reset(self) -> None:
         """Request a reset on the next process_chunk call."""
+        self._require_mutable()
         self._needs_reset = True
     
     def save_debug_audio(self) -> None:

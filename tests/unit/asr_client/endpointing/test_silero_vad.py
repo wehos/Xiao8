@@ -4,7 +4,11 @@ import pytest
 from main_logic.voice_turn.contracts import SpeechActivityEvent
 from main_logic.asr_client.endpointing.config import SmartTurnConfig
 from main_logic.asr_client.endpointing.onnx_runtime import RuntimeState
-from main_logic.asr_client.endpointing.silero_vad import SileroActivityGate, SileroVad
+from main_logic.asr_client.endpointing.silero_vad import (
+    SileroActivityGate,
+    SileroFeedResult,
+    SileroVad,
+)
 
 
 class _Session:
@@ -52,7 +56,11 @@ class _NoopVad:
 
 
 class _BatchVad(_NoopVad):
+    def __init__(self):
+        self.call_count = 0
+
     def process_pcm16(self, pcm16_le):
+        self.call_count += 1
         return [0.9, 0.1]
 
 
@@ -107,9 +115,93 @@ def test_activity_gate_feed_preserves_ordered_events_from_vad_batch():
         minimum_speech_ms=32,
         candidate_silence_ms=32,
     )
-    gate = SileroActivityGate(_BatchVad(), config)
+    vad = _BatchVad()
+    gate = SileroActivityGate(vad, config)
 
     assert gate.feed(b"pcm") == (
         SpeechActivityEvent.SPEECH_STARTED,
         SpeechActivityEvent.CANDIDATE_PAUSE,
     )
+    assert vad.call_count == 1
+
+
+def test_activity_gate_evidence_classifies_every_window_without_probabilities():
+    gate = SileroActivityGate(
+        _NoopVad(),
+        SmartTurnConfig(
+            enabled=True,
+            minimum_speech_ms=64,
+            candidate_silence_ms=32,
+            onset_probability=0.7,
+            offset_probability=0.3,
+        ),
+    )
+
+    result = gate.process_probabilities_with_evidence([0.9, 0.9, 0.6, 0.9, 0.1])
+
+    assert result == SileroFeedResult(
+        events=(
+            SpeechActivityEvent.SPEECH_STARTED,
+            SpeechActivityEvent.CANDIDATE_PAUSE,
+        ),
+        window_count=5,
+        onset_window_count=3,
+        offset_window_count=1,
+        ambiguous_window_count=1,
+        first_onset_window_index=0,
+        last_onset_window_index=3,
+        post_confirmation_onset_window_count=1,
+    )
+    assert not any("probability" in name for name in SileroFeedResult.__slots__)
+
+
+def test_activity_gate_evidence_consumes_probability_iterable_once():
+    class _SingleUseIterable:
+        def __init__(self):
+            self.iteration_count = 0
+
+        def __iter__(self):
+            self.iteration_count += 1
+            if self.iteration_count > 1:
+                raise AssertionError("probabilities were iterated more than once")
+            return iter((0.9, 0.1))
+
+    probabilities = _SingleUseIterable()
+    gate = SileroActivityGate(
+        _NoopVad(),
+        SmartTurnConfig(
+            enabled=True,
+            minimum_speech_ms=32,
+            candidate_silence_ms=32,
+        ),
+    )
+
+    evidence = gate.process_probabilities_with_evidence(probabilities)
+
+    assert probabilities.iteration_count == 1
+    assert evidence.events == (
+        SpeechActivityEvent.SPEECH_STARTED,
+        SpeechActivityEvent.CANDIDATE_PAUSE,
+    )
+
+
+def test_activity_gate_feed_with_evidence_runs_vad_once_and_legacy_feed_is_tuple():
+    config = SmartTurnConfig(
+        enabled=True,
+        minimum_speech_ms=32,
+        candidate_silence_ms=32,
+    )
+    evidence_vad = _BatchVad()
+    evidence_gate = SileroActivityGate(evidence_vad, config)
+
+    evidence = evidence_gate.feed_with_evidence(b"pcm")
+
+    assert evidence_vad.call_count == 1
+    assert evidence.events == (
+        SpeechActivityEvent.SPEECH_STARTED,
+        SpeechActivityEvent.CANDIDATE_PAUSE,
+    )
+    legacy_vad = _BatchVad()
+    legacy_result = SileroActivityGate(legacy_vad, config).feed(b"pcm")
+    assert type(legacy_result) is tuple
+    assert legacy_vad.call_count == 1

@@ -18,8 +18,10 @@ import main_routers.voice_identity_router as voice_identity_router
 
 
 API_ROOT = "/api/voice-identity"
-PCM_CONTENT_TYPE = "audio/pcm;format=pcm_s16le;rate=16000;channels=1"
-MAX_PCM_BYTES = 16_000 * 4 * 2
+PCM_CONTENT_TYPE = "audio/pcm;format=pcm_s16le;rate=48000;channels=1"
+AUDIO_CONTRACT_ID = "owner-campplus-desktop-v1"
+MAX_PCM_BYTES = 48_000 * 4 * 2
+MAX_VERIFICATION_PCM_BYTES = 48_000 * 5 * 2
 MAX_FILTER_JSON_BYTES = 1024
 AUTH_HEADERS = {
     "Origin": "http://testserver",
@@ -32,6 +34,7 @@ SAFE_STATUS = {
     "has_profile": True,
     "enrollment": None,
     "profile_generation": "profile-a",
+    "last_completed_enrollment_id": None,
     "runtime_mode": "enforce",
 }
 
@@ -49,7 +52,7 @@ def _fake_service(payload: dict[str, object] | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         status=MagicMock(return_value=status),
         start_enrollment=AsyncMock(),
-        complete_enrollment=AsyncMock(return_value=status),
+        submit_enrollment_segment=AsyncMock(return_value=status),
         cancel_enrollment=AsyncMock(return_value=True),
         set_filter=AsyncMock(return_value=status),
         delete_profile=AsyncMock(return_value=status),
@@ -83,6 +86,7 @@ def _client(
     client = TestClient(app, base_url="http://testserver")
     if authenticated:
         client.headers.update(AUTH_HEADERS)
+        client.headers.update({"X-Voice-Audio-Contract": AUDIO_CONTRACT_ID})
     return client
 
 
@@ -168,8 +172,14 @@ def test_mutations_require_matching_csrf_and_local_origin(
         ("post", "/enrollment/start", {}),
         (
             "put",
-            "/enrollment/profile",
-            {"content": b"", "headers": {"Content-Type": PCM_CONTENT_TYPE}},
+            "/enrollment/segment",
+            {
+                "content": b"",
+                "headers": {
+                    "Content-Type": PCM_CONTENT_TYPE,
+                    "X-Voice-Identity-Segment": "1",
+                },
+            },
         ),
         ("post", "/enrollment/cancel", {}),
         ("put", "/filter", {"json": {"enabled": True}}),
@@ -190,7 +200,7 @@ def test_every_mutation_route_is_csrf_guarded(
     assert response.status_code == 403
     assert response.json()["error_code"] == "csrf_validation_failed"
     service.start_enrollment.assert_not_awaited()
-    service.complete_enrollment.assert_not_awaited()
+    service.submit_enrollment_segment.assert_not_awaited()
     service.cancel_enrollment.assert_not_awaited()
     service.set_filter.assert_not_awaited()
     service.delete_profile.assert_not_awaited()
@@ -224,7 +234,7 @@ def test_start_returns_canonical_status_without_private_model_data(
 
 
 @pytest.mark.unit
-def test_binary_profile_upload_forwards_exact_headers_and_body_idempotently(
+def test_binary_segment_upload_forwards_exact_headers_index_and_body_idempotently(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = _fake_service()
@@ -234,28 +244,139 @@ def test_binary_profile_upload_forwards_exact_headers_and_body_idempotently(
         "Content-Type": PCM_CONTENT_TYPE,
         "X-Voice-Identity-Enrollment": "enrollment-1",
         "X-Voice-Identity-Profile": "profile-1",
+        "X-Voice-Identity-Segment": "3",
     }
 
-    first = client.put(f"{API_ROOT}/enrollment/profile", content=pcm16, headers=headers)
+    first = client.put(f"{API_ROOT}/enrollment/segment", content=pcm16, headers=headers)
     second = client.put(
-        f"{API_ROOT}/enrollment/profile", content=pcm16, headers=headers
+        f"{API_ROOT}/enrollment/segment", content=pcm16, headers=headers
     )
 
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json() == second.json() == SAFE_STATUS
-    assert service.complete_enrollment.await_count == 2
-    assert service.complete_enrollment.await_args_list[0].args == (
+    assert service.submit_enrollment_segment.await_count == 2
+    assert service.submit_enrollment_segment.await_args_list[0].args == (
         "enrollment-1",
         "profile-1",
+        3,
         pcm16,
     )
-    assert service.complete_enrollment.await_args_list[1].args == (
+    assert service.submit_enrollment_segment.await_args_list[1].args == (
         "enrollment-1",
         "profile-1",
+        3,
         pcm16,
     )
+    assert service.submit_enrollment_segment.await_args_list[0].kwargs == {
+        "sample_rate_hz": 48_000,
+        "audio_contract_id": AUDIO_CONTRACT_ID,
+    }
+    assert service.submit_enrollment_segment.await_args_list[1].kwargs == {
+        "sample_rate_hz": 48_000,
+        "audio_contract_id": AUDIO_CONTRACT_ID,
+    }
     _assert_private_values_absent(first.json())
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("passed", "match_percent"),
+    [(False, 31), (True, 72)],
+)
+def test_fourth_segment_verification_is_transient_and_recovery_is_canonical(
+    monkeypatch: pytest.MonkeyPatch,
+    passed: bool,
+    match_percent: int,
+) -> None:
+    service = _fake_service()
+    verification_status = _Status(
+        {
+            **SAFE_STATUS,
+            "verification": {
+                "passed": passed,
+                "match_percent": match_percent,
+            },
+        }
+    )
+    service.submit_enrollment_segment.side_effect = [
+        verification_status,
+        _Status(),
+    ]
+    client = _client(monkeypatch, service)
+    headers = {
+        "Content-Type": PCM_CONTENT_TYPE,
+        "X-Voice-Identity-Enrollment": "enrollment-1",
+        "X-Voice-Identity-Profile": "profile-1",
+        "X-Voice-Identity-Segment": "4",
+    }
+    pcm16 = bytes(MAX_VERIFICATION_PCM_BYTES)
+
+    first = client.put(f"{API_ROOT}/enrollment/segment", content=pcm16, headers=headers)
+    recovered = client.put(
+        f"{API_ROOT}/enrollment/segment", content=pcm16, headers=headers
+    )
+    status = client.get(f"{API_ROOT}/status")
+
+    assert first.status_code == 200
+    assert first.json() == {
+        **SAFE_STATUS,
+        "verification": {
+            "passed": passed,
+            "match_percent": match_percent,
+        },
+    }
+    assert recovered.status_code == 200
+    assert recovered.json() == SAFE_STATUS
+    assert status.status_code == 200
+    assert status.json() == SAFE_STATUS
+    assert "verification" not in recovered.json()
+    assert "verification" not in status.json()
+    _assert_private_values_absent(first.json())
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("segment_header", [None, "", "0", "5", "01", "+1", " 1"])
+def test_segment_upload_requires_canonical_one_to_four_header(
+    monkeypatch: pytest.MonkeyPatch,
+    segment_header: str | None,
+) -> None:
+    service = _fake_service()
+    client = _client(monkeypatch, service)
+    headers = {
+        "Content-Type": PCM_CONTENT_TYPE,
+        "X-Voice-Identity-Enrollment": "enrollment-1",
+        "X-Voice-Identity-Profile": "profile-1",
+    }
+    if segment_header is not None:
+        headers["X-Voice-Identity-Segment"] = segment_header
+
+    response = client.put(
+        f"{API_ROOT}/enrollment/segment",
+        content=bytes(48_000),
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error_code": "invalid_segment_index"}
+    service.submit_enrollment_segment.assert_not_awaited()
+
+
+@pytest.mark.unit
+def test_retired_one_shot_profile_endpoint_is_not_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _fake_service()
+    client = _client(monkeypatch, service)
+
+    response = client.put(
+        f"{API_ROOT}/enrollment/profile",
+        content=bytes(48_000),
+        headers={"Content-Type": PCM_CONTENT_TYPE},
+    )
+
+    assert response.status_code == 404
+    service.submit_enrollment_segment.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -263,10 +384,28 @@ def test_binary_profile_upload_forwards_exact_headers_and_body_idempotently(
     ("body_size", "content_type", "expected_status", "expected_code"),
     [
         (MAX_PCM_BYTES, "application/octet-stream", 415, "invalid_pcm"),
+        (
+            MAX_PCM_BYTES,
+            "audio/pcm;format=pcm_s16le;rate=16000;channels=1",
+            415,
+            "invalid_pcm",
+        ),
+        (
+            MAX_PCM_BYTES,
+            "audio/pcm;format=pcm_s16le;rate=44100;channels=1",
+            415,
+            "invalid_pcm",
+        ),
+        (
+            MAX_PCM_BYTES,
+            "audio/pcm;format=pcm_s16le;rate=48000;channels=2",
+            415,
+            "invalid_pcm",
+        ),
         (MAX_PCM_BYTES + 1, PCM_CONTENT_TYPE, 413, "audio_too_long"),
     ],
 )
-def test_profile_upload_rejects_wrong_type_and_more_than_four_seconds(
+def test_segment_upload_rejects_wrong_type_and_more_than_four_seconds(
     monkeypatch: pytest.MonkeyPatch,
     body_size: int,
     content_type: str,
@@ -277,18 +416,114 @@ def test_profile_upload_rejects_wrong_type_and_more_than_four_seconds(
     client = _client(monkeypatch, service)
 
     response = client.put(
-        f"{API_ROOT}/enrollment/profile",
+        f"{API_ROOT}/enrollment/segment",
         content=bytes(body_size),
         headers={
             "Content-Type": content_type,
             "X-Voice-Identity-Enrollment": "enrollment-1",
             "X-Voice-Identity-Profile": "profile-1",
+            "X-Voice-Identity-Segment": "1",
         },
     )
 
     assert response.status_code == expected_status
     assert response.json() == {"error_code": expected_code}
-    service.complete_enrollment.assert_not_awaited()
+    service.submit_enrollment_segment.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("contract_id", [None, "", "owner-campplus-desktop-v0"])
+def test_segment_upload_requires_known_audio_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    contract_id: str | None,
+) -> None:
+    service = _fake_service()
+    client = _client(monkeypatch, service)
+    client.headers.pop("X-Voice-Audio-Contract", None)
+    headers = {
+        "Content-Type": PCM_CONTENT_TYPE,
+        "X-Voice-Identity-Enrollment": "enrollment-1",
+        "X-Voice-Identity-Profile": "profile-1",
+        "X-Voice-Identity-Segment": "1",
+    }
+    if contract_id is not None:
+        headers["X-Voice-Audio-Contract"] = contract_id
+
+    response = client.put(
+        f"{API_ROOT}/enrollment/segment",
+        content=bytes(48_000 * 31 // 10 * 2),
+        headers=headers,
+    )
+
+    assert response.status_code == 415
+    assert response.json() == {"error_code": "unsupported_audio_contract"}
+    service.submit_enrollment_segment.assert_not_awaited()
+
+
+@pytest.mark.unit
+def test_segment_upload_rejects_odd_pcm_before_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _fake_service()
+    client = _client(monkeypatch, service)
+
+    response = client.put(
+        f"{API_ROOT}/enrollment/segment",
+        content=b"\x00",
+        headers={
+            "Content-Type": PCM_CONTENT_TYPE,
+            "X-Voice-Identity-Enrollment": "enrollment-1",
+            "X-Voice-Identity-Profile": "profile-1",
+            "X-Voice-Identity-Segment": "1",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error_code": "invalid_pcm"}
+    service.submit_enrollment_segment.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("segment_index", "body_size", "expected_status"),
+    [
+        (1, MAX_PCM_BYTES, 200),
+        (1, MAX_PCM_BYTES + 1, 413),
+        (2, MAX_PCM_BYTES, 200),
+        (2, MAX_PCM_BYTES + 1, 413),
+        (3, MAX_PCM_BYTES, 200),
+        (3, MAX_PCM_BYTES + 1, 413),
+        (4, MAX_VERIFICATION_PCM_BYTES, 200),
+        (4, MAX_VERIFICATION_PCM_BYTES + 1, 413),
+    ],
+)
+def test_segment_upload_applies_reference_and_verification_size_limits(
+    monkeypatch: pytest.MonkeyPatch,
+    segment_index: int,
+    body_size: int,
+    expected_status: int,
+) -> None:
+    service = _fake_service()
+    client = _client(monkeypatch, service)
+
+    response = client.put(
+        f"{API_ROOT}/enrollment/segment",
+        content=bytes(body_size),
+        headers={
+            "Content-Type": PCM_CONTENT_TYPE,
+            "X-Voice-Identity-Enrollment": "enrollment-1",
+            "X-Voice-Identity-Profile": "profile-1",
+            "X-Voice-Identity-Segment": str(segment_index),
+        },
+    )
+
+    assert response.status_code == expected_status
+    if expected_status == 200:
+        assert response.json() == SAFE_STATUS
+        service.submit_enrollment_segment.assert_awaited_once()
+    else:
+        assert response.json() == {"error_code": "audio_too_long"}
+        service.submit_enrollment_segment.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -316,31 +551,41 @@ async def test_chunked_profile_body_is_bounded_without_content_length() -> None:
     [
         ("invalid_enrollment_id", 400),
         ("invalid_profile_id", 400),
+        ("invalid_segment_index", 400),
         ("stale_enrollment", 409),
+        ("segment_out_of_order", 409),
+        ("segment_in_progress", 409),
         ("invalid_pcm", 422),
         ("speech_too_short", 422),
-        ("audio_too_long", 422),
+        ("audio_too_long", 413),
         ("silence", 422),
+        ("volume_too_low", 422),
         ("severe_clipping", 422),
+        ("no_speech_detected", 422),
+        ("voice_samples_inconsistent", 422),
+        ("owner_verification_failed", 422),
+        ("audio_processing_unavailable", 503),
+        ("unsupported_audio_contract", 503),
         ("model_unavailable", 503),
     ],
 )
-def test_profile_upload_maps_stable_service_errors(
+def test_segment_upload_maps_stable_service_errors(
     monkeypatch: pytest.MonkeyPatch,
     error_code: str,
     expected_status: int,
 ) -> None:
     service = _fake_service()
-    service.complete_enrollment.side_effect = VoiceIdentityServiceError(error_code)
+    service.submit_enrollment_segment.side_effect = VoiceIdentityServiceError(error_code)
     client = _client(monkeypatch, service)
 
     response = client.put(
-        f"{API_ROOT}/enrollment/profile",
+        f"{API_ROOT}/enrollment/segment",
         content=bytes(48_000),
         headers={
             "Content-Type": PCM_CONTENT_TYPE,
             "X-Voice-Identity-Enrollment": "enrollment-1",
             "X-Voice-Identity-Profile": "profile-1",
+            "X-Voice-Identity-Segment": "1",
         },
     )
 

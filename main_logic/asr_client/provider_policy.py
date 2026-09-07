@@ -9,6 +9,7 @@ from ._registry_meta import (
     ASR_PROVIDER_REGISTRY,
     AsrEndpointingMode,
     AsrProviderAvailability,
+    AsrSpeakerExactIntervalCapability,
 )
 
 
@@ -25,6 +26,9 @@ class AsrProviderPolicy:
     max_segment_ms: int | None
     warm_transport_ms: int
     replay_policy: AsrReplayPolicy
+    speaker_exact_interval_capability: AsrSpeakerExactIntervalCapability = (
+        AsrSpeakerExactIntervalCapability.UNSUPPORTED
+    )
     availability: AsrProviderAvailability = AsrProviderAvailability.IMPLEMENTED
     provider_final_timeout_ms: int = 10_000
     connect_max_attempts: int = 1
@@ -88,6 +92,11 @@ def resolve_provider_policy(
         max_segment_ms=meta.max_segment_ms if transport == "segmented" else None,
         warm_transport_ms=meta.warm_transport_ms if transport == "streaming" else 0,
         replay_policy=meta.replay_policy,
+        speaker_exact_interval_capability=(
+            meta.speaker_exact_interval_capability
+            if endpoint_authority == "provider"
+            else AsrSpeakerExactIntervalCapability.UNSUPPORTED
+        ),
         availability=meta.availability,
         provider_final_timeout_ms=meta.provider_final_timeout_ms,
         connect_max_attempts=meta.connect_max_attempts,

@@ -74,6 +74,7 @@ def _conversation_settings_response_payload(snapshot) -> dict:
 async def _apply_noise_reduction_to_active_sessions(enabled: bool):
     """Apply noise reduction toggle to all active voice sessions immediately."""
     from main_logic.omni_realtime_client import OmniRealtimeClient
+    applied = True
     try:
         session_manager = get_session_manager()
         for _name, mgr in session_manager.items():
@@ -93,6 +94,7 @@ async def _apply_noise_reduction_to_active_sessions(enabled: bool):
                 try:
                     await apply_core_pipeline(enabled)
                 except Exception as core_exc:  # noqa: BLE001
+                    applied = False
                     logger.warning(
                         f"Failed to apply noise reduction to the core "
                         f"microphone pipeline for {_name}: {core_exc}"
@@ -108,12 +110,15 @@ async def _apply_noise_reduction_to_active_sessions(enabled: bool):
             try:
                 await mgr.session.set_audio_noise_reduction_enabled(enabled)
             except Exception as omni_exc:  # noqa: BLE001
+                applied = False
                 logger.warning(
                     f"Failed to apply noise reduction to the Omni processor "
                     f"for {_name}: {omni_exc}"
                 )
     except Exception as e:
+        applied = False
         logger.warning(f"Failed to apply noise reduction to active sessions: {e}")
+    return applied
 
 
 async def _apply_noise_reduction_if_current(enabled: bool):
@@ -122,7 +127,34 @@ async def _apply_noise_reduction_if_current(enabled: bool):
         current = await aload_global_conversation_settings_snapshot()
         if current.settings.get("noiseReductionEnabled") is not enabled:
             return
-        await _apply_noise_reduction_to_active_sessions(enabled)
+        service = None
+        try:
+            from main_logic.voice_identity_service.registry import (
+                VoiceIdentityServiceRegistryError,
+                get_voice_identity_service_for_router,
+            )
+
+            try:
+                service = get_voice_identity_service_for_router()
+            except VoiceIdentityServiceRegistryError:
+                service = None
+            if service is not None:
+                if not await service.prepare_runtime_audio_contract_change():
+                    return
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"Failed to suspend Owner voice evidence before noise "
+                f"reduction transition: {exc}"
+            )
+            return
+        applied = await _apply_noise_reduction_to_active_sessions(enabled)
+        if service is not None and applied:
+            try:
+                await service.update_runtime_noise_reduction_enabled(enabled)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    f"Failed to reconcile Owner voice audio contract: {exc}"
+                )
 
 
 @router.get("/preferences")

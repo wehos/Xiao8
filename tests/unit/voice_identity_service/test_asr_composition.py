@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from unittest.mock import AsyncMock
+from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
 
-from main_logic.asr_client.runtime import AsrRuntimeCallbacks, IndependentAsrRuntime
+from main_logic.asr_client.admission.contracts import (
+    CaptureClosed,
+    SpeakerLow,
+    SpeakerUnavailable,
+)
 from main_logic.asr_client.speaker_shadow.asset_manifest import (
     CAMPPLUS_MODEL_ID,
     CAMPPLUS_MODEL_REVISION,
@@ -14,6 +18,7 @@ from main_logic.asr_client.speaker_shadow.asset_manifest import (
 from main_logic.asr_client.speaker_shadow.campplus import CAMPPLUS_EMBEDDING_DIM
 from main_logic.asr_client.speaker_shadow.contracts import (
     SpeakerShadowCandidateKey,
+    SpeakerShadowCompletion,
     SpeakerShadowObservation,
 )
 from main_logic.voice_identity.contracts import SpeakerModelIdentity
@@ -24,35 +29,60 @@ from main_logic.voice_identity_service.asr_composition import (
 )
 
 
-def _runtime() -> IndependentAsrRuntime:
-    return IndependentAsrRuntime(
-        AsrRuntimeCallbacks(
-            display_name=lambda: "owner-voice-composition-test",
-            on_prepare_turn=AsyncMock(return_value=True),
-            on_partial=AsyncMock(),
-            on_final=AsyncMock(),
-            on_turn_abandoned=AsyncMock(),
-            on_failure=AsyncMock(),
-            on_status=AsyncMock(),
-            on_lifecycle=AsyncMock(),
-        )
+@dataclass
+class _EvidenceSink:
+    events: list[SpeakerLow | SpeakerUnavailable | CaptureClosed] = field(
+        default_factory=list
     )
+    degraded_generations: list[str] = field(default_factory=list)
+    healthy_generations: list[str] = field(default_factory=list)
+
+    def _accept_speaker_evidence_fact(
+        self,
+        fact: SpeakerLow | SpeakerUnavailable,
+        *,
+        activation_generation: str,
+        enforce: bool,
+    ) -> bool:
+        assert activation_generation == "activation-1"
+        assert enforce is True
+        self.events.append(fact)
+        return True
+
+    def _close_speaker_evidence(
+        self,
+        closed: CaptureClosed,
+        *,
+        activation_generation: str,
+        enforce: bool,
+        evidence_complete: bool,
+    ) -> bool:
+        assert activation_generation == "activation-1"
+        assert enforce is True
+        self.events.append(closed)
+        return True
+
+    def _mark_speaker_evidence_backend_degraded(
+        self,
+        *,
+        activation_generation: str,
+    ) -> None:
+        self.degraded_generations.append(activation_generation)
+
+    def _mark_speaker_evidence_backend_healthy(
+        self,
+        *,
+        activation_generation: str,
+    ) -> None:
+        self.healthy_generations.append(activation_generation)
 
 
-def _profile(
-    identity: SpeakerModelIdentity | None = None,
-) -> SpeakerProfile:
-    model_identity = identity or SpeakerModelIdentity(
-        CAMPPLUS_MODEL_ID,
-        CAMPPLUS_MODEL_REVISION,
-        CAMPPLUS_EMBEDDING_DIM,
+def _profile(identity: SpeakerModelIdentity | None = None) -> SpeakerProfile:
+    identity = identity or SpeakerModelIdentity(
+        CAMPPLUS_MODEL_ID, CAMPPLUS_MODEL_REVISION, CAMPPLUS_EMBEDDING_DIM
     )
-    embedding = np.arange(
-        1,
-        model_identity.embedding_dimension + 1,
-        dtype=np.float32,
-    )
-    reference = SpeakerReference(model_identity, embedding)
+    embedding = np.ones(identity.embedding_dimension, dtype=np.float32)
+    reference = SpeakerReference(identity, embedding)
     embedding.fill(0.0)
     try:
         return SpeakerProfile("profile-generation", reference)
@@ -60,88 +90,118 @@ def _profile(
         reference.close()
 
 
-def _observation(
-    candidate: SpeakerShadowCandidateKey,
-    *,
-    checkpoint_ms: int,
-    similarity: float,
-) -> SpeakerShadowObservation:
-    return SpeakerShadowObservation(
-        candidate=candidate,
-        similarity=similarity,
-        would_block=((0.40, similarity < 0.40),),
-        audio_ms=checkpoint_ms,
-        checkpoint_ms=checkpoint_ms,
-    )
+@pytest.mark.parametrize("iteration", range(50))
+def test_shadow_constructor_failure_closes_unadopted_backend_factory(monkeypatch, iteration):
+    import main_logic.voice_identity_service.asr_composition as module
 
+    created = []
+    original = module.CampPlusBackendFactory
 
-@pytest.mark.parametrize(
-    ("enforce", "expected_requests"),
-    [(True, 1), (False, 0)],
-    ids=["enforce", "shadow"],
-)
-async def test_composition_uses_two_checkpoints_and_enforces_only_in_enforce_mode(
-    monkeypatch: pytest.MonkeyPatch,
-    enforce: bool,
-    expected_requests: int,
-) -> None:
-    runtime = _runtime()
+    def backend_factory(embedding):
+        backend = original(embedding)
+        created.append(backend)
+        return backend
+
+    def broken_shadow(**kwargs):
+        raise RuntimeError("injected observer construction failure")
+
+    monkeypatch.setattr(module, "CampPlusBackendFactory", backend_factory)
+    monkeypatch.setattr(module, "SpeakerShadowRuntime", broken_shadow)
     profile = _profile()
-    requests: list[tuple[SpeakerShadowCandidateKey, str]] = []
-
-    def request_rejection(
-        candidate: SpeakerShadowCandidateKey,
-        *,
-        activation_generation: str,
-    ) -> bool:
-        requests.append((candidate, activation_generation))
-        return True
-
-    monkeypatch.setattr(
-        runtime,
-        "request_speaker_candidate_rejection",
-        request_rejection,
+    factory = module.OwnerVoiceAsrCompositionFactory(
+        _EvidenceSink(), profile, activation_generation="activation-1", enforce=True
     )
+    try:
+        with pytest.raises(RuntimeError, match="injected observer"):
+            factory()
+        assert len(created) == 1 and created[0]._closed
+    finally:
+        factory.close()
+        profile.close()
+
+
+def test_composition_emits_stateless_ordered_low_facts_then_close() -> None:
+    sink = _EvidenceSink()
+    profile = _profile()
     factory = OwnerVoiceAsrCompositionFactory(
-        runtime,
+        sink,
         profile,
-        activation_generation="activation-7",
-        enforce=enforce,
+        activation_generation="activation-1",
+        enforce=True,
     )
+    assert factory.enforces_admission is True
     shadow = factory()
-    candidate = SpeakerShadowCandidateKey(3, 9, "provider_candidate")
-
-    assert shadow._config.minimum_audio_ms == 1_500
-    assert shadow._config.maximum_audio_ms == 3_000
-    assert shadow._config.observation_checkpoints_ms == (1_500, 3_000)
-    assert shadow._config.similarity_thresholds == (0.40,)
-    callback = shadow._on_observation
+    candidate = SpeakerShadowCandidateKey(1, 2, "provider_candidate")
+    callback = shadow._on_evidence
     assert callback is not None
 
-    await callback(
-        _observation(candidate, checkpoint_ms=1_500, similarity=0.20)
+    callback(
+        SpeakerShadowObservation(
+            candidate,
+            0.2,
+            ((0.4, True),),
+            1_500,
+            1_500,
+            sequence_no=1,
+        )
     )
-    assert requests == []
-    await callback(
-        _observation(candidate, checkpoint_ms=3_000, similarity=0.20)
+    callback(
+        SpeakerShadowObservation(
+            candidate,
+            0.2,
+            ((0.4, True),),
+            3_000,
+            3_000,
+            sequence_no=2,
+        )
     )
+    callback(SpeakerShadowCompletion(candidate, "scored", 3_000, 2, True))
 
-    assert len(requests) == expected_requests
-    if expected_requests:
-        assert requests == [(candidate, "activation-7")]
-    await shadow.close()
+    assert [type(event) for event in sink.events] == [
+        SpeakerLow,
+        SpeakerLow,
+        CaptureClosed,
+    ]
+    assert [event.sequence_no for event in sink.events[:2]] == [1, 2]
+    assert sink.events[-1] == CaptureClosed(candidate, 2)
+    diagnostics = factory.diagnostics_snapshot()
+    assert diagnostics["speaker_first_low_count"] == 1
+    assert diagnostics["speaker_second_low_count"] == 1
+    assert "reject_decision_count" not in diagnostics
     factory.close()
-    profile.close()
 
 
-async def test_factory_profile_and_backend_close_wipe_owned_biometric_material() -> None:
-    runtime = _runtime()
+def test_incomplete_close_emits_unavailable_before_close() -> None:
+    sink = _EvidenceSink()
+    profile = _profile()
+    factory = OwnerVoiceAsrCompositionFactory(
+        sink,
+        profile,
+        activation_generation="activation-1",
+        enforce=True,
+    )
+    shadow = factory()
+    candidate = SpeakerShadowCandidateKey(1, 3, "provider_candidate")
+    callback = shadow._on_evidence
+    assert callback is not None
+
+    callback(SpeakerShadowCompletion(candidate, "failed", None, 1, False))
+
+    assert sink.events == [
+        SpeakerUnavailable(candidate, 1),
+        CaptureClosed(candidate, 1),
+    ]
+    factory.close()
+
+
+async def test_factory_close_wipes_owned_profile_and_backend_material() -> None:
+    sink = _EvidenceSink()
     profile = _profile()
     source_embedding = profile._reference._embedding
     factory = OwnerVoiceAsrCompositionFactory(
-        runtime,
+        sink,
         profile,
-        activation_generation="activation-8",
+        activation_generation="activation-1",
         enforce=True,
     )
     factory_profile = factory._profile
@@ -169,82 +229,38 @@ async def test_factory_profile_and_backend_close_wipe_owned_biometric_material()
     assert not any(backend_storage)
 
 
-async def test_backend_health_marks_runtime_degraded() -> None:
-    runtime = _runtime()
+async def test_backend_health_uses_generation_scoped_evidence_sink() -> None:
+    sink = _EvidenceSink()
     profile = _profile()
     factory = OwnerVoiceAsrCompositionFactory(
-        runtime,
+        sink,
         profile,
-        activation_generation="activation-8",
+        activation_generation="activation-1",
         enforce=True,
     )
     shadow = factory()
-    runtime._speaker_verifier_activation_generation = "activation-8"
 
     shadow._mark_backend_degraded()
-
-    assert runtime._speaker_verifier_degraded
-    await shadow.close()
-    factory.close()
-    profile.close()
-
-
-async def test_backend_health_recovery_clears_runtime_degraded() -> None:
-    runtime = _runtime()
-    profile = _profile()
-    factory = OwnerVoiceAsrCompositionFactory(
-        runtime,
-        profile,
-        activation_generation="activation-8",
-        enforce=True,
-    )
-    shadow = factory()
-    runtime._speaker_verifier_activation_generation = "activation-8"
-
-    shadow._mark_backend_degraded()
-    assert runtime._speaker_verifier_degraded
     shadow._mark_backend_recovered()
 
-    assert not runtime._speaker_verifier_degraded
+    assert sink.degraded_generations == ["activation-1"]
+    assert sink.healthy_generations == ["activation-1"]
     await shadow.close()
     factory.close()
     profile.close()
 
 
-async def test_backend_health_ignores_stale_activation_generation() -> None:
-    runtime = _runtime()
-    profile = _profile()
-    factory = OwnerVoiceAsrCompositionFactory(
-        runtime,
-        profile,
-        activation_generation="activation-8",
-        enforce=True,
-    )
-    shadow = factory()
-    runtime._speaker_verifier_activation_generation = "activation-9"
-
-    shadow._mark_backend_degraded()
-    assert not runtime._speaker_verifier_degraded
-
-    runtime._speaker_verifier_degraded = True
-    shadow._mark_backend_recovered()
-    assert runtime._speaker_verifier_degraded
-
-    await shadow.close()
-    factory.close()
-    profile.close()
-
-
-def test_wrong_model_identity_raises_and_wipes_temporary_reference(
+def test_wrong_model_identity_wipes_temporary_reference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    wrong_identity = SpeakerModelIdentity(
-        "wrong-model",
-        "wrong-revision",
-        CAMPPLUS_EMBEDDING_DIM,
+    profile = _profile(
+        SpeakerModelIdentity(
+            "wrong-model",
+            "wrong-revision",
+            CAMPPLUS_EMBEDDING_DIM,
+        )
     )
-    profile = _profile(wrong_identity)
-    runtime = _runtime()
+    sink = _EvidenceSink()
     captured_references: list[SpeakerReference] = []
     captured_embeddings: list[np.ndarray] = []
     original_clone: Callable[[SpeakerProfile], SpeakerReference] = (
@@ -259,9 +275,9 @@ def test_wrong_model_identity_raises_and_wipes_temporary_reference(
 
     monkeypatch.setattr(SpeakerProfile, "clone_reference", capture_clone)
     factory = OwnerVoiceAsrCompositionFactory(
-        runtime,
+        sink,
         profile,
-        activation_generation="activation-9",
+        activation_generation="activation-1",
         enforce=True,
     )
 

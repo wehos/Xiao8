@@ -371,7 +371,7 @@ def test_independent_asr_terminal_status_clears_partial_preview():
     # never emit a BLOCKED lifecycle event). The terminal tail must call it
     # before showing its per-code toast.
     assert terminal_branch.index("tearDownBlockedVoiceRoute();") < terminal_branch.index(
-        "showStatusToast"
+        "showAsrIncidentToast"
     )
     teardown_fn = source.split("function tearDownBlockedVoiceRoute() {", 1)[1].split(
         "\n    }", 1
@@ -405,7 +405,7 @@ def test_voice_lifecycle_status_is_validated_and_exposed_to_ui():
     assert "data-voice-input-state" in source
 
 
-def test_lifecycle_blocked_clears_independent_asr_and_shows_failure_toast():
+def test_lifecycle_blocked_classifies_reason_without_defaulting_to_config():
     # runtime.py _handle_independent_asr_error always broadcasts lifecycle
     # BLOCKED before the fatal status code, and most fatal codes
     # (ASR_ENDPOINTING_FAILED, ASR_BLOCKED_ENDPOINTING,
@@ -437,10 +437,20 @@ def test_lifecycle_blocked_clears_independent_asr_and_shows_failure_toast():
     assert teardown_fn.index("removeExternalAsrPreview();") < teardown_fn.index(
         "S.independentAsrActive = false;"
     )
-    # The teardown runs before the toast, so the failure message is what stays
-    # on screen.
+    # BLOCKED is classified by its explicit reason. A missing or future reason
+    # is a generic runtime failure, never a misleading configuration error.
+    for expected in (
+        "ASR_DENY_CLEANUP_FAILED",
+        "ASR_INDEPENDENT_PROVIDER_UNAVAILABLE",
+        "ASR_INDEPENDENT_FAILED",
+        "microphone.independentAsrCleanupFailed",
+        "microphone.independentAsrProviderUnavailable",
+        "microphone.independentAsrFallback",
+        "microphone.independentAsrRuntimeFailed",
+    ):
+        assert expected in blocked_branch
     assert blocked_branch.index("tearDownBlockedVoiceRoute();") < blocked_branch.index(
-        "microphone.independentAsrFallback"
+        "showAsrIncidentToast("
     )
 
     # Cross-reference comment so backend changes to the failure path get
@@ -455,6 +465,272 @@ def test_lifecycle_blocked_clears_independent_asr_and_shows_failure_toast():
     )[1].split("if (statusCode === 'TTS_CONNECTION_FAILED')", 1)[0]
     assert "microphone.independentAsrProviderUnavailable" in prefix_block
     assert "microphone.independentAsrFallback" in prefix_block
+
+
+def test_asr_control_identity_and_incident_dedupe_helpers_behave() -> None:
+    source = APP_WEBSOCKET_PATH.read_text(encoding="utf-8")
+    parse_identity = (
+        "function parseAsrControlIdentity(details) {"
+        + _block_after(source, "function parseAsrControlIdentity(details) {")
+        + "}\n"
+    )
+    accept_identity = (
+        "function acceptAsrControlIdentity(details) {"
+        + _block_after(source, "function acceptAsrControlIdentity(details) {")
+        + "}\n"
+    )
+    normalize_reason = (
+        "function normalizeAsrReasonCode(value) {"
+        + _block_after(source, "function normalizeAsrReasonCode(value) {")
+        + "}\n"
+    )
+    normalize_incident = (
+        "function normalizeAsrIncidentId(value) {"
+        + _block_after(source, "function normalizeAsrIncidentId(value) {")
+        + "}\n"
+    )
+    format_message = (
+        "function formatAsrFailureMessage(baseMessage, reasonCode) {"
+        + _block_after(source, "function formatAsrFailureMessage(baseMessage, reasonCode) {")
+        + "}\n"
+    )
+    toast_helper = (
+        "function showAsrIncidentToast(incidentId, message, durationMs) {"
+        + _block_after(
+            source,
+            "function showAsrIncidentToast(incidentId, message, durationMs) {",
+        )
+        + "}\n"
+    )
+    script = textwrap.dedent(
+        f"""
+        let _latestAsrControlIdentity = null;
+        let _seenAsrIncidentIds = Object.create(null);
+        let _seenAsrIncidentOrder = [];
+        const MAX_SEEN_ASR_INCIDENTS = 64;
+        const shown = [];
+        const window = {{ showStatusToast(message, duration) {{ shown.push([message, duration]); }} }};
+        {parse_identity}
+        {accept_identity}
+        {normalize_reason}
+        {normalize_incident}
+        {format_message}
+        {toast_helper}
+        function check(value, message) {{ if (!value) throw new Error(message); }}
+        const id = (epoch, generation, revision) => ({{
+            session_epoch: epoch,
+            transport_generation: generation,
+            lifecycle_revision: revision,
+        }});
+        check(acceptAsrControlIdentity(id(1, 2, 3)) === true, 'first identity');
+        check(acceptAsrControlIdentity(id(1, 2, 3)) === false, 'equal identity');
+        check(acceptAsrControlIdentity(id(1, 2, 2)) === false, 'older revision');
+        check(acceptAsrControlIdentity(id(1, 3, 0)) === true, 'new transport');
+        check(acceptAsrControlIdentity(id(1, 2, 99)) === false, 'old transport');
+        check(acceptAsrControlIdentity(id(2, 0, 0)) === true, 'new epoch');
+        check(acceptAsrControlIdentity({{ session_epoch: 3 }}) === false, 'missing identity');
+        check(normalizeAsrReasonCode(' ASR_QWEN_PROVIDER_ERROR ') === 'ASR_QWEN_PROVIDER_ERROR', 'valid reason');
+        check(normalizeAsrReasonCode('prefix ASR_QWEN_PROVIDER_ERROR') === '', 'embedded reason');
+        check(normalizeAsrReasonCode('asr_qwen_provider_error') === '', 'lowercase reason');
+        check(normalizeAsrReasonCode('ASR_BAD-CHAR') === '', 'illegal reason character');
+        check(normalizeAsrReasonCode('ASR_' + 'A'.repeat(61)) === '', 'overlong reason');
+        check(normalizeAsrIncidentId(' asr-failure-abc123 ') === 'asr-failure-abc123', 'failure incident');
+        check(normalizeAsrIncidentId('asr-deny-1-2-3') === 'asr-deny-1-2-3', 'deny incident');
+        check(normalizeAsrIncidentId('incident') === '', 'unknown incident prefix');
+        check(normalizeAsrIncidentId('asr-failure-' + 'a'.repeat(117)) === '', 'overlong incident');
+        check(normalizeAsrIncidentId('asr-failure-<unsafe>') === '', 'unsafe incident characters');
+        check(formatAsrFailureMessage('base', 'ASR_QWEN_PROVIDER_ERROR') === 'base [ASR_QWEN_PROVIDER_ERROR]', 'safe reason suffix');
+        check(formatAsrFailureMessage('base', 'secret: ASR_QWEN_PROVIDER_ERROR') === 'base', 'invalid reason hidden');
+        check(showAsrIncidentToast('asr-failure-incident', 'first', 5) === true, 'first incident');
+        check(showAsrIncidentToast('asr-failure-incident', 'duplicate', 5) === false, 'duplicate incident');
+        check(shown.length === 1 && shown[0][0] === 'first', 'toast dedupe');
+        check(showAsrIncidentToast('invalid-incident', 'legacy', 5) === true, 'invalid incident still shows');
+        check(showAsrIncidentToast('invalid-incident', 'legacy-again', 5) === true, 'invalid incident cannot dedupe');
+        """
+    )
+    result = run_node_script(
+        shutil.which("node") or pytest.skip("node is required"),
+        script,
+        cwd=str(Path(__file__).resolve().parents[2]),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_asr_failure_status_runtime_fallback_and_incident_dedupe_behave() -> None:
+    source = APP_WEBSOCKET_PATH.read_text(encoding="utf-8")
+    helpers = []
+    for signature in (
+        "function parseAsrControlIdentity(details) {",
+        "function acceptAsrControlIdentity(details) {",
+        "function normalizeAsrReasonCode(value) {",
+        "function normalizeAsrIncidentId(value) {",
+        "function formatAsrFailureMessage(baseMessage, reasonCode) {",
+        "function showAsrIncidentToast(incidentId, message, durationMs) {",
+    ):
+        helpers.append(signature + _block_after(source, signature) + "}\n")
+    status_logic = "var statusReasonCode = normalizeAsrReasonCode(" + source.split(
+        "var statusReasonCode = normalizeAsrReasonCode(", 1
+    )[1].split("if (statusCode === 'TTS_CONNECTION_FAILED')", 1)[0]
+    script = textwrap.dedent(
+        f"""
+        let _latestAsrControlIdentity = null;
+        let _seenAsrIncidentIds = Object.create(null);
+        let _seenAsrIncidentOrder = [];
+        const MAX_SEEN_ASR_INCIDENTS = 64;
+        const shown = [];
+        let teardownCount = 0;
+        const S = {{}};
+        const document = {{ documentElement: {{ setAttribute() {{}} }} }};
+        function CustomEvent(name, options) {{ this.name = name; this.detail = options.detail; }}
+        const window = {{
+            t: null,
+            dispatchEvent() {{}},
+            showStatusToast(message, duration) {{ shown.push([message, duration]); }},
+        }};
+        function tearDownBlockedVoiceRoute() {{ teardownCount += 1; }}
+        {''.join(helpers)}
+        function handleAsrStatus(statusCode, statusDetails) {{
+            {status_logic}
+        }}
+        function check(value, message) {{ if (!value) throw new Error(message); }}
+        function eventDetails(epoch, generation, revision, incident, reason) {{
+            return {{
+                session_epoch: epoch,
+                transport_generation: generation,
+                lifecycle_revision: revision,
+                incident_id: incident,
+                reason_code: reason,
+                provider: 'qwen',
+            }};
+        }}
+        function reset() {{
+            _latestAsrControlIdentity = null;
+            _seenAsrIncidentIds = Object.create(null);
+            _seenAsrIncidentOrder = [];
+            shown.length = 0;
+            teardownCount = 0;
+        }}
+
+        handleAsrStatus('ASR_LIFECYCLE_STATE', Object.assign(
+            eventDetails(1, 1, 1, 'asr-failure-shared', 'ASR_QWEN_PROVIDER_ERROR'),
+            {{ state: 'blocked' }}
+        ));
+        handleAsrStatus('ASR_ENDPOINTING_FAILED',
+            eventDetails(1, 1, 2, 'asr-failure-shared', 'ASR_QWEN_PROVIDER_ERROR'));
+        check(teardownCount === 2, 'both lifecycle and status preserve fail-closed teardown');
+        check(shown.length === 1, 'same incident only shows one toast');
+        check(shown[0][0].endsWith(' [ASR_QWEN_PROVIDER_ERROR]'), 'lifecycle appends safe reason');
+
+        reset();
+        handleAsrStatus('ASR_ENDPOINTING_FAILED',
+            eventDetails(2, 1, 1, 'asr-failure-status-only', 'ASR_ENDPOINTING_FAILED'));
+        check(teardownCount === 1, 'status-only runtime failure tears down route');
+        check(shown.length === 1, 'status-only runtime failure shows toast');
+        check(shown[0][0].includes('runtime error'), 'status-only fallback uses runtime copy');
+        check(shown[0][0].endsWith(' [ASR_ENDPOINTING_FAILED]'), 'status-only fallback appends reason');
+
+        reset();
+        acceptAsrControlIdentity(eventDetails(9, 9, 9, '', ''));
+        handleAsrStatus('ASR_INDEPENDENT_FAILED',
+            eventDetails(1, 1, 1, 'not-an-asr-incident', 'ASR_QWEN_PROVIDER_ERROR'));
+        check(teardownCount === 0 && shown.length === 0, 'invalid incident cannot bypass stale identity');
+
+        reset();
+        handleAsrStatus('ASR_INDEPENDENT_FAILED', eventDetails(3, 1, 1, '', ''));
+        check(teardownCount === 1 && shown.length === 1, 'legacy terminal status still works');
+        check(shown[0][0].indexOf('[ASR_') === -1, 'legacy copy is unchanged without diagnostics');
+        """
+    )
+    result = run_node_script(
+        shutil.which("node") or pytest.skip("node is required"),
+        script,
+        cwd=str(Path(__file__).resolve().parents[2]),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_new_socket_resets_asr_ordering_only_after_stale_guard() -> None:
+    source = APP_WEBSOCKET_PATH.read_text(encoding="utf-8")
+    onopen_head = source.split("S.socket.onopen = function () {", 1)[1].split(
+        "console.log(window.t('console.websocketConnected'));", 1
+    )[0]
+    guard = "if (S.socket !== _thisSocket) return;"
+    assert onopen_head.index(guard) < onopen_head.index("_latestAsrControlIdentity = null;")
+    assert onopen_head.index(guard) < onopen_head.index("_seenAsrIncidentIds = Object.create(null);")
+    assert onopen_head.index(guard) < onopen_head.index("_seenAsrIncidentOrder = [];")
+    onmessage_head = source.split("S.socket.onmessage = function (event) {", 1)[1].split(
+        "// Binary audio data", 1
+    )[0]
+    assert "if (S.socket !== _thisSocket)" in onmessage_head
+
+    parse_identity = (
+        "function parseAsrControlIdentity(details) {"
+        + _block_after(source, "function parseAsrControlIdentity(details) {")
+        + "}\n"
+    )
+    accept_identity = (
+        "function acceptAsrControlIdentity(details) {"
+        + _block_after(source, "function acceptAsrControlIdentity(details) {")
+        + "}\n"
+    )
+    script = textwrap.dedent(
+        f"""
+        let _latestAsrControlIdentity = {{ sessionEpoch: 8, transportGeneration: 8, lifecycleRevision: 8 }};
+        let _seenAsrIncidentIds = {{ 'asr-failure-old': true }};
+        let _seenAsrIncidentOrder = ['asr-failure-old'];
+        const S = {{ socket: {{ name: 'new' }} }};
+        {parse_identity}
+        {accept_identity}
+        function handleOpen(_thisSocket) {{
+            {onopen_head}
+            return true;
+        }}
+        function check(value, message) {{ if (!value) throw new Error(message); }}
+        const lowIdentity = {{ session_epoch: 1, transport_generation: 1, lifecycle_revision: 1 }};
+        check(handleOpen({{ name: 'old' }}) !== true, 'stale socket is rejected before reset');
+        check(acceptAsrControlIdentity(lowIdentity) === false, 'stale open preserves larger identity');
+        check(handleOpen(S.socket) === true, 'current socket opens');
+        check(_seenAsrIncidentOrder.length === 0, 'incident order reset');
+        check(Object.keys(_seenAsrIncidentIds).length === 0, 'incident set reset');
+        check(acceptAsrControlIdentity(lowIdentity) === true, 'new socket accepts smaller epoch');
+        """
+    )
+    result = run_node_script(
+        shutil.which("node") or pytest.skip("node is required"),
+        script,
+        cwd=str(Path(__file__).resolve().parents[2]),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_asr_cleanup_failure_copy_exists_in_all_locales() -> None:
+    expected = {
+        "en.json": "Voice session cleanup failed. Please restart the microphone.",
+        "es.json": "No se pudo limpiar la sesión de voz. Reinicia el micrófono.",
+        "ja.json": "音声セッションのクリーンアップに失敗しました。マイクを再起動してください。",
+        "ko.json": "음성 세션 정리에 실패했습니다. 마이크를 다시 시작하세요.",
+        "pt.json": "Falha ao limpar a sessão de voz. Reinicie o microfone.",
+        "ru.json": "Не удалось очистить голосовой сеанс. Перезапустите микрофон.",
+        "zh-CN.json": "语音会话清理失败，请重启麦克风。",
+        "zh-TW.json": "語音會話清理失敗，請重新啟動麥克風。",
+    }
+    for locale_name, cleanup_copy in expected.items():
+        locale = json.loads((LOCALES_PATH / locale_name).read_text(encoding="utf-8"))
+        microphone = locale["microphone"]
+        assert microphone["independentAsrCleanupFailed"] == cleanup_copy
+        assert microphone["independentAsrRuntimeFailed"].strip()
 
 
 def test_lease_resync_status_resends_snapshot_only_from_capturing_window():

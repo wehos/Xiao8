@@ -231,7 +231,9 @@ _FORGE_WIRE_ID_PREFIX = "__neko_forge_id_v1__:"
 
 def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]]:
     text = str(item.get("text") or "")
-    raw_hash = str(item.get("hash") or "")
+    hash_value = item.get("hash")
+    # Structured values are malformed hashes, not persistent memory identities.
+    raw_hash = str(hash_value or "") if isinstance(hash_value, (str, int, float, bool)) else ""
     subject_fields = tuple(
         str(item.get(field) or "").strip()
         for field in ("subject_kind", "subject_id", "scope")
@@ -500,7 +502,7 @@ def _select_forge_facts_with_stats(
             "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
             "created_at": item.get("created_at"),
             "event_start_at": item.get("event_start_at"),
-            "hash": str(item.get("hash") or item.get("_forge_hash") or ""),
+            "hash": item["_forge_hash"],
             "recentGuaranteed": bool(item.get("_forge_recent_guaranteed")),
             "distantGuaranteed": bool(item.get("_forge_distant_guaranteed")),
             "sourceCollection": str(item.get("_forge_source_collection") or "facts"),

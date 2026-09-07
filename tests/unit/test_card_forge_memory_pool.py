@@ -552,3 +552,43 @@ async def test_ineligible_memory_does_not_reassign_its_historical_id(query_pool,
     ):
         payload = await query_pool(active, archive, include_absorbed=False, **exclusions)
         assert payload["returnedCount"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive"])
+@pytest.mark.parametrize("hash_kind", ["list", "dict"])
+async def test_structured_hash_without_identity_cannot_unlock_memory_gate(query_pool, collection, hash_kind):
+    real = [memory(f"real-{i}") for i in range(5)]
+    malformed = [{"hash": [i] if hash_kind == "list" else {"key": i}} for i in range(10)]
+    active, archive = (real + malformed, []) if collection == "active" else (real, malformed)
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == 5
+    assert payload["returnedCount"] == 5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive"])
+@pytest.mark.parametrize("bad_hash", [["invalid"], {"invalid": "hash"}])
+@pytest.mark.parametrize("with_id", [False, True])
+async def test_structured_hash_uses_text_fallback_for_identity_and_wire_hash(query_pool, collection, bad_hash, with_id):
+    rows = [memory(f"valid-{i}", hash=bad_hash) for i in range(2)]
+    if not with_id:
+        for row in rows:
+            row.pop("id")
+    active, archive = (rows, []) if collection == "active" else ([], rows)
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == payload["returnedCount"] == 2
+    expected = {row["text"]: hashlib.sha1(row["text"].encode("utf-8")).hexdigest() for row in rows}
+    assert {row["text"]: row["hash"] for row in payload["facts"]} == expected
+    for selected in payload["facts"]:
+        excluded = await query_pool(active, archive, exclude_hashes=selected["hash"])
+        assert excluded["returnedCount"] == 1
+        assert excluded["facts"][0]["text"] != selected["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scalar_hash", ["original-hash", 42, 3.5, True])
+async def test_nonempty_scalar_hash_remains_valid_count_fallback(query_pool, scalar_hash):
+    payload = await query_pool([{"hash": scalar_hash}], [])
+    assert payload["totalMemoryCount"] == 1
+    assert payload["returnedCount"] == 0

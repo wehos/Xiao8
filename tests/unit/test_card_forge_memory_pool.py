@@ -587,8 +587,40 @@ async def test_structured_hash_uses_text_fallback_for_identity_and_wire_hash(que
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scalar_hash", ["original-hash", 42, 3.5, True])
+@pytest.mark.parametrize("scalar_hash", ["original-hash", 42, 3.5, True, 0, 0.0, False])
 async def test_nonempty_scalar_hash_remains_valid_count_fallback(query_pool, scalar_hash):
     payload = await query_pool([{"hash": scalar_hash}], [])
     assert payload["totalMemoryCount"] == 1
     assert payload["returnedCount"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scalar_hash", [0, 0.0, False])
+@pytest.mark.parametrize("collection", ["active", "archive"])
+async def test_falsey_scalar_hash_round_trip_and_text_alias_exclusion(query_pool, scalar_hash, collection):
+    target = {"hash": scalar_hash, "text": "A real memory", "importance": 8}
+    rows = [target, memory("kept")]
+    active, archive = (rows, []) if collection == "active" else ([], rows)
+    initial = await query_pool(active, archive)
+    assert initial["totalMemoryCount"] == initial["returnedCount"] == 2
+    selected = next(row for row in initial["facts"] if row["text"] == target["text"])
+    assert selected["hash"] == str(scalar_hash)
+    for exclusions in (
+        {"exclude_hashes": selected["hash"]},
+        {"exclude_hashes": hashlib.sha1(target["text"].encode("utf-8")).hexdigest()},
+        {"exclude_fact_ids": selected["id"]},
+    ):
+        payload = await query_pool(active, archive, **exclusions)
+        assert payload["totalMemoryCount"] == 2
+        assert [row["id"] for row in payload["facts"]] == ["kept"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scalar_hash", [0, 0.0, False])
+async def test_falsey_scalar_hash_deduplicates_archive_copy(query_pool, scalar_hash):
+    active = memory("active", hash=scalar_hash)
+    archive = memory("archive-copy", hash=scalar_hash, text="Older text for the same hash")
+    payload = await query_pool([active], [archive])
+    assert payload["totalMemoryCount"] == payload["returnedCount"] == 1
+    assert payload["facts"][0]["id"] == active["id"]
+    assert payload["facts"][0]["hash"] == str(scalar_hash)

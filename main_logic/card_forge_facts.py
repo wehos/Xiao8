@@ -233,7 +233,7 @@ def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]
     text = str(item.get("text") or "")
     hash_value = item.get("hash")
     # Structured values are malformed hashes, not persistent memory identities.
-    raw_hash = str(hash_value or "") if isinstance(hash_value, (str, int, float, bool)) else ""
+    raw_hash = str(hash_value) if isinstance(hash_value, (str, int, float, bool)) else ""
     subject_fields = tuple(
         str(item.get(field) or "").strip()
         for field in ("subject_kind", "subject_id", "scope")

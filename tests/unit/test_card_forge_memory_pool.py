@@ -409,3 +409,105 @@ async def test_scoped_text_alias_does_not_collide_with_legacy_private(query_pool
     assert payload["totalMemoryCount"] == payload["returnedCount"] == 2
     assert len({item["id"] for item in payload["facts"]}) == 2
     assert len({item["hash"] for item in payload["facts"]}) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive", "overlap"])
+@pytest.mark.parametrize("with_hash", [False, True])
+async def test_historical_scoped_id_excludes_unambiguous_memory(query_pool, collection, with_hash):
+    subject = {"subject_kind": "group_chat", "subject_id": "qq:group-a", "scope": "group_chat:qq:group-a"}
+    target = memory("target", id="fact_historical", **subject)
+    if not with_hash:
+        target.pop("hash")
+    active = [target] if collection in ("active", "overlap") else []
+    archive = [dict(target)] if collection in ("archive", "overlap") else []
+    archive += [memory("kept")]
+    initial = await query_pool(active, archive)
+    wire_id = next(item["id"] for item in initial["facts"] if item["text"] == target["text"])
+    assert wire_id != "fact_historical"
+    for excluded_id in ("fact_historical", wire_id):
+        payload = await query_pool(active, archive, exclude_fact_ids=excluded_id)
+        assert payload["totalMemoryCount"] == 2
+        assert [item["id"] for item in payload["facts"]] == ["kept"]
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_historical_id_requires_hash_or_unique_wire_id(query_pool):
+    first = memory("first", id="fact_shared", subject_kind="group_chat", subject_id="qq:a", scope="group_chat:qq:a")
+    second = memory("second", id="fact_shared", subject_kind="group_chat", subject_id="qq:b", scope="group_chat:qq:b")
+    ambiguous = await query_pool([first], [second], exclude_fact_ids="fact_shared")
+    assert ambiguous["returnedCount"] == 2
+    selected = next(item for item in ambiguous["facts"] if item["text"] == first["text"])
+    for exclusions in (
+        {"exclude_fact_ids": "fact_shared", "exclude_hashes": first["hash"]},
+        {"exclude_fact_ids": selected["id"]},
+    ):
+        payload = await query_pool([first], [second], **exclusions)
+        assert [item["text"] for item in payload["facts"]] == [second["text"]]
+
+
+@pytest.mark.asyncio
+async def test_scoped_legacy_alias_does_not_shadow_current_private_id(query_pool):
+    private = memory("private", id="fact_shared")
+    scoped = memory("scoped", id="fact_shared", subject_kind="participant", subject_id="qq:user", scope="participant:qq:user")
+    payload = await query_pool([private], [scoped], exclude_fact_ids="fact_shared")
+    assert [item["text"] for item in payload["facts"]] == [scoped["text"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("identity_mode", ["numeric", "hash_only", "text_only"])
+async def test_historical_opaque_id_remains_usable_after_scoping(query_pool, identity_mode):
+    target = memory("target", id=1)
+    if identity_mode != "numeric":
+        target.pop("id")
+    if identity_mode == "text_only":
+        target.pop("hash")
+    historical = await query_pool([target], [])
+    old_id = historical["facts"][0]["id"]
+    scoped = dict(target, subject_kind="participant", subject_id="qq:user", scope="participant:qq:user")
+    current = await query_pool([], [scoped])
+    assert current["facts"][0]["id"] != old_id
+    excluded = await query_pool([], [scoped], exclude_fact_ids=old_id)
+    assert excluded["totalMemoryCount"] == 1
+    assert excluded["returnedCount"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("remote_count", [2, 5, 15])
+async def test_remote_facts_do_not_mix_local_archive(query_pool, monkeypatch, remote_count):
+    remote = [memory(f"remote-{i}") for i in range(remote_count)]
+
+    async def fetch(_url):
+        return remote
+
+    def unexpected_local_read(_path):
+        pytest.fail("Remote facts must not load the local memory pool")
+
+    monkeypatch.setenv("NEKO_FORGE_FACTS_URL", "https://example.invalid/facts/{character}")
+    monkeypatch.setattr(F, "_fetch_facts_from_url", fetch)
+    monkeypatch.setattr(F, "_load_facts_json", unexpected_local_read)
+    payload = await query_pool(
+        [memory("local-active")],
+        [memory(f"local-archive-{i}") for i in range(20)],
+    )
+    assert payload["totalMemoryCount"] == remote_count
+    assert len(payload["facts"]) == min(5, remote_count)
+    assert all(row["id"].startswith("remote-") for row in payload["facts"])
+    assert payload["archiveRawCount"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("remote", [None, []])
+async def test_remote_fallback_uses_complete_local_pool(query_pool, monkeypatch, remote):
+    async def fetch(_url):
+        return remote
+
+    monkeypatch.setenv("NEKO_FORGE_FACTS_URL", "https://example.invalid/facts/{character}")
+    monkeypatch.setattr(F, "_fetch_facts_from_url", fetch)
+    payload = await query_pool(
+        [memory("local-active")],
+        [memory(f"local-archive-{i}") for i in range(14)],
+    )
+    assert payload["totalMemoryCount"] == 15
+    assert len(payload["facts"]) == 5
+    assert payload["archiveRawCount"] == 14

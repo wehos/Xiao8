@@ -284,6 +284,35 @@ def _fact_wire_id(fact_key: _FactKey) -> str:
     return _FORGE_WIRE_ID_PREFIX + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _legacy_excluded_fact_keys(
+    raw: list[dict[str, Any]],
+    raw_archive: list[dict[str, Any]],
+    exclude_ids: set[str],
+) -> set[_FactKey]:
+    """Resolve pre-scope wire IDs only when the entire memory pool is unambiguous."""
+    if not exclude_ids:
+        return set()
+    matches: dict[str, set[_FactKey]] = {}
+    for collection in (raw, raw_archive):
+        for item in collection:
+            if not isinstance(item, dict):
+                continue
+            fact_key, _, _ = _fact_identity(item)
+            if fact_key is None:
+                continue
+            legacy_key = fact_key
+            if len(fact_key) > 2:
+                legacy_key, _, _ = _fact_identity({
+                    **item, "subject_kind": None, "subject_id": None, "scope": None,
+                })
+            if legacy_key is None:
+                continue
+            legacy_id = _fact_wire_id(legacy_key)
+            if legacy_id in exclude_ids:
+                matches.setdefault(legacy_id, set()).add(fact_key)
+    return {next(iter(keys)) for keys in matches.values() if len(keys) == 1}
+
+
 def _memory_identity_stats(
     raw: list[dict[str, Any]], raw_archive: list[dict[str, Any]],
 ) -> tuple[int, set[_FactKey], set[str]]:
@@ -633,6 +662,7 @@ async def build_forge_facts_payload(
         return _empty_payload(character, limit)
     runtime_hint_used = bool(runtime_hint and runtime_hint == resolved_character)
 
+    remote_facts_used = False
     url_template = os.environ.get("NEKO_FORGE_FACTS_URL", "").strip()
     if url_template:
         try:
@@ -642,6 +672,7 @@ async def build_forge_facts_payload(
         fetched = await _fetch_facts_from_url(url)
         if fetched is not None:
             raw = fetched
+            remote_facts_used = bool(fetched)
 
     if not raw:
         path = context.facts_path if context else None
@@ -657,13 +688,17 @@ async def build_forge_facts_payload(
         if context and context.facts_path
         else None
     )
-    if archive_path is not None:
+    # Local archives only belong to the local fallback, never to a remote pool.
+    if archive_path is not None and not remote_facts_used:
         raw_archive = await asyncio.to_thread(_load_facts_json, archive_path)
 
     excluded_ids = _parse_csv_set(exclude_fact_ids)
     excluded_hashes = _parse_csv_set(exclude_hashes)
     total_memory_count, active_ids, active_hashes = await asyncio.to_thread(
         _memory_identity_stats, raw, raw_archive,
+    )
+    legacy_excluded_keys = await asyncio.to_thread(
+        _legacy_excluded_fact_keys, raw, raw_archive, excluded_ids,
     )
     facts, stats = await asyncio.to_thread(
         _select_forge_facts_with_stats,
@@ -673,6 +708,7 @@ async def build_forge_facts_payload(
         limit=limit,
         exclude_ids=excluded_ids,
         exclude_hashes=excluded_hashes,
+        exclude_keys=legacy_excluded_keys,
     )
     archive_facts: list[dict[str, Any]] = []
     archive_stats = {
@@ -690,7 +726,7 @@ async def build_forge_facts_payload(
             min_importance=min_importance,
             include_absorbed=include_absorbed,
             exclude_ids=excluded_ids,
-            exclude_keys=active_ids,
+            exclude_keys=active_ids | legacy_excluded_keys,
             exclude_hashes=excluded_hashes | active_hashes,
             fill_count=max(0, limit - len(facts)),
         )

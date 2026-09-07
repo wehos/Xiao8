@@ -225,6 +225,43 @@ def _weighted_pick(items: list[dict[str, Any]], count: int) -> list[dict[str, An
     return picked
 
 
+def _fact_identity(item: dict[str, Any]) -> tuple[str, str]:
+    text = str(item.get("text") or "")
+    raw_hash = str(item.get("hash") or "")
+    text_hash = hashlib.sha1(text.encode("utf-8")).hexdigest() if text else ""
+    fact_id = str(item.get("id") or "")
+    fact_key = fact_id or (f"hash:{raw_hash}" if raw_hash else f"text:{text_hash}" if text_hash else "")
+    return fact_key, raw_hash or text_hash
+
+
+def _memory_identity_stats(
+    raw: list[dict[str, Any]], raw_archive: list[dict[str, Any]],
+) -> tuple[int, set[str], set[str]]:
+    """Count accumulated memories before eligibility filters; active rows win overlaps."""
+    ids: set[str] = set()
+    hashes: set[str] = set()
+    active_ids: set[str] = set()
+    active_hashes: set[str] = set()
+    count = 0
+    for collection, is_active in ((raw, True), (raw_archive, False)):
+        for item in collection:
+            if not isinstance(item, dict):
+                continue
+            fact_id, fact_hash = _fact_identity(item)
+            if not fact_id:
+                continue
+            if fact_id not in ids and (not fact_hash or fact_hash not in hashes):
+                count += 1
+            ids.add(fact_id)
+            if fact_hash:
+                hashes.add(fact_hash)
+            if is_active:
+                active_ids.add(fact_id)
+                if fact_hash:
+                    active_hashes.add(fact_hash)
+    return count, active_ids, active_hashes
+
+
 def _select_forge_facts_with_stats(
     raw: list[dict[str, Any]],
     *,
@@ -244,22 +281,11 @@ def _select_forge_facts_with_stats(
     for item in raw:
         if not isinstance(item, dict):
             continue
-        fact_id = item.get("id")
-        text = str(item.get("text") or "")
-        raw_hash = str(item.get("hash") or "")
-        if fact_id:
-            fact_key = str(fact_id)
-        else:
+        fact_key, hash_key = _fact_identity(item)
+        if not item.get("id"):
             missing_id_count += 1
-            if raw_hash:
-                fact_key = f"hash:{raw_hash}"
-            elif text:
-                fact_key = f"text:{hashlib.sha1(text.encode('utf-8')).hexdigest()}"
-            else:
-                continue
-        hash_key = raw_hash or (
-            hashlib.sha1(text.encode("utf-8")).hexdigest() if text else ""
-        )
+        if not fact_key or not str(item.get("text") or "").strip():
+            continue
         if fact_key in exclude_ids or (hash_key and hash_key in exclude_hashes):
             excluded_count += 1
             continue
@@ -411,16 +437,17 @@ def _select_forge_facts_with_stats(
     }
 
 
-def _select_archive_distant_fact(
+def _select_archive_facts(
     raw_archive: list[dict[str, Any]],
     *,
     min_importance: int,
     include_absorbed: bool,
     exclude_ids: set[str],
     exclude_hashes: set[str],
-) -> tuple[dict[str, Any] | None, dict[str, int]]:
+    fill_count: int = 0,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     if not raw_archive:
-        return None, {"archiveRawCount": 0, "archiveFilteredCount": 0}
+        return [], {"archiveRawCount": 0, "archiveFilteredCount": 0}
     archive_raw_count = len([
         item for item in raw_archive if isinstance(item, dict)
     ])
@@ -443,8 +470,6 @@ def _select_archive_distant_fact(
         "archiveRawCount": archive_raw_count,
         "archiveFilteredCount": stats.get("filteredCount", 0),
     }
-    if not dated:
-        return None, archive_stats
     dated.sort(
         key=lambda item: (
             _fact_memory_datetime(item) or datetime.max.replace(tzinfo=timezone.utc),
@@ -452,15 +477,26 @@ def _select_archive_distant_fact(
         )
     )
     oldest_size = max(1, min(len(dated), max(1, len(dated) // 4)))
-    picked = _weighted_pick(dated[:oldest_size], 1)
-    if not picked:
-        return None, archive_stats
-    return {
-        **picked[0],
-        "distantGuaranteed": True,
-        "recentGuaranteed": False,
-        "sourceCollection": "facts_archive",
-    }, archive_stats
+    distant = _weighted_pick(dated[:oldest_size], 1)
+    used_ids = {item["id"] for item in distant}
+    used_hashes = {item["hash"] for item in distant if item["hash"]}
+    remaining = [
+        item for item in candidates
+        if item["id"] not in used_ids and item["hash"] not in used_hashes
+    ]
+    # Keep the distant slot last, then fill any active-memory shortfall from
+    # all other eligible archive memories, including entries without dates.
+    fillers = _weighted_pick(remaining, max(0, fill_count - len(distant)))
+    return [
+        {
+            **item,
+            "distantGuaranteed": is_distant,
+            "recentGuaranteed": False,
+            "sourceCollection": "facts_archive",
+        }
+        for items, is_distant in ((fillers, False), (distant, True))
+        for item in items
+    ], archive_stats
 
 
 def _parse_csv_set(value: str | None) -> set[str]:
@@ -481,6 +517,7 @@ def _empty_payload(character: str | None, limit: int) -> dict[str, Any]:
         "fallbackReason": "runtime_character_hint_missing",
         "error": "active_neko_runtime_not_linked",
         "rawCount": 0,
+        "totalMemoryCount": 0,
         "filteredCount": 0,
         "dedupedCount": 0,
         "excludedCount": 0,
@@ -571,6 +608,9 @@ async def build_forge_facts_payload(
 
     excluded_ids = _parse_csv_set(exclude_fact_ids)
     excluded_hashes = _parse_csv_set(exclude_hashes)
+    total_memory_count, active_ids, active_hashes = await asyncio.to_thread(
+        _memory_identity_stats, raw, raw_archive,
+    )
     facts, stats = await asyncio.to_thread(
         _select_forge_facts_with_stats,
         raw,
@@ -580,7 +620,7 @@ async def build_forge_facts_payload(
         exclude_ids=excluded_ids,
         exclude_hashes=excluded_hashes,
     )
-    archive_fact: dict[str, Any] | None = None
+    archive_facts: list[dict[str, Any]] = []
     archive_stats = {
         "archiveRawCount": len([item for item in raw_archive if isinstance(item, dict)]),
         "archiveFilteredCount": 0,
@@ -590,27 +630,17 @@ async def build_forge_facts_payload(
         # 提交（先 facts_archive.json 再 facts.json）被打断时同一行会同时留在
         # 两个文件里，最长到下一次成功归档才收敛。只按抽中的几条排除的话，
         # 那种行只要这轮没被抽中，就会作为"久远记忆"发出去，而它其实还活着。
-        active_source = [item for item in raw if isinstance(item, dict)]
-        active_ids = {
-            str(item.get("id") or "") for item in active_source if item.get("id")
-        }
-        active_hashes = {
-            str(item.get("hash") or "") for item in active_source if item.get("hash")
-        }
-        archive_fact, archive_stats = await asyncio.to_thread(
-            _select_archive_distant_fact,
+        archive_facts, archive_stats = await asyncio.to_thread(
+            _select_archive_facts,
             raw_archive,
             min_importance=min_importance,
             include_absorbed=include_absorbed,
             exclude_ids=excluded_ids | active_ids,
             exclude_hashes=excluded_hashes | active_hashes,
+            fill_count=max(0, limit - len(facts)),
         )
-        if archive_fact:
-            facts = (
-                [*facts[: limit - 1], archive_fact]
-                if len(facts) >= limit
-                else [*facts, archive_fact][:limit]
-            )
+        if archive_facts:
+            facts = [*facts[: limit - len(archive_facts)], *archive_facts]
             recent_count = sum(bool(item.get("recentGuaranteed")) for item in facts)
             distant_count = sum(bool(item.get("distantGuaranteed")) for item in facts)
             stats["recentGuaranteedCount"] = recent_count
@@ -620,7 +650,11 @@ async def build_forge_facts_payload(
             )
 
     fallback_reason = ""
-    if error and not facts:
+    if len(facts) >= limit:
+        pass
+    elif facts:
+        fallback_reason = "insufficient_facts"
+    elif error:
         fallback_reason = error
     elif not raw:
         fallback_reason = "facts_file_empty_or_missing"
@@ -628,8 +662,6 @@ async def build_forge_facts_payload(
         fallback_reason = "all_available_facts_excluded"
     elif stats.get("filteredCount", 0) == 0:
         fallback_reason = "no_facts_after_filter"
-    elif len(facts) < limit:
-        fallback_reason = "insufficient_facts"
 
     payload: dict[str, Any] = {
         "character": resolved_character,
@@ -640,7 +672,8 @@ async def build_forge_facts_payload(
         "requestedLimit": limit,
         "returnedCount": len(facts),
         "fallbackReason": fallback_reason,
-        "archiveDistantCount": 1 if archive_fact else 0,
+        "archiveDistantCount": sum(bool(item["distantGuaranteed"]) for item in archive_facts),
+        "totalMemoryCount": total_memory_count,
         **archive_stats,
         **stats,
     }

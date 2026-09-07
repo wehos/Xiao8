@@ -1,5 +1,6 @@
 """Combined local-memory totals and five-choice archive supplementation."""
 
+import hashlib
 import json
 from datetime import datetime, timezone
 
@@ -140,3 +141,80 @@ async def test_full_active_pool_keeps_recent_and_archive_distant_slots(query_poo
     assert payload["recentGuaranteedCount"] == 2
     assert payload["weightedRandomCount"] == 2
     assert payload["archiveDistantCount"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active_private", [False, True])
+async def test_same_text_with_distinct_ids_and_hashes_is_one_memory(query_pool, active_private):
+    active = [memory("active", text="Shared memory", private=active_private)]
+    archive = [memory("archive-copy", text="Shared memory")]
+    archive += [memory(f"unique-{i}") for i in range(3)]
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == 4
+    assert payload["returnedCount"] == (3 if active_private else 4)
+    assert "archive-copy" not in {item["id"] for item in payload["facts"]}
+    assert payload["fallbackReason"] == "insufficient_facts"
+    if not active_private:
+        selected = next(item for item in payload["facts"] if item["id"] == "active")
+        assert selected["hash"] == "hash-active"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive"])
+async def test_same_text_with_distinct_raw_hashes_deduplicates_candidates(query_pool, collection):
+    rows = [memory("first", text="Shared memory"), memory("second", text="Shared memory")]
+    rows += [memory(f"unique-{i}") for i in range(3)]
+    payload = await query_pool(rows if collection == "active" else [], rows if collection == "archive" else [])
+    assert payload["totalMemoryCount"] == 4
+    assert payload["returnedCount"] == 4
+    assert len({item["text"] for item in payload["facts"]}) == 4
+    assert payload["fallbackReason"] == "insufficient_facts"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive"])
+@pytest.mark.parametrize("exclude_by", ["raw_hash", "text_hash"])
+async def test_hash_alias_exclusion_preserves_original_response_hash(query_pool, collection, exclude_by):
+    target = memory("target")
+    rows = [target, memory("kept")]
+    excluded = target["hash"] if exclude_by == "raw_hash" else hashlib.sha1(target["text"].encode("utf-8")).hexdigest()
+    payload = await query_pool(
+        rows if collection == "active" else [], rows if collection == "archive" else [],
+        exclude_hashes=excluded,
+    )
+    assert payload["totalMemoryCount"] == 2
+    assert [(item["id"], item["hash"]) for item in payload["facts"]] == [("kept", "hash-kept")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_id,second_id", [(1, "1"), (True, "True"), (1, 1.0), (0, False)])
+async def test_total_preserves_legacy_scalar_id_types(query_pool, first_id, second_id):
+    active = [memory("first", id=first_id)]
+    archive = [memory("second", id=second_id)]
+    archive += [memory(f"unique-{i}") for i in range(13)]
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == 15
+
+
+def test_total_deduplicates_repeated_legacy_id_and_counts_falsey_ids():
+    active = [{"id": 0}, {"id": False}, {"id": 0.0}]
+    archive = [{"id": 0}, {"id": "0"}, {"id": False}]
+    count, _, _ = F._memory_identity_stats(active, archive)
+    assert count == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active_count", [0, 1, 5])
+async def test_subject_archived_memories_require_explicit_restoration(query_pool, active_count):
+    active = [memory(f"active-{i}") for i in range(active_count)]
+    archive = [memory(f"subject-{i}", subject_archived_at="2026-08-01T00:00:00Z") for i in range(5)]
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == active_count + 5
+    assert payload["returnedCount"] == active_count
+    assert payload["archiveFilteredCount"] == 0
+    assert not any(item["sourceCollection"] == "facts_archive" for item in payload["facts"])
+    for item in archive:
+        item.pop("subject_archived_at")
+    restored = await query_pool(active, archive)
+    assert restored["returnedCount"] == 5
+    assert any(item["sourceCollection"] == "facts_archive" for item in restored["facts"])

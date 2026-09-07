@@ -225,22 +225,32 @@ def _weighted_pick(items: list[dict[str, Any]], count: int) -> list[dict[str, An
     return picked
 
 
-def _fact_identity(item: dict[str, Any]) -> tuple[str, str, set[str]]:
+_FactKey = tuple[str, str]
+
+
+def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]]:
     text = str(item.get("text") or "")
     raw_hash = str(item.get("hash") or "")
     text_hash = hashlib.sha1(text.encode("utf-8")).hexdigest() if text else ""
-    fact_id = str(item.get("id") or "")
-    fact_key = fact_id or (f"hash:{raw_hash}" if raw_hash else f"text:{text_hash}" if text_hash else "")
+    raw_id = item.get("id")
+    if isinstance(raw_id, (str, int, float, bool)) and raw_id != "":
+        fact_key: _FactKey | None = (f"id:{type(raw_id).__name__}", str(raw_id))
+    elif raw_hash:
+        fact_key = ("hash", raw_hash)
+    elif text_hash:
+        fact_key = ("text", text_hash)
+    else:
+        fact_key = None
     return fact_key, raw_hash or text_hash, {value for value in (raw_hash, text_hash) if value}
 
 
 def _memory_identity_stats(
     raw: list[dict[str, Any]], raw_archive: list[dict[str, Any]],
-) -> tuple[int, set[str], set[str]]:
+) -> tuple[int, set[_FactKey], set[str]]:
     """Count accumulated memories before eligibility filters; active rows win overlaps."""
-    ids: set[tuple[str, Any]] = set()
+    ids: set[_FactKey] = set()
     hashes: set[str] = set()
-    active_ids: set[str] = set()
+    active_ids: set[_FactKey] = set()
     active_hashes: set[str] = set()
     count = 0
     for collection, is_active in ((raw, True), (raw_archive, False)):
@@ -248,15 +258,11 @@ def _memory_identity_stats(
             if not isinstance(item, dict):
                 continue
             fact_id, _, fact_hashes = _fact_identity(item)
-            raw_id = item.get("id")
-            has_scalar_id = isinstance(raw_id, (str, int, float, bool)) and raw_id != ""
-            if not fact_id and not has_scalar_id:
+            if fact_id is None:
                 continue
-            # Count legacy scalar IDs by type without changing their wire format.
-            count_id = (type(raw_id).__name__, raw_id) if has_scalar_id else ("fallback", fact_id)
-            if count_id not in ids and not fact_hashes.intersection(hashes):
+            if fact_id not in ids and not fact_hashes.intersection(hashes):
                 count += 1
-            ids.add(count_id)
+            ids.add(fact_id)
             hashes.update(fact_hashes)
             if is_active:
                 active_ids.add(fact_id)
@@ -272,9 +278,11 @@ def _select_forge_facts_with_stats(
     limit: int = 5,
     exclude_ids: set[str] | None = None,
     exclude_hashes: set[str] | None = None,
+    exclude_keys: set[_FactKey] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     exclude_ids = exclude_ids or set()
     exclude_hashes = exclude_hashes or set()
+    exclude_keys = exclude_keys or set()
     filtered: list[dict[str, Any]] = []
     missing_id_count = 0
     excluded_count = 0
@@ -284,11 +292,13 @@ def _select_forge_facts_with_stats(
         if not isinstance(item, dict):
             continue
         fact_key, hash_key, hash_aliases = _fact_identity(item)
-        if not item.get("id"):
+        has_scalar_id = fact_key is not None and fact_key[0].startswith("id:")
+        if not has_scalar_id:
             missing_id_count += 1
-        if not fact_key or not str(item.get("text") or "").strip():
+        if fact_key is None or not str(item.get("text") or "").strip():
             continue
-        if fact_key in exclude_ids or hash_aliases.intersection(exclude_hashes):
+        wire_id = fact_key[1] if has_scalar_id else ":".join(fact_key)
+        if wire_id in exclude_ids or fact_key in exclude_keys or hash_aliases.intersection(exclude_hashes):
             excluded_count += 1
             continue
         if item.get("private") is True or item.get("redacted") is True:
@@ -302,17 +312,17 @@ def _select_forge_facts_with_stats(
             low_importance_count += 1
             continue
         filtered.append({
-            **item, "_forge_fid": fact_key, "_forge_hash": hash_key,
+            **item, "_forge_fid": fact_key, "_forge_wire_id": wire_id, "_forge_hash": hash_key,
             "_forge_hash_aliases": hash_aliases,
         })
 
     random.shuffle(filtered)
     deduped: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
-    seen_ids: set[str] = set()
+    seen_ids: set[_FactKey] = set()
     duplicate_count = 0
     for item in filtered:
-        fact_key = str(item.get("_forge_fid") or item.get("id", ""))
+        fact_key = item["_forge_fid"]
         hash_aliases = item["_forge_hash_aliases"]
         if fact_key in seen_ids or hash_aliases.intersection(seen_hashes):
             duplicate_count += 1
@@ -322,8 +332,8 @@ def _select_forge_facts_with_stats(
         seen_hashes.update(hash_aliases)
         deduped.append(item)
 
-    def item_key(item: dict[str, Any]) -> str:
-        return str(item.get("_forge_fid") or item.get("id", ""))
+    def item_key(item: dict[str, Any]) -> _FactKey:
+        return item["_forge_fid"]
 
     recent_count = 0
     distant_count = 0
@@ -412,7 +422,7 @@ def _select_forge_facts_with_stats(
 
     facts = [
         {
-            "id": str(item.get("id") or item.get("_forge_fid") or ""),
+            "id": item["_forge_wire_id"],
             "text": str(item.get("text", "")),
             "importance": _safe_importance(item.get("importance")),
             "entity": str(item.get("entity", "")),
@@ -449,6 +459,7 @@ def _select_archive_facts(
     exclude_ids: set[str],
     exclude_hashes: set[str],
     fill_count: int = 0,
+    exclude_keys: set[_FactKey] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     if not raw_archive:
         return [], {"archiveRawCount": 0, "archiveFilteredCount": 0}
@@ -469,6 +480,7 @@ def _select_archive_facts(
         limit=len(raw_archive) + 1,
         exclude_ids=exclude_ids,
         exclude_hashes=exclude_hashes,
+        exclude_keys=exclude_keys,
     )
     dated = [item for item in candidates if _fact_memory_datetime(item) is not None]
     archive_stats = {
@@ -483,12 +495,9 @@ def _select_archive_facts(
     )
     oldest_size = max(1, min(len(dated), max(1, len(dated) // 4)))
     distant = _weighted_pick(dated[:oldest_size], 1)
-    used_ids = {item["id"] for item in distant}
-    used_hashes = {item["hash"] for item in distant if item["hash"]}
-    remaining = [
-        item for item in candidates
-        if item["id"] not in used_ids and item["hash"] not in used_hashes
-    ]
+    # Candidates are already deduplicated by typed identity and hash aliases.
+    # Remove the selected object, since distinct scalar IDs can serialize alike.
+    remaining = [item for item in candidates if not distant or item is not distant[0]]
     # Keep the distant slot last, then fill any active-memory shortfall from
     # all other eligible archive memories, including entries without dates.
     fillers = _weighted_pick(remaining, max(0, fill_count - len(distant)))
@@ -640,7 +649,8 @@ async def build_forge_facts_payload(
             raw_archive,
             min_importance=min_importance,
             include_absorbed=include_absorbed,
-            exclude_ids=excluded_ids | active_ids,
+            exclude_ids=excluded_ids,
+            exclude_keys=active_ids,
             exclude_hashes=excluded_hashes | active_hashes,
             fill_count=max(0, limit - len(facts)),
         )

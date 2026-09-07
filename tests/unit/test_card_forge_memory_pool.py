@@ -218,3 +218,68 @@ async def test_subject_archived_memories_require_explicit_restoration(query_pool
     restored = await query_pool(active, archive)
     assert restored["returnedCount"] == 5
     assert any(item["sourceCollection"] == "facts_archive" for item in restored["facts"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fact_id", [0, False, 0.0])
+async def test_falsey_id_excludes_changed_archive_copy(query_pool, fact_id):
+    payload = await query_pool(
+        [memory("active", id=fact_id)], [memory("archive-copy", id=fact_id)],
+    )
+    assert payload["totalMemoryCount"] == 1
+    assert [(item["id"], item["text"]) for item in payload["facts"]] == [(str(fact_id), "Memory active")]
+    assert payload["missingIdCount"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive", "mixed"])
+@pytest.mark.parametrize("ids", [[0, False, 0.0, "0", "False"], [1, "1", 1.0, True, "True"]])
+async def test_candidate_identity_keeps_scalar_types_and_wire_ids(query_pool, collection, ids):
+    rows = [memory(f"row-{i}", id=fact_id) for i, fact_id in enumerate(ids)]
+    active, archive = (rows, []) if collection == "active" else ([], rows) if collection == "archive" else (rows[:2], rows[2:])
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == 5
+    assert payload["returnedCount"] == 5
+    assert {(item["id"], item["text"]) for item in payload["facts"]} == {
+        (str(fact_id), f"Memory row-{i}") for i, fact_id in enumerate(ids)
+    }
+    assert payload["fallbackReason"] == ""
+    assert payload["missingIdCount"] == 0
+    assert all(not any(key.startswith("_forge_") for key in item) for item in payload["facts"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive"])
+@pytest.mark.parametrize("fact_id", [0, False, 0.0, "id:int:0"])
+async def test_wire_id_exclusion_remains_compatible(query_pool, collection, fact_id):
+    rows = [memory("target", id=fact_id), memory("kept")]
+    payload = await query_pool(
+        rows if collection == "active" else [], rows if collection == "archive" else [],
+        exclude_fact_ids=str(fact_id),
+    )
+    assert [item["id"] for item in payload["facts"]] == ["kept"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive", "mixed"])
+async def test_fallback_id_namespace_does_not_collide_with_literal_ids(query_pool, collection):
+    rows = [memory("fallback", id=None, hash="a"), memory("literal", id="hash:a")]
+    active, archive = (rows, []) if collection == "active" else ([], rows) if collection == "archive" else (rows[:1], rows[1:])
+    payload = await query_pool(active, archive)
+    assert payload["totalMemoryCount"] == 2
+    assert payload["returnedCount"] == 2
+    assert {item["text"] for item in payload["facts"]} == {"Memory fallback", "Memory literal"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", [("id",), ("hash",), ("id", "hash")])
+async def test_archive_fill_normalizes_missing_identity_fields(query_pool, missing):
+    archive = [memory(f"row-{i}") for i in range(5)]
+    for item in archive:
+        for key in missing:
+            item.pop(key)
+    payload = await query_pool([], archive)
+    assert payload["totalMemoryCount"] == 5
+    assert payload["returnedCount"] == 5
+    assert payload["fallbackReason"] == ""
+    assert all(item["id"] and item["hash"] for item in payload["facts"])

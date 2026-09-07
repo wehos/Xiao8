@@ -292,6 +292,8 @@ def _legacy_excluded_fact_keys(
     """Resolve pre-scope wire IDs only when the entire memory pool is unambiguous."""
     if not exclude_ids:
         return set()
+    # Eligibility can change after forging. Ignoring a now-private/archived row
+    # would reassign its historical ID to another subject with the same raw ID.
     matches: dict[str, set[_FactKey]] = {}
     for collection in (raw, raw_archive):
         for item in collection:

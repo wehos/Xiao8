@@ -511,3 +511,44 @@ async def test_remote_fallback_uses_complete_local_pool(query_pool, monkeypatch,
     assert payload["totalMemoryCount"] == 15
     assert len(payload["facts"]) == 5
     assert payload["archiveRawCount"] == 14
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "collection,hidden_changes",
+    [(collection, changes) for collection in ("active", "archive") for changes in (
+        {"private": True}, {"redacted": True}, {"importance": -1},
+        {"text": ""}, {"absorbed": True},
+    )] + [("archive", changes) for changes in (
+        {"subject_archived_at": "2026-09-01T00:00:00Z"},
+        {"arbitration_archived_at": "2026-09-01T00:00:00Z"},
+        {"arbitration_reason": "superseded"},
+    )],
+)
+async def test_ineligible_memory_does_not_reassign_its_historical_id(query_pool, collection, hidden_changes):
+    # A previously forged row can become ineligible without changing its identity.
+    hidden = memory("forged", id="fact_shared", subject_kind="participant", subject_id="a", scope="participant:a")
+    visible = memory("unforged", id="fact_shared", subject_kind="participant", subject_id="b", scope="participant:b")
+    original = await query_pool([hidden, visible], [])
+    visible_id = next(row["id"] for row in original["facts"] if row["hash"] == visible["hash"])
+    hidden.update(hidden_changes)
+    active, archive = ([hidden], [visible]) if collection == "active" else ([visible], [hidden])
+
+    # The old ID alone cannot identify which subject was forged. Supplying the
+    # hidden row's stored hash must not accidentally exclude the other subject.
+    for exclusions in (
+        {"exclude_fact_ids": "fact_shared"},
+        {"exclude_fact_ids": "fact_shared", "exclude_hashes": hidden["hash"]},
+    ):
+        payload = await query_pool(active, archive, include_absorbed=False, **exclusions)
+        assert [row["id"] for row in payload["facts"]] == [visible_id]
+        assert payload["totalMemoryCount"] == 2
+
+    # If the visible row was forged instead, the community's stored hash or its
+    # current scoped ID still excludes it despite the ineligible namesake.
+    for exclusions in (
+        {"exclude_fact_ids": "fact_shared", "exclude_hashes": visible["hash"]},
+        {"exclude_fact_ids": visible_id},
+    ):
+        payload = await query_pool(active, archive, include_absorbed=False, **exclusions)
+        assert payload["returnedCount"] == 0

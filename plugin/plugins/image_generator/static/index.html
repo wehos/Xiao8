@@ -1,0 +1,2683 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'"
+  >
+  <title>图像生成器</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f7f5ff;
+      --page-accent: #fff5f9;
+      --panel: rgba(255, 255, 255, 0.92);
+      --panel-solid: #fff;
+      --text: #26233a;
+      --muted: #6f6b82;
+      --line: #e6e0f2;
+      --line-strong: #d9cfea;
+      --primary: #7756d8;
+      --primary-strong: #6240c8;
+      --primary-soft: #eee9ff;
+      --accent: #de6694;
+      --success: #268467;
+      --success-soft: #e5f6ef;
+      --warning: #a86616;
+      --warning-soft: #fff4dc;
+      --danger: #bd3f58;
+      --danger-soft: #ffebef;
+      --shadow: 0 18px 48px rgba(68, 47, 112, 0.10);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 11px;
+      --focus: 0 0 0 3px rgba(119, 86, 216, 0.22);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page: #171421;
+        --page-accent: #201520;
+        --panel: rgba(37, 32, 50, 0.94);
+        --panel-solid: #252032;
+        --text: #f4f0fb;
+        --muted: #bbb3ca;
+        --line: #40384f;
+        --line-strong: #51455f;
+        --primary: #ad95ff;
+        --primary-strong: #c1afff;
+        --primary-soft: #3a305c;
+        --accent: #f18caf;
+        --success: #6ed1ad;
+        --success-soft: #193d34;
+        --warning: #efba68;
+        --warning-soft: #493719;
+        --danger: #ff9aab;
+        --danger-soft: #4b2430;
+        --shadow: 0 20px 56px rgba(0, 0, 0, 0.28);
+        --focus: 0 0 0 3px rgba(173, 149, 255, 0.28);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 280px;
+      background: var(--page);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(169, 139, 245, 0.20), transparent 32rem),
+        radial-gradient(circle at 96% 8%, rgba(242, 155, 188, 0.17), transparent 28rem),
+        linear-gradient(145deg, var(--page), var(--page-accent));
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      content: "";
+      pointer-events: none;
+      opacity: 0.28;
+      background-image:
+        linear-gradient(rgba(119, 86, 216, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(119, 86, 216, 0.055) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, #000, transparent 78%);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    a,
+    input,
+    select,
+    textarea {
+      outline: none;
+    }
+
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      box-shadow: var(--focus);
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 20;
+      padding: 9px 13px;
+      color: #fff;
+      background: var(--primary-strong);
+      border-radius: 9px;
+      transform: translateY(-160%);
+      transition: transform 0.16s ease;
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 34px 0 56px;
+    }
+
+    .hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 15px;
+    }
+
+    .brand-mark {
+      display: grid;
+      flex: 0 0 auto;
+      width: 54px;
+      height: 54px;
+      place-items: center;
+      color: #fff;
+      font-size: 27px;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 18px;
+      background: linear-gradient(145deg, #8d70e8, #cf6f9f);
+      box-shadow: 0 12px 30px rgba(107, 75, 190, 0.25);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 5px;
+      font-size: clamp(1.55rem, 3vw, 2.05rem);
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+
+    .hero-copy p {
+      max-width: 680px;
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .connection-badge,
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 6px 11px;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+    }
+
+    .connection-badge::before,
+    .status-pill::before {
+      width: 8px;
+      height: 8px;
+      content: "";
+      border-radius: 50%;
+      background: #8e8799;
+      box-shadow: 0 0 0 4px rgba(142, 135, 153, 0.12);
+    }
+
+    .connection-badge[data-state="ready"],
+    .status-pill[data-state="success"] {
+      color: var(--success);
+      border-color: color-mix(in srgb, var(--success) 35%, var(--line));
+      background: var(--success-soft);
+    }
+
+    .connection-badge[data-state="ready"]::before,
+    .status-pill[data-state="success"]::before {
+      background: var(--success);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+    }
+
+    .connection-badge[data-state="loading"]::before {
+      background: var(--warning);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .connection-badge[data-state="stopped"],
+    .status-pill[data-state="failed"] {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+      background: var(--danger-soft);
+    }
+
+    .connection-badge[data-state="stopped"]::before,
+    .status-pill[data-state="failed"]::before {
+      background: var(--danger);
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: 0.42;
+        transform: scale(0.75);
+      }
+    }
+
+    .loading-line {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 30;
+      width: 100%;
+      height: 3px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .loading-line::after {
+      display: block;
+      width: 42%;
+      height: 100%;
+      content: "";
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      animation: loading-slide 1.15s ease-in-out infinite;
+    }
+
+    body[data-busy="true"] .loading-line {
+      opacity: 1;
+    }
+
+    @keyframes loading-slide {
+      from {
+        transform: translateX(-110%);
+      }
+      to {
+        transform: translateX(340%);
+      }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 13px;
+      margin-bottom: 18px;
+    }
+
+    .stat-card {
+      min-width: 0;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      box-shadow: 0 10px 28px rgba(64, 43, 105, 0.055);
+      backdrop-filter: blur(14px);
+    }
+
+    .stat-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.045em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      display: block;
+      overflow: hidden;
+      margin-bottom: 4px;
+      font-size: 1.2rem;
+      font-weight: 780;
+      line-height: 1.25;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stat-detail {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.42fr) minmax(320px, 0.82fr);
+      align-items: start;
+      gap: 18px;
+    }
+
+    .column {
+      display: grid;
+      min-width: 0;
+      gap: 18px;
+    }
+
+    .card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 22px 23px 17px;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .card-header h2 {
+      margin-bottom: 5px;
+      font-size: 1.08rem;
+      line-height: 1.3;
+    }
+
+    .card-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .card-body {
+      padding: 22px 23px 24px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 17px 16px;
+    }
+
+    .field {
+      min-width: 0;
+    }
+
+    .field-wide {
+      grid-column: 1 / -1;
+    }
+
+    label,
+    .field-label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 0.84rem;
+      font-weight: 730;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .field-help {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.45;
+    }
+
+    .field-help[data-tone="secure"] {
+      color: var(--success);
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      color: var(--text);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--panel-solid) 93%, var(--primary-soft));
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    input,
+    select {
+      min-height: 43px;
+      padding: 9px 11px;
+    }
+
+    textarea {
+      min-height: 118px;
+      padding: 12px;
+      line-height: 1.55;
+      resize: vertical;
+    }
+
+    input:hover,
+    select:hover,
+    textarea:hover {
+      border-color: color-mix(in srgb, var(--primary) 42%, var(--line-strong));
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--primary);
+      background: var(--panel-solid);
+      box-shadow: var(--focus);
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: color-mix(in srgb, var(--muted) 78%, transparent);
+    }
+
+    .input-unit {
+      position: relative;
+    }
+
+    .input-unit input {
+      padding-right: 55px;
+    }
+
+    .input-unit span {
+      position: absolute;
+      top: 50%;
+      right: 11px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .switch-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 69px;
+      padding: 13px 14px;
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--primary-soft) 38%, var(--panel-solid));
+    }
+
+    .switch-copy {
+      min-width: 0;
+    }
+
+    .switch-copy .field-label {
+      margin-bottom: 3px;
+    }
+
+    .switch-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.4;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-flex;
+      flex: 0 0 auto;
+      width: 46px;
+      height: 26px;
+    }
+
+    .switch input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .switch-track {
+      position: absolute;
+      inset: 0;
+      cursor: pointer;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: #aaa4b5;
+      transition: 0.18s ease;
+    }
+
+    .switch-track::after {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      content: "";
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+      transition: transform 0.18s ease;
+    }
+
+    .switch input:checked + .switch-track {
+      border-color: var(--primary);
+      background: var(--primary);
+    }
+
+    .switch input:checked + .switch-track::after {
+      transform: translateX(20px);
+    }
+
+    .switch input:focus-visible + .switch-track {
+      box-shadow: var(--focus);
+    }
+
+    .form-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      padding-top: 20px;
+      margin-top: 21px;
+      gap: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 9px 14px;
+      gap: 7px;
+      color: var(--text);
+      font-weight: 720;
+      border: 1px solid var(--line-strong);
+      border-radius: 11px;
+      background: var(--panel-solid);
+      cursor: pointer;
+      transition: transform 0.13s ease, border-color 0.13s ease, background 0.13s ease;
+    }
+
+    .button:hover:not(:disabled) {
+      border-color: color-mix(in srgb, var(--primary) 55%, var(--line-strong));
+      background: var(--primary-soft);
+      transform: translateY(-1px);
+    }
+
+    .button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.52;
+    }
+
+    .button-primary {
+      color: #fff;
+      border-color: var(--primary-strong);
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+      box-shadow: 0 8px 18px rgba(103, 70, 200, 0.20);
+    }
+
+    .button-primary:hover:not(:disabled) {
+      color: #fff;
+      border-color: var(--primary-strong);
+      background: linear-gradient(135deg, var(--primary-strong), var(--primary));
+    }
+
+    .button-danger {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+      background: var(--danger-soft);
+    }
+
+    .button-ghost {
+      min-height: 36px;
+      padding: 7px 11px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      background: transparent;
+    }
+
+    .spin {
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .cost-note {
+      display: flex;
+      align-items: flex-start;
+      padding: 12px 13px;
+      margin-bottom: 16px;
+      gap: 9px;
+      color: var(--warning);
+      font-size: 0.8rem;
+      line-height: 1.45;
+      border: 1px solid color-mix(in srgb, var(--warning) 32%, var(--line));
+      border-radius: 12px;
+      background: var(--warning-soft);
+    }
+
+    .counter {
+      color: var(--muted);
+      font-size: 0.74rem;
+      font-weight: 600;
+    }
+
+    .test-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+      gap: 12px;
+    }
+
+    .test-result {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      align-items: center;
+      padding: 13px;
+      margin-top: 17px;
+      gap: 13px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: color-mix(in srgb, var(--primary-soft) 28%, var(--panel-solid));
+    }
+
+    .test-result[hidden] {
+      display: none;
+    }
+
+    .result-preview {
+      display: grid;
+      overflow: hidden;
+      width: 110px;
+      aspect-ratio: 1;
+      place-items: center;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--page);
+    }
+
+    .result-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .result-copy {
+      min-width: 0;
+    }
+
+    .result-copy strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .result-copy p {
+      display: -webkit-box;
+      overflow: hidden;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+
+    .inline-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--primary);
+      font-size: 0.82rem;
+      font-weight: 720;
+      text-decoration: none;
+    }
+
+    .inline-link:hover {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .last-request {
+      padding: 13px 14px;
+      margin-bottom: 16px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 13px;
+      background: color-mix(in srgb, var(--panel-solid) 82%, var(--primary-soft));
+    }
+
+    .last-request-label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 740;
+      letter-spacing: 0.045em;
+      text-transform: uppercase;
+    }
+
+    .last-request-value {
+      display: block;
+      font-size: 0.83rem;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 11px;
+    }
+
+    .history-item {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      min-width: 0;
+      padding: 11px;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--panel-solid) 88%, var(--primary-soft));
+    }
+
+    .history-thumb {
+      display: grid;
+      overflow: hidden;
+      width: 74px;
+      aspect-ratio: 1;
+      place-items: center;
+      color: var(--muted);
+      font-size: 1.3rem;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--page);
+    }
+
+    .history-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .history-main {
+      min-width: 0;
+    }
+
+    .history-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+      gap: 9px;
+    }
+
+    .history-time {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-prompt {
+      display: -webkit-box;
+      overflow: hidden;
+      margin: 0 0 7px;
+      font-size: 0.82rem;
+      font-weight: 650;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .history-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px 10px;
+      color: var(--muted);
+      font-size: 0.72rem;
+    }
+
+    .mini-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 7px;
+      font-weight: 700;
+      border-radius: 999px;
+      background: var(--primary-soft);
+    }
+
+    .mini-status[data-status="succeeded"] {
+      color: var(--success);
+      background: var(--success-soft);
+    }
+
+    .mini-status[data-status="failed"] {
+      color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .empty-state {
+      padding: 28px 16px;
+      color: var(--muted);
+      text-align: center;
+      border: 1px dashed var(--line-strong);
+      border-radius: 14px;
+    }
+
+    .empty-state strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      margin: 0;
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 40;
+      width: min(390px, calc(100% - 40px));
+      padding: 13px 15px;
+      color: var(--text);
+      font-size: 0.84rem;
+      font-weight: 650;
+      line-height: 1.4;
+      border: 1px solid var(--line-strong);
+      border-radius: 13px;
+      background: var(--panel-solid);
+      box-shadow: 0 18px 46px rgba(35, 24, 58, 0.22);
+      transform: translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .toast[data-visible="true"] {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast[data-tone="success"] {
+      color: var(--success);
+      border-color: color-mix(in srgb, var(--success) 38%, var(--line));
+      background: var(--success-soft);
+    }
+
+    .toast[data-tone="error"] {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+      background: var(--danger-soft);
+    }
+
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(20, 14, 34, 0.82);
+      backdrop-filter: blur(3px);
+      cursor: zoom-out;
+    }
+
+    .lightbox[hidden] {
+      display: none;
+    }
+
+    .lightbox-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 12px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+      cursor: default;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 18px;
+      right: 20px;
+      z-index: 61;
+      width: 42px;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem;
+      line-height: 1;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.15s ease;
+    }
+
+    .lightbox-close:hover {
+      background: rgba(255, 255, 255, 0.28);
+      transform: scale(1.06);
+    }
+
+    .sr-only {
+      position: absolute !important;
+      overflow: hidden;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    @media (max-width: 920px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .history-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: min(100% - 22px, 1180px);
+        padding-top: 20px;
+      }
+
+      .hero {
+        display: grid;
+      }
+
+      .hero-actions {
+        justify-content: space-between;
+      }
+
+      .stats-grid,
+      .settings-grid,
+      .history-list {
+        grid-template-columns: 1fr;
+      }
+
+      .card-header,
+      .card-body {
+        padding-right: 16px;
+        padding-left: 16px;
+      }
+
+      .card-header {
+        flex-direction: column;
+      }
+
+      .field-wide {
+        grid-column: auto;
+      }
+
+      .form-actions .button {
+        flex: 1 1 calc(50% - 6px);
+      }
+
+      .test-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .test-result {
+        grid-template-columns: 82px minmax(0, 1fr);
+      }
+
+      .result-preview {
+        width: 82px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body data-busy="true">
+  <div class="loading-line" aria-hidden="true"></div>
+  <a class="skip-link" href="#main-content" data-i18n="a11y.skip">跳到主要内容</a>
+
+  <main id="main-content" class="shell">
+    <header class="hero">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">✦</div>
+        <div class="hero-copy">
+          <h1 data-i18n="app.title">图像生成器</h1>
+          <p data-i18n="app.subtitle">安全配置 OpenAI 兼容图像服务，让猫娘从自然语言直接创作图片。</p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <span id="connectionBadge" class="connection-badge" data-state="loading" aria-live="polite">
+          <span id="connectionText" data-i18n="status.loading">正在连接</span>
+        </span>
+        <button id="refreshButton" class="button button-ghost" type="button">
+          <span aria-hidden="true">↻</span>
+          <span data-i18n="action.refresh">刷新</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="stats-grid" aria-label="运行概览" data-i18n-aria-label="overview.label">
+      <article class="stat-card">
+        <span class="stat-label" data-i18n="stat.runtime">插件状态</span>
+        <strong id="runtimeValue" class="stat-value">—</strong>
+        <span id="runtimeDetail" class="stat-detail">—</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label" data-i18n="stat.credential">API 凭据</span>
+        <strong id="credentialValue" class="stat-value">—</strong>
+        <span id="credentialDetail" class="stat-detail">—</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label" data-i18n="stat.cache">本地缓存</span>
+        <strong id="cacheValue" class="stat-value">—</strong>
+        <span id="cacheDetail" class="stat-detail">—</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label" data-i18n="stat.history">生成记录</span>
+        <strong id="historyValue" class="stat-value">—</strong>
+        <span id="historyDetail" class="stat-detail">—</span>
+      </article>
+    </section>
+
+    <div class="content-grid">
+      <div class="column">
+        <section class="card" aria-labelledby="settingsTitle">
+          <div class="card-header">
+            <div>
+              <h2 id="settingsTitle" data-i18n="settings.title">服务与生成设置</h2>
+              <p data-i18n="settings.subtitle">完整保存内容会在浏览器中使用短时一次性公钥信封加密；任务参数只包含密文。</p>
+            </div>
+            <span id="apiStatusPill" class="status-pill" data-state="unknown">
+              <span id="apiStatusText" data-i18n="badge.unknown">状态未知</span>
+            </span>
+          </div>
+
+          <form id="settingsForm" class="card-body" autocomplete="off" novalidate>
+            <div class="settings-grid">
+              <div class="field field-wide">
+                <label for="provider" data-i18n="field.provider">供应商</label>
+                <select id="provider" name="provider" required></select>
+                <p class="field-help" data-i18n="help.provider">选择供应商后通常只需要填写 API Key；Base URL 和模型已为你填好。</p>
+              </div>
+
+              <div class="field field-wide">
+                <label for="apiKey" data-i18n="field.api_key">API 密钥</label>
+                <input
+                  id="apiKey"
+                  type="password"
+                  maxlength="4096"
+                  autocomplete="new-password"
+                  spellcheck="false"
+                  data-1p-ignore
+                  data-lpignore="true"
+                >
+                <p id="apiKeyHelp" class="field-help" data-tone="secure" data-i18n="help.api_key_empty">
+                  浏览器会先加密密钥再提交；明文不会进入任务参数、日志或调用结果。
+                </p>
+              </div>
+
+              <div class="field">
+                <label for="model" data-i18n="field.model">模型</label>
+                <input id="model" name="model" type="text" maxlength="128" required>
+              </div>
+            </div>
+
+            <details id="advancedSettings" class="advanced-settings">
+              <summary data-i18n="settings.advanced">高级设置（通常不用修改）</summary>
+              <div class="settings-grid">
+                <div class="field field-wide">
+                  <label for="apiBaseUrl" data-i18n="field.api_base_url">API 基础地址</label>
+                  <input
+                    id="apiBaseUrl"
+                    name="api_base_url"
+                    type="url"
+                    inputmode="url"
+                    maxlength="4096"
+                    placeholder="https://api.openai.com/v1"
+                    required
+                  >
+                  <p class="field-help" data-i18n="help.api_base_url">一般保持默认即可；只有自建或本地服务才需要改。</p>
+                </div>
+
+                <div class="field">
+                  <label for="outputFormat" data-i18n="field.output_format">图像文件格式</label>
+                  <select id="outputFormat" name="output_format" required>
+                    <option value="auto">auto</option>
+                    <option value="png">png</option>
+                    <option value="jpeg">jpeg</option>
+                    <option value="webp">webp</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="responseFormat" data-i18n="field.response_format">提供商响应（仅 b64_json）</label>
+                  <select id="responseFormat" name="response_format" required>
+                    <option value="b64_json">b64_json</option>
+                  </select>
+                </div>
+
+                <div class="field field-wide">
+                  <label for="allowedSizes" data-i18n="field.allowed_sizes">允许的尺寸</label>
+                  <input id="allowedSizes" name="allowed_sizes" type="text" maxlength="800" required>
+                  <p class="field-help" data-i18n="help.list">使用英文逗号分隔；第一项也可作为默认值。</p>
+                </div>
+
+                <div class="field">
+                  <label for="defaultSize" data-i18n="field.default_size">默认尺寸</label>
+                  <select id="defaultSize" name="default_size" required></select>
+                </div>
+
+                <div class="field">
+                  <label for="allowedQualities" data-i18n="field.allowed_qualities">允许的质量</label>
+                  <input id="allowedQualities" name="allowed_qualities" type="text" maxlength="800" required>
+                </div>
+
+                <div class="field">
+                  <label for="defaultQuality" data-i18n="field.default_quality">默认质量</label>
+                  <select id="defaultQuality" name="default_quality" required></select>
+                </div>
+
+                <div class="field">
+                  <label for="allowedStyles" data-i18n="field.allowed_styles">允许的风格</label>
+                  <input id="allowedStyles" name="allowed_styles" type="text" maxlength="800" required>
+                  <p class="field-help" data-i18n="help.style_list">使用 "" 表示不向提供商发送风格参数。</p>
+                </div>
+
+                <div class="field">
+                  <label for="defaultStyle" data-i18n="field.default_style">默认风格</label>
+                  <select id="defaultStyle" name="default_style"></select>
+                </div>
+
+                <div class="field">
+                  <label for="timeoutSeconds" data-i18n="field.timeout">请求超时</label>
+                  <div class="input-unit">
+                    <input id="timeoutSeconds" name="timeout_seconds" type="number" min="5" max="240" step="1" required>
+                    <span data-i18n="unit.seconds">秒</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="maxDownloadMiB" data-i18n="field.max_download">单图 Base64 响应上限</label>
+                  <div class="input-unit">
+                    <input id="maxDownloadMiB" name="max_download_mib" type="number" min="0.001" max="50" step="0.001" required>
+                    <span>MiB</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="cacheMaxCount" data-i18n="field.cache_count">缓存文件上限</label>
+                  <input id="cacheMaxCount" name="cache_max_count" type="number" min="1" max="100" step="1" required>
+                </div>
+
+                <div class="field">
+                  <label for="cacheMaxMiB" data-i18n="field.cache_bytes">缓存容量上限</label>
+                  <div class="input-unit">
+                    <input id="cacheMaxMiB" name="cache_max_mib" type="number" min="0.001" max="1024" step="0.001" required>
+                    <span>MiB</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="historyLimit" data-i18n="field.history_limit">历史记录上限</label>
+                  <input id="historyLimit" name="history_limit" type="number" min="1" max="100" step="1" required>
+                </div>
+
+                <div class="field">
+                  <div class="switch-field">
+                    <div class="switch-copy">
+                      <span class="field-label" data-i18n="field.auto_show">生成后自动显示</span>
+                      <p data-i18n="help.auto_show">成功后将图片链接直接显示到当前聊天。</p>
+                    </div>
+                    <label class="switch" for="autoShow">
+                      <span class="sr-only" data-i18n="field.auto_show">生成后自动显示</span>
+                      <input id="autoShow" name="auto_show_in_chat" type="checkbox">
+                      <span class="switch-track" aria-hidden="true"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <div class="form-actions">
+              <button id="saveButton" class="button button-primary" type="submit">
+                <span aria-hidden="true">✓</span>
+                <span data-i18n="action.save">保存设置</span>
+              </button>
+              <button id="resetButton" class="button" type="button">
+                <span aria-hidden="true">↺</span>
+                <span data-i18n="action.reset">恢复默认</span>
+              </button>
+              <button id="clearKeyButton" class="button button-danger" type="button">
+                <span aria-hidden="true">⌫</span>
+                <span data-i18n="action.clear_key">清除密钥</span>
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <div class="column">
+        <section class="card" aria-labelledby="testTitle">
+          <div class="card-header">
+            <div>
+              <h2 id="testTitle" data-i18n="test.title">立即测试生成</h2>
+              <p data-i18n="test.subtitle">使用当前已保存的设置发起一次真实请求。</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="cost-note">
+              <span aria-hidden="true">⚠</span>
+              <span data-i18n="test.cost_warning">测试生成可能由服务提供商计费。点击前请确认模型与额度。</span>
+            </div>
+            <label for="testPrompt" data-i18n="field.test_prompt">测试提示词</label>
+            <textarea
+              id="testPrompt"
+              maxlength="4000"
+              placeholder="一只戴着星星发卡的猫娘，在雨后的霓虹街道上撑着透明雨伞，电影感光影"
+              data-i18n-placeholder="placeholder.test_prompt"
+            ></textarea>
+            <div class="test-actions">
+              <span id="promptCounter" class="counter">0 / 4000</span>
+              <button id="testButton" class="button button-primary" type="button">
+                <span aria-hidden="true">✦</span>
+                <span data-i18n="action.test">生成测试图片</span>
+              </button>
+            </div>
+            <div id="testResult" class="test-result" hidden>
+              <div id="testPreview" class="result-preview" aria-hidden="true">✦</div>
+              <div class="result-copy">
+                <strong id="testResultTitle" data-i18n="test.result_title">测试图片已生成</strong>
+                <p id="testResultText"></p>
+                <a id="testResultLink" class="inline-link" href="#" >
+                  <span data-i18n="action.open_image">打开原图</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="activityTitle">
+          <div class="card-header">
+            <div>
+              <h2 id="activityTitle" data-i18n="activity.title">最近生成</h2>
+              <p data-i18n="activity.subtitle">仅保存摘要与同源缓存链接，不保存密钥、远程链接或完整 Base64 数据。</p>
+            </div>
+            <button id="historyRefreshButton" class="button button-ghost" type="button">
+              <span aria-hidden="true">↻</span>
+              <span data-i18n="action.refresh_history">刷新记录</span>
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="last-request">
+              <span class="last-request-label" data-i18n="activity.last_request">最近请求</span>
+              <span id="lastRequestValue" class="last-request-value" data-i18n="activity.none">暂无请求</span>
+            </div>
+            <div id="historyList" class="history-list" aria-live="polite"></div>
+            <div id="historyEmpty" class="empty-state">
+              <strong data-i18n="history.empty_title">还没有生成记录</strong>
+              <p data-i18n="history.empty_body">从聊天或上方测试区生成图片后，摘要会显示在这里。</p>
+            </div>
+            <div class="form-actions">
+              <button id="clearHistoryButton" class="button button-danger" type="button">
+                <span aria-hidden="true">⌫</span>
+                <span data-i18n="action.clear_history">清空历史</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" data-visible="false"></div>
+
+  <div id="lightbox" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="原图预览">
+    <button id="lightboxClose" class="lightbox-close" type="button" aria-label="关闭">✕</button>
+    <img id="lightboxImage" class="lightbox-image" alt="原图预览" />
+  </div>
+  <script>
+    (() => {
+      'use strict';
+
+      const PLUGIN_ID = 'image_generator';
+      const RUNS_URL = '/runs';
+      const NORMAL_RUN_TIMEOUT_MS = 60000;
+      const GENERATION_RUN_TIMEOUT_MS = 300000;
+      const EXPORT_RETRIES = 4;
+      const MAX_ERROR_TEXT = 420;
+      const SECRET_ENVELOPE_ALGORITHM = 'RSA-OAEP-256+A256GCM';
+      const SECRET_ENVELOPE_BINDING_PREFIX = `${PLUGIN_ID}:`;
+      const SECRET_ENVELOPE_SERVER_ERROR_PATTERNS = Object.freeze([
+        /加密设置载荷格式无效/,
+        /加密设置载荷已过期或已使用/,
+        /无法解密设置载荷/,
+        /密钥信封.*(?:无效|过期|已使用)/,
+        /\benvelope\b.*\b(?:invalid|expired|already used|used)\b/i,
+        /\bencrypted settings payload\b.*\b(?:invalid|expired|already used|used|decrypt)\b/i,
+      ]);
+      const GENERATED_ASSET_PREFIX = `/plugin/${PLUGIN_ID}/ui/generated/`;
+      const PROVIDER_PRESETS = Object.freeze({
+        openai: {
+          label: 'OpenAI',
+          base_url: 'https://api.openai.com/v1',
+          model: 'gpt-image-1',
+        },
+        volcengine_ark: {
+          label: '火山方舟',
+          base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+          model: 'doubao-seedream-4-0-250828',
+        },
+        aliyun_bailian: {
+          label: '阿里云百炼',
+          base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          model: 'wanx2.1-t2i-turbo',
+        },
+        siliconflow: {
+          label: 'SiliconFlow',
+          base_url: 'https://api.siliconflow.cn/v1',
+          model: 'Kwai-Kolors/Kolors',
+        },
+        openrouter: {
+          label: 'OpenRouter',
+          base_url: 'https://openrouter.ai/api/v1',
+          model: 'openai/gpt-5-image-mini',
+        },
+        gemini_openai_compatible: {
+          label: 'Gemini（OpenAI 兼容）',
+          base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+          model: 'imagen-3.0-generate-002',
+        },
+        local_compatible: {
+          label: '本地兼容服务',
+          base_url: 'http://127.0.0.1:1234/v1',
+          model: 'local-image-model',
+        },
+        custom: {
+          label: '自定义兼容服务',
+          base_url: 'https://api.openai.com/v1',
+          model: 'gpt-image-1',
+        },
+      });
+      const SUPPORTED_LOCALES = Object.freeze(['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'es', 'pt', 'ru']);
+      const LOCALE_ALIASES = Object.freeze({
+        zh: 'zh-CN',
+        'zh-Hans': 'zh-CN',
+        'zh-Hant': 'zh-TW',
+      });
+
+      const elements = {};
+      let translations = {};
+      let currentState = {};
+      let busyCount = 0;
+      let toastTimer = 0;
+
+      const ids = [
+        'connectionBadge', 'connectionText', 'refreshButton',
+        'runtimeValue', 'runtimeDetail', 'credentialValue', 'credentialDetail',
+        'cacheValue', 'cacheDetail', 'historyValue', 'historyDetail',
+        'apiStatusPill', 'apiStatusText', 'settingsForm', 'provider', 'apiBaseUrl', 'apiKey',
+        'apiKeyHelp', 'model', 'outputFormat', 'responseFormat', 'allowedSizes', 'defaultSize',
+        'allowedQualities', 'defaultQuality', 'allowedStyles', 'defaultStyle',
+        'timeoutSeconds', 'maxDownloadMiB', 'cacheMaxCount', 'cacheMaxMiB',
+        'historyLimit', 'autoShow', 'saveButton', 'resetButton', 'clearKeyButton',
+        'testPrompt', 'promptCounter', 'testButton', 'testResult', 'testPreview',
+        'testResultTitle', 'testResultText', 'testResultLink', 'historyRefreshButton',
+        'lastRequestValue', 'historyList', 'historyEmpty', 'clearHistoryButton', 'toast',
+        'lightbox', 'lightboxImage', 'lightboxClose',
+      ];
+
+      function t(key, fallback = '', params = {}) {
+        const template = Object.prototype.hasOwnProperty.call(translations, key)
+          ? translations[key]
+          : (fallback || key);
+        return String(template).replace(/\{([a-zA-Z0-9_]+)\}/g, (match, name) => (
+          Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
+        ));
+      }
+
+      function normalizeLocale(value) {
+        const raw = String(value || '').trim().replace('_', '-');
+        if (!raw || /[^A-Za-z-]/.test(raw)) return '';
+        if (SUPPORTED_LOCALES.includes(raw)) return raw;
+        if (LOCALE_ALIASES[raw]) return LOCALE_ALIASES[raw];
+        const lower = raw.toLowerCase();
+        const exact = SUPPORTED_LOCALES.find((candidate) => candidate.toLowerCase() === lower);
+        if (exact) return exact;
+        if (lower === 'zh-cn' || lower.startsWith('zh-hans')) return 'zh-CN';
+        if (lower === 'zh-tw' || lower === 'zh-hk' || lower.startsWith('zh-hant')) return 'zh-TW';
+        const language = lower.split('-')[0];
+        return SUPPORTED_LOCALES.includes(language) ? language : '';
+      }
+
+      function localeCandidates(value) {
+        const result = [];
+        const add = (candidate) => {
+          const normalized = normalizeLocale(candidate);
+          if (normalized && !result.includes(normalized)) result.push(normalized);
+        };
+        add(value);
+        const raw = String(value || '');
+        if (raw.includes('-') || raw.includes('_')) add(raw.replace('_', '-').split('-')[0]);
+        add('zh-CN');
+        add('en');
+        return result;
+      }
+
+      async function loadI18n() {
+        let locale = new URLSearchParams(location.search).get('locale')
+          || navigator.language
+          || 'zh-CN';
+        try {
+          const response = await fetch(`/plugin/${PLUGIN_ID}/ui-api/locale`, {
+            cache: 'no-store',
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            locale = payload.locale || payload.language || locale;
+          }
+        } catch (_) {
+          // Chinese in-document copy remains the offline fallback.
+        }
+
+        for (const candidate of localeCandidates(locale)) {
+          try {
+            const response = await fetch(
+              `/plugin/${PLUGIN_ID}/ui-api/i18n/${encodeURIComponent(candidate)}.json`,
+              { cache: 'no-cache' },
+            );
+            if (!response.ok) continue;
+            const payload = await response.json();
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue;
+            translations = payload;
+            document.documentElement.lang = candidate;
+            document.title = t('app.title', '图像生成器');
+            break;
+          } catch (_) {
+            // Try the next local bundle without logging response data.
+          }
+        }
+      }
+
+      function applyI18n() {
+        document.querySelectorAll('[data-i18n]').forEach((node) => {
+          const key = node.getAttribute('data-i18n');
+          node.textContent = t(key, node.textContent || '');
+        });
+        document.querySelectorAll('[data-i18n-placeholder]').forEach((node) => {
+          const key = node.getAttribute('data-i18n-placeholder');
+          node.setAttribute('placeholder', t(key, node.getAttribute('placeholder') || ''));
+        });
+        document.querySelectorAll('[data-i18n-aria-label]').forEach((node) => {
+          const key = node.getAttribute('data-i18n-aria-label');
+          node.setAttribute('aria-label', t(key, node.getAttribute('aria-label') || ''));
+        });
+      }
+
+      function setBusy(active) {
+        busyCount = Math.max(0, busyCount + (active ? 1 : -1));
+        document.body.dataset.busy = busyCount > 0 ? 'true' : 'false';
+        document.querySelectorAll('button').forEach((button) => {
+          if (busyCount > 0) {
+            if (!button.disabled) button.dataset.busyDisabled = 'true';
+            button.disabled = true;
+          } else if (button.dataset.busyDisabled === 'true') {
+            button.disabled = false;
+            delete button.dataset.busyDisabled;
+          }
+        });
+        if (busyCount === 0) updateActionAvailability();
+        if (elements.settingsForm) {
+          elements.settingsForm.setAttribute('aria-busy', busyCount > 0 ? 'true' : 'false');
+        }
+      }
+
+      function redactText(value) {
+        let text = String(value || '');
+        text = text
+          .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+          .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, 'sk-[redacted]')
+          .replace(/(["']?(?:api[_-]?key|authorization|token)["']?\s*[:=]\s*["']?)[^"',\s}]+/gi, '$1[redacted]');
+        if (text.length > MAX_ERROR_TEXT) {
+          text = `${text.slice(0, MAX_ERROR_TEXT)}…`;
+        }
+        return text;
+      }
+
+      function extractErrorText(value, seen = new Set()) {
+        if (typeof value === 'string') return value.trim();
+        if (typeof value === 'number' || typeof value === 'boolean') {
+          return String(value);
+        }
+        if (!value || typeof value !== 'object' || seen.has(value)) return '';
+        seen.add(value);
+        for (const key of ['message', 'detail', 'error']) {
+          if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+          const candidate = extractErrorText(value[key], seen);
+          if (candidate) return candidate;
+        }
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const candidate = extractErrorText(item, seen);
+            if (candidate) return candidate;
+          }
+        }
+        return '';
+      }
+
+      function errorMessage(error) {
+        return redactText(extractErrorText(error))
+          || t('error.plugin_call', '插件调用失败');
+      }
+
+      class PluginRunError extends Error {
+        constructor(value, fallback) {
+          super(redactText(extractErrorText(value)) || fallback);
+          this.name = 'PluginRunError';
+        }
+      }
+
+      function isRetryableSecretEnvelopeError(error) {
+        if (!(error instanceof PluginRunError)) return false;
+        const message = extractErrorText(error);
+        return SECRET_ENVELOPE_SERVER_ERROR_PATTERNS.some(
+          (pattern) => pattern.test(message),
+        );
+      }
+
+      function showToast(message, tone = 'info') {
+        clearTimeout(toastTimer);
+        elements.toast.textContent = errorMessage(message);
+        elements.toast.dataset.tone = tone;
+        elements.toast.dataset.visible = 'true';
+        toastTimer = window.setTimeout(() => {
+          elements.toast.dataset.visible = 'false';
+        }, tone === 'error' ? 6500 : 3600);
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      }
+
+      async function fetchWithDeadline(url, options, deadline) {
+        const remaining = Math.max(1, deadline - Date.now());
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), remaining);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } catch (error) {
+          if (error && error.name === 'AbortError') {
+            throw new Error(t('error.timeout', '插件调用超时'));
+          }
+          throw new Error(t('error.network', '无法连接插件服务'));
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
+
+      async function readJson(response) {
+        try {
+          return await response.json();
+        } catch (_) {
+          return {};
+        }
+      }
+
+      async function exportRun(runId, deadline) {
+        let lastStatus = 0;
+        for (let attempt = 0; attempt < EXPORT_RETRIES; attempt += 1) {
+          const response = await fetchWithDeadline(
+            `${RUNS_URL}/${encodeURIComponent(runId)}/export`,
+            { cache: 'no-store' },
+            deadline,
+          );
+          lastStatus = response.status;
+          if (response.ok) {
+            const payload = await readJson(response);
+            const items = Array.isArray(payload.items) ? payload.items : [];
+            const item = items.find((candidate) => (
+              candidate && candidate.type === 'json' && candidate.json
+            ));
+            if (!item || !item.json || typeof item.json !== 'object') {
+              throw new Error(t('error.empty_result', '插件未返回可读取的结果'));
+            }
+            const pluginResponse = item.json;
+            if (pluginResponse.success === false || pluginResponse.error) {
+              const pluginError = extractErrorText(pluginResponse.error)
+                || extractErrorText(pluginResponse.message);
+              throw new PluginRunError(
+                pluginError,
+                t('error.plugin_call', '插件调用失败'),
+              );
+            }
+            return pluginResponse.data && typeof pluginResponse.data === 'object'
+              ? pluginResponse.data
+              : {};
+          }
+          if (attempt < EXPORT_RETRIES - 1) {
+            await sleep(Math.min(350 * (attempt + 1), Math.max(1, deadline - Date.now())));
+          }
+        }
+        throw new Error(t('error.export', '读取结果失败（HTTP {status}）', { status: lastStatus }));
+      }
+
+      async function callPlugin(entryId, args = {}, timeoutMs = NORMAL_RUN_TIMEOUT_MS) {
+        const deadline = Date.now() + Math.max(timeoutMs, 1000);
+        const createResponse = await fetchWithDeadline(RUNS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plugin_id: PLUGIN_ID,
+            entry_id: entryId,
+            args,
+          }),
+          cache: 'no-store',
+        }, deadline);
+        if (!createResponse.ok) {
+          const createError = await readJson(createResponse);
+          const fallback = t('error.create_run', '创建任务失败（HTTP {status}）', {
+            status: createResponse.status,
+          });
+          const message = redactText(extractErrorText(createError));
+          throw new Error(message || fallback);
+        }
+
+        const createPayload = await readJson(createResponse);
+        const runId = createPayload.run_id || createPayload.id;
+        if (!runId) {
+          throw new Error(t('error.missing_run_id', '插件服务未返回任务编号'));
+        }
+
+        let delay = 250;
+        while (Date.now() < deadline) {
+          await sleep(Math.min(delay, Math.max(1, deadline - Date.now())));
+          delay = Math.min(Math.round(delay * 1.45), 1800);
+          const pollResponse = await fetchWithDeadline(
+            `${RUNS_URL}/${encodeURIComponent(runId)}`,
+            { cache: 'no-store' },
+            deadline,
+          );
+          if (!pollResponse.ok) continue;
+          const record = await readJson(pollResponse);
+          if (record.status === 'succeeded') {
+            return await exportRun(runId, deadline);
+          }
+          if (['failed', 'canceled', 'timeout'].includes(record.status)) {
+            const runError = extractErrorText(record.error)
+              || extractErrorText(record.detail)
+              || extractErrorText(record.message)
+              || extractErrorText(record.status);
+            throw new PluginRunError(
+              runError,
+              t('error.plugin_call', '插件调用失败'),
+            );
+          }
+        }
+        throw new Error(t('error.timeout', '插件调用超时'));
+      }
+
+      function valueFrom(source, key, fallback = '') {
+        return source && Object.prototype.hasOwnProperty.call(source, key)
+          ? source[key]
+          : fallback;
+      }
+
+      function boolValue(value, fallback = false) {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (['true', '1', 'yes', 'on', 'enabled', 'running', 'ready'].includes(normalized)) return true;
+          if (['false', '0', 'no', 'off', 'disabled', 'stopped'].includes(normalized)) return false;
+        }
+        return fallback;
+      }
+
+      function decodeBase64(value) {
+        const normalized = String(value || '').trim();
+        if (!normalized || normalized.length > 16384
+          || !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)
+          || normalized.length % 4 !== 0) {
+          throw new Error(t('error.secret_envelope', '安全密钥信封无效，请刷新面板后重试'));
+        }
+        try {
+          const binary = window.atob(normalized);
+          const result = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index += 1) {
+            result[index] = binary.charCodeAt(index);
+          }
+          return result;
+        } catch (_) {
+          throw new Error(t('error.secret_envelope', '安全密钥信封无效，请刷新面板后重试'));
+        }
+      }
+
+      function encodeBase64(value) {
+        const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        return window.btoa(binary);
+      }
+
+      function envelopeExpiryMillis(value) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return value < 1e12 ? value * 1000 : value;
+        }
+        const parsed = Date.parse(String(value || ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+
+      async function encryptSavePayload(savePayload, envelope) {
+        if (!envelope || typeof envelope !== 'object'
+          || envelope.algorithm !== SECRET_ENVELOPE_ALGORITHM
+          || typeof envelope.key_id !== 'string'
+          || !/^[0-9a-f]{32}$/.test(envelope.key_id)
+          || typeof envelope.public_key_spki_b64 !== 'string'
+          || envelopeExpiryMillis(envelope.expires_at) <= Date.now()) {
+          throw new Error(t('error.secret_envelope', '安全密钥信封已失效，请刷新面板后重试'));
+        }
+        if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === 'undefined') {
+          throw new Error(t('error.secret_encrypt', '当前浏览器无法安全加密设置内容'));
+        }
+
+        const encoder = new TextEncoder();
+        const plaintext = encoder.encode(JSON.stringify(savePayload));
+        const maxBytes = Math.max(
+          1,
+          Math.min(65536, numberValue(envelope.max_plaintext_bytes, 32768)),
+        );
+        if (!plaintext.length || plaintext.length > maxBytes) {
+          throw new Error(t('error.secret_too_large', '设置内容超过安全信封允许的长度'));
+        }
+
+        let rawContentKey = null;
+        try {
+          const publicKey = await window.crypto.subtle.importKey(
+            'spki',
+            decodeBase64(envelope.public_key_spki_b64),
+            { name: 'RSA-OAEP', hash: 'SHA-256' },
+            false,
+            ['encrypt'],
+          );
+          const contentKey = await window.crypto.subtle.generateKey(
+            { name: 'AES-GCM', length: 256 },
+            true,
+            ['encrypt'],
+          );
+          rawContentKey = new Uint8Array(
+            await window.crypto.subtle.exportKey('raw', contentKey),
+          );
+          const iv = window.crypto.getRandomValues(new Uint8Array(12));
+          const additionalData = encoder.encode(
+            `${SECRET_ENVELOPE_BINDING_PREFIX}${envelope.key_id}`,
+          );
+          const ciphertext = new Uint8Array(
+            await window.crypto.subtle.encrypt(
+              { name: 'AES-GCM', iv, additionalData },
+              contentKey,
+              plaintext,
+            ),
+          );
+          const wrappedKey = new Uint8Array(
+            await window.crypto.subtle.encrypt(
+              { name: 'RSA-OAEP', label: additionalData },
+              publicKey,
+              rawContentKey,
+            ),
+          );
+          const payload = {
+            v: 1,
+            wrapped_key: encodeBase64(wrappedKey),
+            iv: encodeBase64(iv),
+            ciphertext: encodeBase64(ciphertext),
+          };
+          return {
+            encrypted_payload: encodeBase64(encoder.encode(JSON.stringify(payload))),
+            key_id: envelope.key_id,
+          };
+        } catch (_) {
+          throw new Error(t('error.secret_encrypt', '无法安全加密设置内容，请刷新面板后重试'));
+        } finally {
+          plaintext.fill(0);
+          if (rawContentKey) rawContentKey.fill(0);
+        }
+      }
+
+      async function requestFreshSecretEnvelope() {
+        const result = await callPlugin('get_secret_envelope');
+        const envelope = result && typeof result === 'object'
+          ? result.secret_envelope
+          : null;
+        if (!envelope || typeof envelope !== 'object') {
+          throw new Error(t(
+            'error.secret_envelope',
+            '安全密钥信封无效，请刷新面板后重试',
+          ));
+        }
+        return envelope;
+      }
+
+      async function saveEncryptedSettings(savePayload) {
+        const envelope = await requestFreshSecretEnvelope();
+        const encryptedArgs = await encryptSavePayload(savePayload, envelope);
+        return callPlugin('save_settings', encryptedArgs);
+      }
+
+      function updateActionAvailability() {
+        if (!elements.testButton || !elements.clearKeyButton) return;
+        const running = boolValue(currentState.running, false);
+        const configured = boolValue(currentState.api_key_configured, false);
+        const cacheAvailable = boolValue(currentState.asset_cache_available, true);
+        const configurationWarning = redactText(currentState.configuration_warning || '');
+        elements.testButton.disabled = !(running && configured && cacheAvailable);
+        elements.testButton.title = elements.testButton.disabled
+          ? (configurationWarning || (configured
+            ? t('badge.unavailable', '连接失败')
+            : t('stat.key_missing', '生成前需要保存 API 密钥')))
+          : '';
+        elements.clearKeyButton.disabled = !configured;
+      }
+
+      function numberValue(value, fallback = 0) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      }
+
+      function parseList(value) {
+        const values = Array.isArray(value)
+          ? value
+          : String(value || '').split(/[\n,，]+/);
+        const result = [];
+        for (const item of values) {
+          const normalized = String(item || '').trim();
+          if (!normalized || result.includes(normalized)) continue;
+          result.push(normalized.slice(0, 32));
+          if (result.length >= 24) break;
+        }
+        return result;
+      }
+
+      function parseStyleList(value) {
+        const fromArray = Array.isArray(value);
+        const values = fromArray ? value : String(value || '').split(/[\n,，]+/);
+        const result = [];
+        for (const item of values) {
+          const raw = String(item ?? '').trim();
+          const emptyToken = raw === '""' || raw === "''";
+          const preserveEmpty = emptyToken || (fromArray && raw === '');
+          const normalized = preserveEmpty ? '' : raw;
+          if (!normalized && !preserveEmpty) continue;
+          const clipped = normalized.slice(0, 32);
+          if (result.includes(clipped)) continue;
+          result.push(clipped);
+          if (result.length >= 24) break;
+        }
+        return result;
+      }
+
+      function formatStyleList(value) {
+        return parseStyleList(value).map((item) => (item === '' ? '""' : item)).join(', ');
+      }
+
+      function writeSelect(select, values, selected, { allowEmpty = false } = {}) {
+        const normalized = allowEmpty ? parseStyleList(values) : parseList(values);
+        const previous = selected === undefined || selected === null
+          ? String(select.value || '')
+          : String(selected);
+        select.replaceChildren();
+        normalized.forEach((value) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value || t('value.omit', '（不发送）');
+          select.appendChild(option);
+        });
+        if (normalized.includes(previous)) {
+          select.value = previous;
+        } else if (normalized.length) {
+          select.value = normalized[0];
+        }
+      }
+
+      function syncSelects() {
+        writeSelect(elements.defaultSize, parseList(elements.allowedSizes.value), elements.defaultSize.value);
+        writeSelect(elements.defaultQuality, parseList(elements.allowedQualities.value), elements.defaultQuality.value);
+        writeSelect(
+          elements.defaultStyle,
+          parseStyleList(elements.allowedStyles.value),
+          elements.defaultStyle.value,
+          { allowEmpty: true },
+        );
+      }
+
+      function bytesToMiB(value) {
+        return numberValue(value, 0) / (1024 * 1024);
+      }
+
+      function formatBytes(value) {
+        const bytes = Math.max(0, numberValue(value, 0));
+        if (bytes < 1024) return `${Math.round(bytes)} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+        return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+      }
+
+      function formatDate(value) {
+        if (!value) return '';
+        const numeric = typeof value === 'number' && value < 1e12 ? value * 1000 : value;
+        const date = new Date(numeric);
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 80);
+        try {
+          return new Intl.DateTimeFormat(document.documentElement.lang || undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }).format(date);
+        } catch (_) {
+          return date.toLocaleString();
+        }
+      }
+
+      function safeGeneratedAssetUrl(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw.length > 4096) return '';
+        try {
+          const parsed = new URL(raw, location.href);
+          if (parsed.origin !== location.origin
+            || parsed.username
+            || parsed.password
+            || parsed.search
+            || parsed.hash
+            || !parsed.pathname.startsWith(GENERATED_ASSET_PREFIX)) {
+            return '';
+          }
+          const filename = parsed.pathname.slice(GENERATED_ASSET_PREFIX.length);
+          if (!/^[0-9a-f]{32}\.(?:png|jpg|webp)$/.test(filename)) {
+            return '';
+          }
+          return parsed.href;
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function isLoopbackHostname(value) {
+        const hostname = String(value || '').toLowerCase();
+        if (hostname === 'localhost' || hostname === '[::1]' || hostname === '::1') return true;
+        const match = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+        return Boolean(match && match.slice(1).every((octet) => Number(octet) <= 255));
+      }
+
+      function safeApiBaseUrl(value, provider = 'openai') {
+        const raw = String(value || '').trim();
+        if (!/^https?:\/\//i.test(raw)) return '';
+        try {
+          const parsed = new URL(raw);
+          if (parsed.username || parsed.password || parsed.search || parsed.hash) return '';
+          if (parsed.protocol === 'https:') return parsed.href;
+          if (provider === 'local_compatible' && parsed.protocol === 'http:' && isLoopbackHostname(parsed.hostname)) return parsed.href;
+          return '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function populateProviderOptions(selected = 'openai') {
+        writeSelect(elements.provider, Object.keys(PROVIDER_PRESETS), selected);
+        Array.from(elements.provider.options).forEach((option) => {
+          const preset = PROVIDER_PRESETS[option.value];
+          option.textContent = preset ? preset.label : option.value;
+        });
+      }
+
+      function applyProviderPreset(provider, { overwriteCustom = true } = {}) {
+        const preset = PROVIDER_PRESETS[provider];
+        if (!preset) return;
+        if (overwriteCustom || !elements.apiBaseUrl.value.trim()) {
+          elements.apiBaseUrl.value = preset.base_url;
+        }
+        if (overwriteCustom || !elements.model.value.trim()) {
+          elements.model.value = preset.model;
+        }
+      }
+
+      function statusName(status) {
+        const normalized = String(status || '').trim().toLowerCase();
+        if (['success', 'succeeded', 'completed', 'ok', 'ready'].includes(normalized)) {
+          return { key: 'history.status_succeeded', fallback: '成功', css: 'succeeded' };
+        }
+        if (['failed', 'error', 'timeout', 'canceled'].includes(normalized)) {
+          return { key: 'history.status_failed', fallback: '失败', css: 'failed' };
+        }
+        if (['pending', 'running', 'processing', 'generating'].includes(normalized)) {
+          return { key: 'history.status_pending', fallback: '进行中', css: 'pending' };
+        }
+        return { key: 'history.status_unknown', fallback: '未知', css: 'unknown' };
+      }
+
+      function extractHistory(value) {
+        if (Array.isArray(value)) return value;
+        if (value && typeof value === 'object') {
+          for (const key of ['history', 'items', 'generations', 'records']) {
+            if (Array.isArray(value[key])) return value[key];
+          }
+        }
+        return [];
+      }
+
+      function historyUrl(item) {
+        return safeGeneratedAssetUrl(
+          valueFrom(item, 'result_url',
+            valueFrom(item, 'image_url',
+              valueFrom(item, 'display_url', valueFrom(item, 'url', '')))),
+        );
+      }
+
+      function createImage(url, alt) {
+        const image = document.createElement('img');
+        image.src = url;
+        image.alt = alt;
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        image.referrerPolicy = 'no-referrer';
+        return image;
+      }
+
+      let lightboxReturnFocus = null;
+
+      function openLightbox(url) {
+        if (!url || !elements.lightbox || !elements.lightboxImage) return;
+        lightboxReturnFocus = document.activeElement;
+        elements.lightboxImage.src = url;
+        elements.lightbox.hidden = false;
+        if (elements.lightboxClose) elements.lightboxClose.focus();
+      }
+
+      function closeLightbox() {
+        if (!elements.lightbox || elements.lightbox.hidden) return;
+        elements.lightbox.hidden = true;
+        if (elements.lightboxImage) elements.lightboxImage.removeAttribute('src');
+        if (lightboxReturnFocus && typeof lightboxReturnFocus.focus === 'function') {
+          lightboxReturnFocus.focus();
+        }
+        lightboxReturnFocus = null;
+      }
+
+      function renderHistory(historyValue) {
+        const history = extractHistory(historyValue);
+        elements.historyList.replaceChildren();
+        elements.historyEmpty.hidden = history.length > 0;
+
+        history.forEach((rawItem) => {
+          const item = rawItem && typeof rawItem === 'object' ? rawItem : {};
+          const article = document.createElement('article');
+          article.className = 'history-item';
+
+          const thumb = document.createElement('div');
+          thumb.className = 'history-thumb';
+          thumb.textContent = '✦';
+
+          const url = historyUrl(item);
+          if (url) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('aria-label', t('action.open_image', '打开原图'));
+            link.addEventListener('click', (event) => {
+              event.preventDefault();
+              openLightbox(url);
+            });
+            const image = createImage(url, t('history.image_alt', '生成图片缩略图'));
+            image.addEventListener('error', () => {
+              thumb.replaceChildren(document.createTextNode('✦'));
+            }, { once: true });
+            link.appendChild(image);
+            thumb.replaceChildren(link);
+          }
+
+          const main = document.createElement('div');
+          main.className = 'history-main';
+          const top = document.createElement('div');
+          top.className = 'history-topline';
+          const time = document.createElement('span');
+          time.className = 'history-time';
+          time.textContent = formatDate(
+            valueFrom(item, 'timestamp',
+              valueFrom(item, 'created_at', valueFrom(item, 'time', ''))),
+          ) || t('history.time_unknown', '时间未知');
+          const status = statusName(valueFrom(item, 'status', ''));
+          const pill = document.createElement('span');
+          pill.className = 'mini-status';
+          pill.dataset.status = status.css;
+          pill.textContent = t(status.key, status.fallback);
+          top.append(time, pill);
+
+          const prompt = document.createElement('p');
+          prompt.className = 'history-prompt';
+          prompt.textContent = String(
+            valueFrom(item, 'prompt_excerpt',
+              valueFrom(item, 'prompt', t('history.prompt_unknown', '未记录提示词'))),
+          ).slice(0, 500);
+
+          const meta = document.createElement('div');
+          meta.className = 'history-meta';
+          const model = document.createElement('span');
+          model.textContent = t('history.model', '模型：{model}', {
+            model: String(valueFrom(item, 'model', '—')).slice(0, 120),
+          });
+          meta.appendChild(model);
+          if (url) {
+            const open = document.createElement('a');
+            open.className = 'inline-link';
+            open.href = url;
+            open.textContent = t('action.open_image', '打开原图');
+            open.addEventListener('click', (event) => {
+              event.preventDefault();
+              openLightbox(url);
+            });
+            meta.appendChild(open);
+          }
+
+          main.append(top, prompt, meta);
+          article.append(thumb, main);
+          elements.historyList.appendChild(article);
+        });
+        return history.length;
+      }
+
+      function apiStateInfo(value, running, configured) {
+        if (value && typeof value === 'object') {
+          const status = String(value.status || value.state || '').trim();
+          const message = String(value.message || value.detail || '').trim();
+          return {
+            status,
+            message: redactText(message),
+            healthy: boolValue(value.healthy, ['ready', 'ok', 'running', 'configured'].includes(status.toLowerCase())),
+          };
+        }
+        const status = String(value || '').trim();
+        return {
+          status,
+          message: '',
+          healthy: ['ready', 'ok', 'running', 'configured'].includes(status.toLowerCase())
+            || (running && configured && !status),
+        };
+      }
+
+      function populateSettings(state) {
+        const settings = state.settings && typeof state.settings === 'object' ? state.settings : {};
+        const defaults = state.defaults && typeof state.defaults === 'object' ? state.defaults : {};
+        const get = (key, fallback = '') => valueFrom(settings, key, valueFrom(defaults, key, fallback));
+
+        const provider = String(get('provider', 'openai')).slice(0, 64);
+        populateProviderOptions(PROVIDER_PRESETS[provider] ? provider : 'openai');
+        elements.apiBaseUrl.value = String(get('api_base_url', PROVIDER_PRESETS[elements.provider.value].base_url)).slice(0, 4096);
+        elements.apiKey.value = '';
+        elements.model.value = String(get('model', '')).slice(0, 128);
+        const outputFormat = String(get('output_format', 'auto')).slice(0, 24);
+        elements.outputFormat.value = ['auto', 'png', 'jpeg', 'webp'].includes(outputFormat)
+          ? outputFormat
+          : 'auto';
+        elements.responseFormat.value = 'b64_json';
+
+        const sizes = parseList(get('allowed_sizes', ['1024x1024']));
+        const qualities = parseList(get('allowed_qualities', ['standard']));
+        const styles = parseStyleList(get('allowed_styles', ['', 'auto', 'vivid', 'natural']));
+        elements.allowedSizes.value = sizes.join(', ');
+        elements.allowedQualities.value = qualities.join(', ');
+        elements.allowedStyles.value = formatStyleList(styles);
+        writeSelect(elements.defaultSize, sizes, get('default_size', sizes[0]));
+        writeSelect(elements.defaultQuality, qualities, get('default_quality', qualities[0]));
+        writeSelect(
+          elements.defaultStyle,
+          styles,
+          get('default_style', styles[0]),
+          { allowEmpty: true },
+        );
+
+        elements.timeoutSeconds.value = String(numberValue(get('timeout_seconds', 120), 120));
+        elements.maxDownloadMiB.value = String(Number(bytesToMiB(get('max_download_bytes', 10 * 1024 * 1024)).toFixed(2)));
+        elements.cacheMaxCount.value = String(numberValue(get('cache_max_count', 20), 20));
+        elements.cacheMaxMiB.value = String(Number(bytesToMiB(get('cache_max_bytes', 100 * 1024 * 1024)).toFixed(2)));
+        elements.historyLimit.value = String(numberValue(get('history_limit', 30), 30));
+        elements.autoShow.checked = boolValue(get('auto_show_in_chat', true), true);
+
+        const configured = boolValue(state.api_key_configured, false);
+        elements.apiKey.placeholder = configured
+          ? t('placeholder.api_key_configured', '已安全配置；留空保留')
+          : t('placeholder.api_key', '输入 API 密钥');
+        elements.apiKeyHelp.textContent = configured
+          ? t('help.api_key_configured', '已有密钥。新密钥会在浏览器中加密后替换；留空会保留。')
+          : t('help.api_key_empty', '浏览器会先加密密钥再提交；明文不会进入任务参数、日志或调用结果。');
+      }
+
+      function renderLastRequest(value) {
+        if (!value || typeof value !== 'object' || !Object.keys(value).length
+          || value.status === 'not_requested' || !value.time) {
+          elements.lastRequestValue.textContent = t('activity.none', '暂无请求');
+          return;
+        }
+        const status = statusName(value.status);
+        const parts = [];
+        const date = formatDate(value.timestamp || value.created_at || value.time);
+        if (date) parts.push(date);
+        if (value.model) parts.push(String(value.model).slice(0, 120));
+        parts.push(t(status.key, status.fallback));
+        elements.lastRequestValue.textContent = redactText(parts.join(' · '));
+      }
+
+      function renderState(state, { populateForm = true } = {}) {
+        currentState = state && typeof state === 'object' ? state : {};
+        const running = boolValue(currentState.running, false);
+        const configured = boolValue(currentState.api_key_configured, false);
+        const configurationWarning = redactText(currentState.configuration_warning || '');
+        const api = apiStateInfo(currentState.api_state, running, configured);
+        const cache = currentState.cache && typeof currentState.cache === 'object'
+          ? currentState.cache
+          : {};
+        const history = extractHistory(currentState.history);
+        const cacheCount = numberValue(
+          valueFrom(cache, 'count', valueFrom(cache, 'file_count', valueFrom(cache, 'files', 0))),
+          0,
+        );
+        const cacheBytes = numberValue(
+          valueFrom(cache, 'bytes', valueFrom(cache, 'total_bytes', valueFrom(cache, 'size_bytes', 0))),
+          0,
+        );
+
+        elements.connectionBadge.dataset.state = running ? 'ready' : 'stopped';
+        elements.connectionText.textContent = running
+          ? t('badge.ready', '运行中')
+          : t('badge.stopped', '未运行');
+        elements.runtimeValue.textContent = running
+          ? t('badge.ready', '运行中')
+          : t('badge.stopped', '未运行');
+        elements.runtimeDetail.textContent = configurationWarning || (running
+          ? t('stat.runtime_ready', '插件已加载并可接收请求')
+          : t('stat.runtime_stopped', '请在插件管理器中启用插件'));
+
+        elements.credentialValue.textContent = configured
+          ? t('badge.configured', '已配置')
+          : t('badge.unconfigured', '未配置');
+        elements.credentialDetail.textContent = configured
+          ? t('stat.key_hint', '凭据已安全保存')
+          : t('stat.key_missing', '生成前需要保存 API 密钥');
+
+        elements.cacheValue.textContent = formatBytes(cacheBytes);
+        elements.cacheDetail.textContent = t('stat.cache_detail', '{count} 个文件', { count: cacheCount });
+        elements.historyValue.textContent = String(history.length);
+        elements.historyDetail.textContent = t('stat.history_detail', '最近 {count} 条记录', {
+          count: history.length,
+        });
+
+        const apiHealthy = running && configured && (api.healthy || !api.status);
+        elements.apiStatusPill.dataset.state = configurationWarning
+          ? 'failed'
+          : (apiHealthy ? 'success' : (running ? 'unknown' : 'failed'));
+        const apiStatusLabels = {
+          idle: configured ? t('badge.configured', '已配置') : t('badge.unconfigured', '未配置'),
+          generating: t('history.status_pending', '进行中'),
+          ok: t('badge.ready', '运行中'),
+          error: t('history.status_failed', '失败'),
+        };
+        elements.apiStatusText.textContent = api.status
+          ? (apiStatusLabels[api.status.toLowerCase()] || redactText(api.status).slice(0, 80))
+          : (configured ? t('badge.configured', '已配置') : t('badge.unconfigured', '未配置'));
+        if (configurationWarning) elements.apiStatusPill.title = configurationWarning;
+        else if (api.message) elements.apiStatusPill.title = api.message;
+        else elements.apiStatusPill.removeAttribute('title');
+
+        updateActionAvailability();
+
+        if (populateForm) populateSettings(currentState);
+        renderHistory(history);
+        renderLastRequest(currentState.last_request);
+      }
+
+      function positiveNumber(input, fallback, integer = false) {
+        const parsed = Number(input.value);
+        const violatesConstraint = input.validity && input.validity.valid === false;
+        if (!Number.isFinite(parsed)
+          || parsed <= 0
+          || violatesConstraint
+          || (integer && !Number.isInteger(parsed))) {
+          throw new Error(t('error.invalid_numeric_constraint', '{field} 必须符合允许的范围和步进值', {
+            field: input.labels && input.labels[0] ? input.labels[0].textContent : input.name,
+          }));
+        }
+        return parsed;
+      }
+
+      function validateCacheCapacity(maxDownloadBytes, cacheMaxBytes) {
+        if (cacheMaxBytes < maxDownloadBytes) {
+          throw new Error(t(
+            'error.cache_too_small',
+            '缓存容量上限不能小于单图响应上限',
+          ));
+        }
+      }
+
+      function collectSettings() {
+        const allowedSizes = parseList(elements.allowedSizes.value);
+        const allowedQualities = parseList(elements.allowedQualities.value);
+        const allowedStyles = parseStyleList(elements.allowedStyles.value);
+        if (!allowedSizes.length || !allowedQualities.length || !allowedStyles.length) {
+          throw new Error(t('error.allowlist_required', '尺寸、质量和风格允许列表都至少需要一项'));
+        }
+        if (!allowedSizes.includes(elements.defaultSize.value)
+          || !allowedQualities.includes(elements.defaultQuality.value)
+          || !allowedStyles.includes(elements.defaultStyle.value)) {
+          throw new Error(t('error.default_not_allowed', '默认值必须包含在对应的允许列表中'));
+        }
+
+        const provider = elements.provider.value;
+        const baseUrl = elements.apiBaseUrl.value.trim();
+        if (!safeApiBaseUrl(baseUrl, provider)) {
+          throw new Error(t('error.invalid_api_url', 'API 基础地址必须使用 HTTPS；仅本地兼容服务可使用回环 HTTP'));
+        }
+        const model = elements.model.value.trim();
+        const outputFormat = elements.outputFormat.value.trim();
+        if (!model || !outputFormat) {
+          throw new Error(t('error.required_fields', '请填写 API 地址、模型和输出格式'));
+        }
+        const maxDownloadBytes = Math.round(
+          positiveNumber(elements.maxDownloadMiB, 10) * 1024 * 1024,
+        );
+        const cacheMaxBytes = Math.round(
+          positiveNumber(elements.cacheMaxMiB, 100) * 1024 * 1024,
+        );
+        validateCacheCapacity(maxDownloadBytes, cacheMaxBytes);
+
+        return {
+          provider,
+          api_base_url: baseUrl,
+          model,
+          default_size: elements.defaultSize.value,
+          default_quality: elements.defaultQuality.value,
+          default_style: elements.defaultStyle.value,
+          allowed_sizes: allowedSizes,
+          allowed_qualities: allowedQualities,
+          allowed_styles: allowedStyles,
+          output_format: outputFormat,
+          response_format: 'b64_json',
+          timeout_seconds: positiveNumber(elements.timeoutSeconds, 120),
+          max_download_bytes: maxDownloadBytes,
+          cache_max_count: positiveNumber(elements.cacheMaxCount, 20, true),
+          cache_max_bytes: cacheMaxBytes,
+          history_limit: positiveNumber(elements.historyLimit, 30, true),
+          auto_show_in_chat: elements.autoShow.checked,
+        };
+      }
+
+      async function refreshState({ announce = false } = {}) {
+        setBusy(true);
+        elements.connectionBadge.dataset.state = 'loading';
+        elements.connectionText.textContent = t('status.loading', '正在连接');
+        try {
+          const state = await callPlugin('get_panel_state');
+          renderState(state);
+          if (announce) showToast(t('status.refreshed', '状态已刷新'), 'success');
+          return state;
+        } catch (error) {
+          elements.connectionBadge.dataset.state = 'stopped';
+          elements.connectionText.textContent = t('badge.unavailable', '连接失败');
+          showToast(errorMessage(error), 'error');
+          return null;
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function saveSettings(event) {
+        event.preventDefault();
+        let args;
+        let pendingCredential = elements.apiKey.value;
+        let savePayload = null;
+        elements.apiKey.value = '';
+        try {
+          syncSelects();
+          args = collectSettings();
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+          return;
+        }
+
+        setBusy(true);
+        try {
+          savePayload = {
+            ...args,
+            api_key: pendingCredential,
+            clear_api_key: false,
+          };
+          let result;
+          try {
+            result = await saveEncryptedSettings(savePayload);
+          } catch (error) {
+            if (!isRetryableSecretEnvelopeError(error)) throw error;
+            result = await saveEncryptedSettings(savePayload);
+          }
+          if (!result || typeof result !== 'object') {
+            throw new Error(t('error.empty_result', '插件未返回可读取的结果'));
+          }
+          await refreshState();
+          showToast(t('status.saved', '设置已保存'), 'success');
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+        } finally {
+          if (savePayload) savePayload.api_key = '';
+          pendingCredential = '';
+          elements.apiKey.value = '';
+          setBusy(false);
+        }
+      }
+
+      async function resetSettings() {
+        if (!window.confirm(t('confirm.reset', '确定恢复默认设置？API 密钥将继续保留。'))) return;
+        setBusy(true);
+        try {
+          const result = await callPlugin('reset_settings');
+          if (result && (result.settings || result.defaults)) {
+            renderState({ ...currentState, ...result });
+          } else {
+            await refreshState();
+          }
+          showToast(t('status.reset_done', '已恢复默认设置，API 密钥保持不变'), 'success');
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function clearApiKey() {
+        if (!window.confirm(t('confirm.clear_key', '确定清除已保存的 API 密钥？清除后将无法生成图片。'))) return;
+        elements.apiKey.value = '';
+        setBusy(true);
+        try {
+          await callPlugin('clear_api_key');
+          await refreshState();
+          showToast(t('status.key_cleared', 'API 密钥已清除'), 'success');
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function refreshHistory({ announce = true } = {}) {
+        setBusy(true);
+        try {
+          const result = await callPlugin('get_recent_history', {
+            limit: positiveNumber(elements.historyLimit, 30, true),
+          });
+          const history = extractHistory(result);
+          const count = renderHistory(history);
+          currentState.history = history;
+          elements.historyValue.textContent = String(count);
+          elements.historyDetail.textContent = t('stat.history_detail', '最近 {count} 条记录', { count });
+          if (announce) showToast(t('status.history_refreshed', '生成记录已刷新'), 'success');
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function clearHistory() {
+        if (!window.confirm(t('confirm.clear_history', '确定清空生成历史？本地图片缓存会按插件策略处理。'))) return;
+        setBusy(true);
+        try {
+          await callPlugin('clear_history');
+          renderHistory([]);
+          currentState.history = [];
+          elements.historyValue.textContent = '0';
+          elements.historyDetail.textContent = t('stat.history_detail', '最近 {count} 条记录', { count: 0 });
+          showToast(t('status.history_cleared', '生成历史已清空'), 'success');
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function showTestResult(result) {
+        const url = safeGeneratedAssetUrl(
+          valueFrom(result, 'result_url',
+            valueFrom(result, 'image_url',
+              valueFrom(result, 'display_url', valueFrom(result, 'url', '')))),
+        );
+        elements.testResult.hidden = false;
+        elements.testPreview.replaceChildren(document.createTextNode('✦'));
+        elements.testResultText.textContent = String(
+          valueFrom(result, 'revised_prompt',
+            valueFrom(result, 'prompt_excerpt', t('test.result_fallback', '提供商已返回生成结果。'))),
+        ).slice(0, 700);
+        if (url) {
+          const image = createImage(url, t('history.image_alt', '生成图片缩略图'));
+          image.addEventListener('error', () => image.remove(), { once: true });
+          elements.testPreview.replaceChildren(image);
+          elements.testResultLink.dataset.url = url;
+          elements.testResultLink.hidden = false;
+        } else {
+          delete elements.testResultLink.dataset.url;
+          elements.testResultLink.hidden = true;
+        }
+      }
+
+      async function testGeneration() {
+        const prompt = elements.testPrompt.value.trim();
+        if (!prompt) {
+          elements.testPrompt.focus();
+          showToast(t('error.prompt_required', '请输入测试提示词'), 'error');
+          return;
+        }
+        elements.testResult.hidden = true;
+        setBusy(true);
+        try {
+          const result = await callPlugin(
+            'test_generation',
+            { prompt },
+            GENERATION_RUN_TIMEOUT_MS,
+          );
+          showTestResult(result);
+          showToast(t('status.test_success', '测试图片已生成'), 'success');
+          await refreshState();
+        } catch (error) {
+          showToast(errorMessage(error), 'error');
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function updatePromptCounter() {
+        elements.promptCounter.textContent = `${elements.testPrompt.value.length} / 4000`;
+      }
+
+      function bindEvents() {
+        elements.settingsForm.addEventListener('submit', saveSettings);
+        elements.provider.addEventListener('change', () => {
+          applyProviderPreset(elements.provider.value, { overwriteCustom: true });
+        });
+        elements.refreshButton.addEventListener('click', () => refreshState({ announce: true }));
+        elements.resetButton.addEventListener('click', resetSettings);
+        elements.clearKeyButton.addEventListener('click', clearApiKey);
+        elements.historyRefreshButton.addEventListener('click', () => refreshHistory());
+        elements.clearHistoryButton.addEventListener('click', clearHistory);
+        elements.testButton.addEventListener('click', testGeneration);
+        elements.testPrompt.addEventListener('input', updatePromptCounter);
+        elements.allowedSizes.addEventListener('change', syncSelects);
+        elements.allowedQualities.addEventListener('change', syncSelects);
+        elements.allowedStyles.addEventListener('change', syncSelects);
+        elements.testResultLink.addEventListener('click', (event) => {
+          event.preventDefault();
+          openLightbox(elements.testResultLink.dataset.url);
+        });
+        elements.lightboxClose.addEventListener('click', closeLightbox);
+        elements.lightbox.addEventListener('click', (event) => {
+          if (event.target === elements.lightbox) closeLightbox();
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') closeLightbox();
+        });
+      }
+
+      async function initialize() {
+        ids.forEach((id) => {
+          elements[id] = document.getElementById(id);
+        });
+        await loadI18n();
+        applyI18n();
+        bindEvents();
+        updatePromptCounter();
+        await refreshState();
+      }
+
+      initialize().catch((error) => {
+        if (elements.connectionBadge) elements.connectionBadge.dataset.state = 'stopped';
+        if (elements.connectionText) elements.connectionText.textContent = t('badge.unavailable', '连接失败');
+        if (elements.toast) showToast(errorMessage(error), 'error');
+        setBusy(false);
+      });
+    })();
+  </script>
+</body>
+</html>

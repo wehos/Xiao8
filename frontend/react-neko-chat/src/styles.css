@@ -1388,6 +1388,16 @@ body.neko-electron-runtime .app-shell:not(.chat-surface-mode-compact)[data-focus
   background: #fff;
 }
 
+/* Markdown-rendered images (e.g. plugin-generated images embedded via
+   ![alt](url)) must stay inside the same 280px bounds as native image
+   blocks, otherwise a full-resolution generation blows up the dialog. */
+.message-block-markdown img {
+  max-width: min(280px, 100%);
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
 .message-block-link {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

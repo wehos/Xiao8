@@ -1,0 +1,69 @@
+[plugin]
+id = "image_generator"
+name = "图片生成器"
+description = "通过可配置的 OpenAI-compatible Images API 生成图片，并安全地在聊天中显示。"
+short_description = "Generate and display images through a configurable OpenAI-compatible Images API."
+keywords = [
+    "画一张", "画个", "帮我画", "生成图片", "生成图像", "绘制", "插画", "海报",
+    "头像", "image generation", "generate image", "draw", "illustration",
+    "画像生成", "描いて", "이미지 생성", "그려", "generar imagen", "gerar imagem",
+    "создать изображение",
+]
+version = "0.1.0"
+type = "plugin"
+entry = "plugin.plugins.image_generator:ImageGeneratorPlugin"
+
+[plugin.author]
+name = "N.E.K.O Team"
+
+[plugin.sdk]
+recommended = ">=0.1.0,<0.2.0"
+supported = ">=0.1.0,<0.3.0"
+
+[plugin.i18n]
+default_locale = "zh-CN"
+locales_dir = "i18n"
+
+[plugin.store]
+enabled = true
+
+[plugin.ui]
+enabled = true
+
+[[plugin.ui.panel]]
+id = "main"
+title = "Image Generator · 图片生成器"
+entry = "static/index.html"
+mode = "static"
+permissions = [
+    "state:read",
+    "action:call",
+    "runs:read",
+]
+
+[plugin_runtime]
+enabled = true
+auto_start = true
+
+[image_generator]
+api_base_url = "https://api.openai.com/v1"
+model = "gpt-image-1"
+default_size = "1024x1024"
+default_quality = "auto"
+default_style = ""
+allowed_sizes = [
+    "auto",
+    "1024x1024",
+    "1536x1024",
+    "1024x1536",
+]
+allowed_qualities = ["auto", "low", "medium", "high"]
+allowed_styles = ["", "auto", "vivid", "natural"]
+output_format = "auto"
+response_format = "b64_json"
+timeout_seconds = 120.0
+max_download_bytes = 20_971_520
+cache_max_count = 20
+cache_max_bytes = 104_857_600
+history_limit = 30
+auto_show_in_chat = true

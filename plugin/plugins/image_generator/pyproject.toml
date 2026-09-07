@@ -1,0 +1,11 @@
+[project]
+name = "neko-image-generator-plugin"
+version = "0.1.0"
+description = "Secure OpenAI-compatible image generation for N.E.K.O."
+requires-python = "==3.11.*"
+# The host supplies pycryptodomex for the secret envelope; the Steam frozen
+# runtime strips cryptography/Pillow down to extension stubs, so this plugin
+# only relies on pycryptodomex plus pure-Python container sniffing.
+dependencies = [
+    "N.E.K.O>=0.8.3",
+]

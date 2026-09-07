@@ -226,6 +226,7 @@ def _weighted_pick(items: list[dict[str, Any]], count: int) -> list[dict[str, An
 
 
 _FactKey = tuple[str, str]
+_FORGE_WIRE_ID_PREFIX = "__neko_forge_id_v1__:"
 
 
 def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]]:
@@ -242,6 +243,32 @@ def _fact_identity(item: dict[str, Any]) -> tuple[_FactKey | None, str, set[str]
     else:
         fact_key = None
     return fact_key, raw_hash or text_hash, {value for value in (raw_hash, text_hash) if value}
+
+
+def _fact_wire_id(fact_key: _FactKey) -> str:
+    """Preserve ordinary string IDs; encode other identities for unique round trips."""
+    kind, value = fact_key
+    # Old responses erased scalar types. Move ambiguous string forms too, so
+    # a historical forged ID cannot hide another type; its hash still excludes it.
+    legacy_scalar_string = value in {"True", "False"}
+    if kind == "id:str":
+        try:
+            float(value)
+        except ValueError:
+            pass
+        else:
+            legacy_scalar_string = True
+    if (
+        kind == "id:str"
+        and not legacy_scalar_string
+        and not value.startswith((_FORGE_WIRE_ID_PREFIX, "hash:", "text:"))
+        and 1 <= len(value) <= 128
+        and value == value.strip()
+        and not any(char == "," or ord(char) < 32 for char in value)
+    ):
+        return value
+    encoded = json.dumps(fact_key, ensure_ascii=False, separators=(",", ":"))
+    return _FORGE_WIRE_ID_PREFIX + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _memory_identity_stats(
@@ -297,7 +324,7 @@ def _select_forge_facts_with_stats(
             missing_id_count += 1
         if fact_key is None or not str(item.get("text") or "").strip():
             continue
-        wire_id = fact_key[1] if has_scalar_id else ":".join(fact_key)
+        wire_id = _fact_wire_id(fact_key)
         if wire_id in exclude_ids or fact_key in exclude_keys or hash_aliases.intersection(exclude_hashes):
             excluded_count += 1
             continue

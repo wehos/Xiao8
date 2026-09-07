@@ -227,7 +227,8 @@ async def test_falsey_id_excludes_changed_archive_copy(query_pool, fact_id):
         [memory("active", id=fact_id)], [memory("archive-copy", id=fact_id)],
     )
     assert payload["totalMemoryCount"] == 1
-    assert [(item["id"], item["text"]) for item in payload["facts"]] == [(str(fact_id), "Memory active")]
+    assert [item["text"] for item in payload["facts"]] == ["Memory active"]
+    assert payload["facts"][0]["id"].startswith("__neko_forge_id_v1__:")
     assert payload["missingIdCount"] == 0
 
 
@@ -240,9 +241,11 @@ async def test_candidate_identity_keeps_scalar_types_and_wire_ids(query_pool, co
     payload = await query_pool(active, archive)
     assert payload["totalMemoryCount"] == 5
     assert payload["returnedCount"] == 5
-    assert {(item["id"], item["text"]) for item in payload["facts"]} == {
-        (str(fact_id), f"Memory row-{i}") for i, fact_id in enumerate(ids)
-    }
+    assert {item["text"] for item in payload["facts"]} == {f"Memory row-{i}" for i in range(5)}
+    assert len({item["id"] for item in payload["facts"]}) == 5
+    for i, fact_id in enumerate(ids):
+        selected = next(item for item in payload["facts"] if item["text"] == f"Memory row-{i}")
+        assert selected["id"].startswith("__neko_forge_id_v1__:")
     assert payload["fallbackReason"] == ""
     assert payload["missingIdCount"] == 0
     assert all(not any(key.startswith("_forge_") for key in item) for item in payload["facts"])
@@ -253,9 +256,11 @@ async def test_candidate_identity_keeps_scalar_types_and_wire_ids(query_pool, co
 @pytest.mark.parametrize("fact_id", [0, False, 0.0, "id:int:0"])
 async def test_wire_id_exclusion_remains_compatible(query_pool, collection, fact_id):
     rows = [memory("target", id=fact_id), memory("kept")]
+    initial = await query_pool(rows, [])
+    target_id = next(item["id"] for item in initial["facts"] if item["text"] == "Memory target")
     payload = await query_pool(
         rows if collection == "active" else [], rows if collection == "archive" else [],
-        exclude_fact_ids=str(fact_id),
+        exclude_fact_ids=target_id,
     )
     assert [item["id"] for item in payload["facts"]] == ["kept"]
 
@@ -269,6 +274,7 @@ async def test_fallback_id_namespace_does_not_collide_with_literal_ids(query_poo
     assert payload["totalMemoryCount"] == 2
     assert payload["returnedCount"] == 2
     assert {item["text"] for item in payload["facts"]} == {"Memory fallback", "Memory literal"}
+    assert len({item["id"] for item in payload["facts"]}) == 2
 
 
 @pytest.mark.asyncio
@@ -283,3 +289,73 @@ async def test_archive_fill_normalizes_missing_identity_fields(query_pool, missi
     assert payload["returnedCount"] == 5
     assert payload["fallbackReason"] == ""
     assert all(item["id"] and item["hash"] for item in payload["facts"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["active", "archive", "mixed"])
+async def test_wire_ids_are_unique_and_exclude_only_the_selected_memory(query_pool, collection):
+    ids = [1, "1", True, "True", None]
+    rows = [memory(f"row-{i}", id=fact_id) for i, fact_id in enumerate(ids)]
+    active, archive = (rows, []) if collection == "active" else ([], rows) if collection == "archive" else (rows[:2], rows[2:])
+    initial = await query_pool(active, archive)
+    assert initial["returnedCount"] == 5
+    assert len({item["id"] for item in initial["facts"]}) == 5
+    for selected in initial["facts"]:
+        assert isinstance(selected["id"], str) and 1 <= len(selected["id"]) <= 128
+        remaining = await query_pool(active, archive, exclude_fact_ids=selected["id"])
+        assert remaining["totalMemoryCount"] == 5
+        assert remaining["returnedCount"] == 4
+        assert {item["text"] for item in remaining["facts"]} == {
+            item["text"] for item in initial["facts"] if item is not selected
+        }
+
+
+@pytest.mark.asyncio
+async def test_wire_ids_escape_literal_reserved_prefix_and_remain_stable(query_pool):
+    original = memory("numeric", id=1)
+    initial = await query_pool([original], [])
+    numeric_id = initial["facts"][0]["id"]
+    literal = memory("literal", id=numeric_id)
+    rows = [original, literal]
+    active = await query_pool(rows, [])
+    archive = await query_pool([], list(reversed(rows)))
+    by_text = lambda payload: {item["text"]: item["id"] for item in payload["facts"]}
+    assert by_text(active) == by_text(archive)
+    assert len(set(by_text(active).values())) == 2
+    assert by_text(active)[original["text"]] == numeric_id
+    remaining = await query_pool([], rows, exclude_fact_ids=numeric_id)
+    assert [item["text"] for item in remaining["facts"]] == [literal["text"]]
+
+
+@pytest.mark.asyncio
+async def test_wire_id_change_keeps_historical_forged_hash_exclusions(query_pool):
+    rows = [memory("numeric", id=1), memory("string", id="1")]
+    remaining = await query_pool(rows, [], exclude_hashes="hash-numeric")
+    assert [item["hash"] for item in remaining["facts"]] == ["hash-string"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_id,string_id", [(1, "1"), (True, "True"), (0.0, "0.0")])
+async def test_historical_forged_id_and_hash_do_not_exclude_a_different_scalar_type(query_pool, legacy_id, string_id):
+    rows = [memory("previously-forged", id=legacy_id), memory("unused", id=string_id)]
+    payload = await query_pool(
+        rows, [], exclude_fact_ids=string_id, exclude_hashes="hash-previously-forged",
+    )
+    assert [item["text"] for item in payload["facts"]] == ["Memory unused"]
+    assert payload["facts"][0]["id"] != string_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fact_id", ["fact_20260907_unique", "__neko_forge_id_v1__:literal", "hash:a", "text:b", "x" * 200, "comma,id", " padded "])
+async def test_wire_ids_fit_community_query_and_forge_constraints(query_pool, fact_id):
+    initial = await query_pool([memory("row", id=fact_id)], [])
+    wire_id = initial["facts"][0]["id"]
+    assert 1 <= len(wire_id) <= 128
+    assert wire_id == wire_id.strip() and "," not in wire_id
+    assert not any(ord(char) < 32 for char in wire_id)
+    if fact_id == "fact_20260907_unique":
+        assert wire_id == fact_id
+    else:
+        assert wire_id != fact_id
+    remaining = await query_pool([], [memory("row", id=fact_id)], exclude_fact_ids=wire_id)
+    assert remaining["returnedCount"] == 0

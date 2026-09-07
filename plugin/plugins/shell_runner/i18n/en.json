@@ -1,0 +1,20 @@
+{
+  "plugin": {
+    "name": "Shell Runner",
+    "short_description": "Let Neko run PowerShell / cmd commands directly"
+  },
+  "tool": {
+    "run_shell": {
+      "name": "Shell Command Runner",
+      "params": {
+        "shell": "Interpreter: powershell (default) or cmd",
+        "command": "Full command text to execute",
+        "cwd": "Working directory (absolute path), defaults to the user home directory",
+        "timeout_seconds": "Timeout in seconds, default 60, range 5-600"
+      }
+    }
+  },
+  "entry": {
+    "shell_test": "Shell Runner self-check"
+  }
+}

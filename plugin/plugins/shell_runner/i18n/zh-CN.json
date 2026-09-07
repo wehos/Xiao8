@@ -1,0 +1,20 @@
+{
+  "plugin": {
+    "name": "Shell 执行器",
+    "short_description": "让猫娘直接执行 PowerShell / cmd 命令"
+  },
+  "tool": {
+    "run_shell": {
+      "name": "Shell 命令执行",
+      "params": {
+        "shell": "解释器：powershell（默认）或 cmd",
+        "command": "要执行的完整命令文本",
+        "cwd": "工作目录（绝对路径），默认用户主目录",
+        "timeout_seconds": "超时秒数，默认 60，范围 5-600"
+      }
+    }
+  },
+  "entry": {
+    "shell_test": "Shell 执行器自检"
+  }
+}

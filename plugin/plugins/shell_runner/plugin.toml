@@ -1,0 +1,30 @@
+[plugin]
+name = "Shell 执行器"
+description = "让猫娘直接在用户电脑上执行 PowerShell / cmd 命令并返回输出。支持指定工作目录、超时控制、退出码回传。"
+short_description = "Run PowerShell / cmd commands on the user's machine and return their output."
+keywords = [
+    "shell", "powershell", "cmd", "命令", "终端", "命令行", "cli",
+    "执行命令", "run command", "terminal", "コマンド", "명령", "команда",
+]
+version = "0.1.0"
+id = "shell_runner"
+type = "plugin"
+entry = "plugin.plugins.shell_runner:ShellRunnerPlugin"
+
+[plugin.author]
+name = "UmR"
+
+[plugin.sdk]
+recommended = ">=0.1.0,<0.2.0"
+supported = ">=0.1.0,<0.3.0"
+
+[plugin.i18n]
+default_locale = "zh-CN"
+locales_dir = "i18n"
+
+[plugin_runtime]
+enabled = true
+auto_start = true
+
+[plugin.store]
+enabled = false
